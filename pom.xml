@@ -4,7 +4,7 @@
     <groupId>org.joget</groupId>
     <artifactId>blackbox</artifactId>
     <packaging>bundle</packaging>
-    <version>8.2-PREVIEW</version>
+    <version>8.2-SNAPSHOT</version>
     <name>blackbox</name>
     <description>Stores and replays recordings</description>
     <url>http://www.joget.org</url>
