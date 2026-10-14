@@ -1,4 +1,4 @@
-package org.joget.blackbox;
+package org.joget.marketplace.blackbox;
 
 import java.util.ArrayList;
 import java.util.Collection;

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <groupId>org.joget</groupId>
+    <groupId>org.joget.marketplace</groupId>
     <artifactId>blackbox</artifactId>
     <packaging>bundle</packaging>
     <version>8.2-SNAPSHOT</version>
@@ -49,7 +49,7 @@
                     <instructions>
                         <Export-Package></Export-Package>
                         <Private-Package>{local-packages}</Private-Package>
-                        <Bundle-Activator>org.joget.blackbox.Activator</Bundle-Activator>
+                        <Bundle-Activator>org.joget.marketplace.blackbox.Activator</Bundle-Activator>
                         <Import-Package>
                             !*,
                             javax.servlet;version=!,

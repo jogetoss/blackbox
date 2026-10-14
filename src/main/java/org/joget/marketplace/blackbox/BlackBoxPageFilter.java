@@ -1,4 +1,4 @@
-package org.joget.blackbox;
+package org.joget.marketplace.blackbox;
 
 import java.io.IOException;
 import java.io.InputStream;
