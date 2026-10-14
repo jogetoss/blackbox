@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BlackBox recording</title>
+  <link rel="stylesheet" href="assets/viewer.css">
+  <style>
+    /* Recordings come from the server: hide the viewer's own "open files" controls */
+    .actions .button { display: none !important; }
+    .actions a, .actions button.bb { margin-left: 8px; }
+    .actions a { color: inherit; }
+    .notes { white-space: pre-wrap; padding: 6px 16px; margin: 0; font-size: 13px; opacity: .85; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1><a href="./" style="color: inherit; text-decoration: none">BlackBox</a> · <span id="recTitle"></span></h1>
+    <div id="meta" class="meta"></div>
+    <div class="actions">
+      <span id="owner"></span>
+      <a id="dlVideo" href="#" hidden>Download video</a>
+      <a id="dlSession" href="#">Download session.json</a>
+      <button id="delete" class="bb" hidden>Delete</button>
+      <label class="button"><input type="file" id="files" hidden></label>
+    </div>
+  </header>
+  <p id="notes" class="notes" hidden></p>
+
+  <div id="error" class="error" hidden></div>
+
+  <main id="empty" class="empty">
+    <p id="loading">Loading…</p>
+  </main>
+
+  <main id="app" hidden>
+    <section class="player">
+      <video id="video" controls playsinline></video>
+      <div id="noVideo" class="no-video" hidden>
+        <div>
+          <p>This recording has no video.</p>
+          <input type="file" id="videoFile" hidden>
+        </div>
+      </div>
+      <div class="clock-row">
+        <span id="clock">0:00.0 / 0:00.0</span>
+        <span class="jump">
+          <button id="prevIssue" title="Previous error or failed request">◀ Prev issue</button>
+          <button id="nextIssue" title="Next error or failed request">Next issue ▶</button>
+        </span>
+      </div>
+      <div id="timeline" class="timeline" title="Click to seek">
+        <div id="markers"></div>
+        <div id="playhead" class="playhead"></div>
+      </div>
+      <div class="legend">
+        <span><i class="dot error"></i>Console error</span>
+        <span><i class="dot failed"></i>Failed request</span>
+        <span><i class="dot nav"></i>Navigation</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <nav class="tabs">
+        <button data-tab="console" class="active">Console <span id="consoleCount" class="count"></span></button>
+        <button data-tab="network">Network <span id="networkCount" class="count"></span></button>
+        <button data-tab="info">Info</button>
+      </nav>
+      <div id="toolbar" class="toolbar">
+        <input id="search" type="search" placeholder="Filter">
+        <select id="filter"></select>
+        <label><input type="checkbox" id="follow" checked> Follow</label>
+        <label><input type="checkbox" id="hideFuture"> Hide future</label>
+      </div>
+      <div id="list" class="list"></div>
+      <div id="info" class="info" hidden></div>
+      <div id="detail" class="detail" hidden>
+        <div class="detail-head">
+          <strong id="detailTitle"></strong>
+          <span class="detail-actions" id="detailActions"></span>
+          <button id="detailClose" title="Close">✕</button>
+        </div>
+        <div id="detailBody" class="detail-body"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="assets/common.js"></script>
+  <script src="assets/viewer.js"></script>
+  <script src="assets/view.js"></script>
+</body>
+</html>

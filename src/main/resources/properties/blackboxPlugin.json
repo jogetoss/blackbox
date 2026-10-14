@@ -1,0 +1,52 @@
+[{
+    "title" : "BlackBox",
+    "properties" : [
+        {
+            "label" : "Recordings page: [CONTEXT_PATH]/blackbox/ &nbsp;·&nbsp; Admins can always upload, view and delete.",
+            "type" : "header"
+        },
+        {
+            "name" : "uploadPermission",
+            "label" : "Who can upload",
+            "description" : "Empty = any logged-in user.",
+            "type" : "elementselect",
+            "options_ajax" : "[CONTEXT_PATH]/web/property/json/getElements?classname=org.joget.apps.form.model.FormPermission",
+            "url" : "[CONTEXT_PATH]/web/property/json[APP_PATH]/getPropertyOptions"
+        },
+        {
+            "name" : "viewPermission",
+            "label" : "Who can view all recordings",
+            "description" : "Empty = admins only.",
+            "type" : "elementselect",
+            "options_ajax" : "[CONTEXT_PATH]/web/property/json/getElements?classname=org.joget.apps.form.model.FormPermission",
+            "url" : "[CONTEXT_PATH]/web/property/json[APP_PATH]/getPropertyOptions"
+        },
+        {
+            "name" : "deletePermission",
+            "label" : "Who can delete any recording",
+            "description" : "Empty = admins only. Applies to the recordings they can view.",
+            "type" : "elementselect",
+            "options_ajax" : "[CONTEXT_PATH]/web/property/json/getElements?classname=org.joget.apps.form.model.FormPermission",
+            "url" : "[CONTEXT_PATH]/web/property/json[APP_PATH]/getPropertyOptions"
+        },
+        {
+            "name" : "ownerAccess",
+            "label" : "Uploaders can view and delete their own recordings",
+            "type" : "selectbox",
+            "value" : "true",
+            "options" : [
+                {"value" : "true", "label" : "Yes"},
+                {"value" : "false", "label" : "No"}
+            ]
+        },
+        {
+            "name" : "maxSizeMb",
+            "label" : "Max file size (MB)",
+            "description" : "Applies to the video and to session.json separately.",
+            "type" : "textfield",
+            "value" : "500",
+            "regex_validation" : "^[1-9][0-9]*$",
+            "validation_message" : "Enter a whole number of MB."
+        }
+    ]
+}]

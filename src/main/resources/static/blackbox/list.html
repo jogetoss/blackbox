@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BlackBox recordings</title>
+  <link rel="stylesheet" href="assets/blackbox.css">
+</head>
+<body>
+  <header class="bb-header">
+    <h1><a href="./">BlackBox recordings</a></h1>
+    <span class="spacer"></span>
+    <span id="who" class="who"></span>
+  </header>
+  <main class="bb-main">
+    <div id="error" class="bb-error" hidden></div>
+    <div id="content" hidden>
+      <div class="bb-toolbar">
+        <input id="search" type="search" placeholder="Filter by title, owner, URL or notes">
+      </div>
+      <div id="empty" class="bb-empty" hidden></div>
+      <table id="table" class="bb-table" hidden>
+        <thead>
+          <tr>
+            <th>Recording</th>
+            <th class="hide-sm">Owner</th>
+            <th>Uploaded</th>
+            <th class="hide-sm">Length</th>
+            <th>Issues</th>
+            <th class="hide-sm">Video</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </main>
+  <script src="assets/common.js"></script>
+  <script src="assets/list.js"></script>
+</body>
+</html>
