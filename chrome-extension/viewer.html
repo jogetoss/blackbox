@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BlackBox replay</title>
+  <link rel="stylesheet" href="viewer.css">
+  <script src="theme.js"></script>
+</head>
+<body>
+  <header>
+    <h1><a id="back" href="recordings.html" hidden>← Recordings</a> BlackBox replay</h1>
+    <div id="meta" class="meta"></div>
+    <div class="actions">
+      <label class="button">Open files…
+        <input type="file" id="files" multiple accept=".webm,.json,video/webm,application/json" hidden>
+      </label>
+    </div>
+  </header>
+
+  <!-- Extension only (replay.js) -->
+  <div id="folderAccess" class="rec-status" hidden>
+    <button id="allowFolder">Allow access</button> This recording is in the linked folder; Chrome needs your OK to read it again.
+  </div>
+  <div id="recStatus" class="rec-status" hidden></div>
+
+  <div id="error" class="error" hidden></div>
+
+  <main id="empty" class="empty">
+    <p>Drop <code>recording.webm</code> and <code>session.json</code> here (from <code>Downloads/blackbox/…</code>),
+      or use the buttons above.</p>
+  </main>
+
+  <main id="app" hidden>
+    <section class="player">
+      <video id="video" controls playsinline></video>
+      <div id="noVideo" class="no-video" hidden>
+        <div>
+          <p>No video loaded yet.</p>
+          <p><label class="button">Add recording.webm…
+            <input type="file" id="videoFile" accept=".webm,video/webm" hidden></label></p>
+          <p class="muted">Pick it from the same folder as session.json, or drop it here.<br>
+            Tip: in "Open files…", Ctrl+click to select both files at once.</p>
+        </div>
+      </div>
+      <div class="clock-row">
+        <span id="clock">0:00.0 / 0:00.0</span>
+        <span class="jump">
+          <button id="prevIssue" title="Previous error or failed request">◀ Prev issue</button>
+          <button id="nextIssue" title="Next error or failed request">Next issue ▶</button>
+        </span>
+      </div>
+      <div id="timeline" class="timeline" title="Click to seek">
+        <div id="markers"></div>
+        <div id="playhead" class="playhead"></div>
+      </div>
+      <div class="legend">
+        <span><i class="dot error"></i>Console error</span>
+        <span><i class="dot failed"></i>Failed request</span>
+        <span><i class="dot nav"></i>Navigation</span>
+      </div>
+    </section>
+
+    <section class="panel">
+      <nav class="tabs">
+        <button data-tab="console" class="active">Console <span id="consoleCount" class="count"></span></button>
+        <button data-tab="network">Network <span id="networkCount" class="count"></span></button>
+        <button data-tab="info">Info</button>
+      </nav>
+      <div id="toolbar" class="toolbar">
+        <input id="search" type="search" placeholder="Filter">
+        <select id="filter"></select>
+        <label><input type="checkbox" id="follow" checked> Follow</label>
+        <label><input type="checkbox" id="hideFuture"> Hide future</label>
+      </div>
+      <div id="list" class="list"></div>
+      <div id="info" class="info" hidden></div>
+      <div id="detail" class="detail" hidden>
+        <div class="detail-head">
+          <strong id="detailTitle"></strong>
+          <span class="detail-actions" id="detailActions"></span>
+          <button id="detailClose" title="Close">✕</button>
+        </div>
+        <div id="detailBody" class="detail-body"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="idb.js"></script>
+  <script src="viewer.js"></script>
+  <script src="store.js"></script>
+  <script src="replay.js"></script>
+</body>
+</html>

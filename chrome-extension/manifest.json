@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "BlackBox",
+  "version": "0.9.1",
+  "description": "Records a window, screen or tab as video, plus the tab's console logs and network activity, and uploads it to a server.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "debugger",
+    "desktopCapture",
+    "tabCapture",
+    "downloads",
+    "storage",
+    "unlimitedStorage",
+    "activeTab"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "BlackBox"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  }
+}

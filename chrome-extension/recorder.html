@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="ui.css">
+  <script src="theme.js"></script>
+  <!-- Chrome's picker lists this window too; the title tells the user not to pick it. -->
+  <title>BlackBox recorder - don't pick this window</title>
+  <style>
+    body { margin: 0; padding: 16px; font: 13px system-ui, sans-serif; }
+    h1 { font-size: 15px; margin: 0 0 8px; }
+    p { margin: 6px 0; color: var(--muted); }
+    button { padding: 10px 16px; border: 0; border-radius: 6px; background: var(--danger); color: var(--on-accent); font-size: 13px; cursor: pointer; }
+    button:disabled { opacity: .6; cursor: default; }
+    #status { font-weight: 600; margin: 10px 0; }
+    #error { color: var(--danger); white-space: pre-wrap; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <h1>BlackBox recorder</h1>
+  <p>BlackBox records from this window. If a picker opens, don't pick this window: pick the Chrome window
+    (to show the URL bar) or the screen.</p>
+  <p>Keep it open until you stop. If it is closed, the recording up to that point is kept.</p>
+  <div id="status">Opening the picker…</div>
+  <button id="stop" hidden>Stop &amp; save</button>
+  <div id="error"></div>
+  <script src="idb.js"></script>
+  <script src="report.js"></script>
+  <script src="recorder.js"></script>
+</body>
+</html>

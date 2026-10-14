@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BlackBox recordings</title>
+  <link rel="stylesheet" href="viewer.css">
+  <script src="theme.js"></script>
+</head>
+<body class="page-recordings">
+  <header>
+    <h1>BlackBox recordings</h1>
+    <div class="meta"></div>
+    <div class="actions">
+      <button id="settings">Settings</button>
+    </div>
+  </header>
+
+  <div id="error" class="error" hidden></div>
+
+  <section id="library" class="library">
+    <div class="library-bar">
+      <button id="linkFolder" title="Pick Downloads/blackbox to list recordings saved on disk">Link folder…</button>
+      <button id="allowFolder" hidden>Allow access</button>
+      <button id="unlinkFolder" hidden>Unlink folder</button>
+      <span id="folderInfo" class="muted"></span>
+    </div>
+    <table>
+      <thead><tr><th>Recorded</th><th>Page</th><th>Length</th><th>Status</th><th></th></tr></thead>
+      <tbody id="libraryRows"></tbody>
+    </table>
+    <button id="showMore" class="show-more" hidden>Show more</button>
+    <p id="libraryMsg" class="muted" hidden></p>
+    <p id="libraryEmpty" class="muted" hidden>No recordings yet. Record one with the extension icon, or link the folder with your exported recordings.</p>
+  </section>
+
+  <section id="uploadBox" class="upload-box" hidden>
+    <strong id="upHeading">Upload</strong>
+    <label for="upTitle">Title</label>
+    <input id="upTitle" type="text" maxlength="200">
+    <label for="upNotes">Notes <span class="muted">(steps, what went wrong)</span></label>
+    <textarea id="upNotes" maxlength="5000" rows="3"></textarea>
+    <div class="upload-actions">
+      <button id="upSend" class="primary">Send</button>
+      <button id="upCancel">Cancel</button>
+      <span id="upStatus"></span>
+    </div>
+    <progress id="upProgress" max="1" value="0" hidden></progress>
+  </section>
+
+  <script src="idb.js"></script>
+  <script src="report.js"></script>
+  <script src="server.js"></script>
+  <script src="store.js"></script>
+  <script src="recordings.js"></script>
+</body>
+</html>

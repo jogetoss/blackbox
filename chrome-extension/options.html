@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>BlackBox settings</title>
+  <link rel="stylesheet" href="ui.css">
+  <script src="theme.js"></script>
+  <style>
+    body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; max-width: 640px; }
+    h1 { font-size: 18px; margin: 0 0 16px; }
+    label { display: block; font-weight: 600; margin-bottom: 4px; }
+    input { width: 100%; box-sizing: border-box; padding: 7px 9px; font: inherit; }
+    label:not(:first-child) { margin-top: 14px; }
+    .optional { font-weight: normal; color: var(--muted); }
+    button { padding: 7px 14px; font: inherit; border: 0; border-radius: 6px; background: var(--accent); color: var(--on-accent); cursor: pointer; }
+    select { padding: 6px 8px; font: inherit; }
+    section { margin-bottom: 28px; }
+    .hint { color: var(--muted); margin: 6px 0 0; }
+    #status { margin-top: 14px; min-height: 1.5em; }
+    .ok { color: var(--ok); }
+    .error { color: var(--danger); }
+  </style>
+</head>
+<body>
+  <h1>BlackBox settings</h1>
+  <section>
+    <label for="url">Upload URL</label>
+    <input id="url" type="url" placeholder="https://example.com/api/blackbox">
+    <p class="hint">The BlackBox upload endpoint of the server that stores recordings.
+      Uploads use your login on that server in this browser.</p>
+
+    <label for="viewUrl">Recording page URL <span class="optional">(optional)</span></label>
+    <input id="viewUrl" type="url" placeholder="Empty: the link the server sends, e.g. https://example.com/view?id={id}">
+    <p class="hint">Opened by <b>Open uploaded</b>. <code>{id}</code> is replaced with the recording's id on the server.</p>
+
+    <button id="save">Save</button>
+    <div id="status"></div>
+  </section>
+
+  <section>
+    <label for="theme">Theme</label>
+    <select id="theme">
+      <option value="">System</option>
+      <option value="light">Light</option>
+      <option value="dark">Dark</option>
+    </select>
+  </section>
+  <script src="server.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>
