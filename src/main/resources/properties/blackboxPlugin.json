@@ -47,6 +47,46 @@
             "value" : "500",
             "regex_validation" : "^[1-9][0-9]*$",
             "validation_message" : "Enter a whole number of MB."
+        },
+        {
+            "label" : "Server logs: the extension tags the recorded tab's requests, and their Joget log lines are kept with the recording.",
+            "type" : "header"
+        },
+        {
+            "name" : "captureServerLogs",
+            "label" : "Capture server logs during recordings",
+            "type" : "selectbox",
+            "value" : "false",
+            "options" : [
+                {"value" : "true", "label" : "Yes"},
+                {"value" : "false", "label" : "No"}
+            ]
+        },
+        {
+            "name" : "serverLogPermission",
+            "label" : "Who can view server logs",
+            "description" : "Empty = admins only. They must also be able to view the recording.",
+            "type" : "elementselect",
+            "options_ajax" : "[CONTEXT_PATH]/web/property/json/getElements?classname=org.joget.apps.form.model.FormPermission",
+            "url" : "[CONTEXT_PATH]/web/property/json[APP_PATH]/getPropertyOptions"
+        },
+        {
+            "name" : "serverLogMaxMb",
+            "label" : "Max server log size per recording (MB)",
+            "description" : "Lines after this are dropped; the viewer says the log was cut off.",
+            "type" : "textfield",
+            "value" : "20",
+            "regex_validation" : "^[1-9][0-9]*$",
+            "validation_message" : "Enter a whole number of MB."
+        },
+        {
+            "name" : "serverLogKeepDays",
+            "label" : "Delete server logs not uploaded after (days)",
+            "description" : "Captured lines wait on the server until the recording is uploaded.",
+            "type" : "textfield",
+            "value" : "7",
+            "regex_validation" : "^[1-9][0-9]*$",
+            "validation_message" : "Enter a whole number of days."
         }
     ]
 }]

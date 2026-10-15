@@ -12,7 +12,7 @@ import org.joget.apps.app.service.AppUtil;
 import org.joget.plugin.base.PluginManager;
 
 /**
- * Serves the BlackBox API at <context>/api/blackbox.
+ * Serves the BlackBox endpoint at <context>/api/blackbox.
  *
  * /api/* runs Spring Security (so the logged-in user is known) but not JsonResponseFilter, which rejects
  * requests whose Referer is not Joget - the extension's requests have none. The request never reaches
@@ -34,7 +34,7 @@ public class BlackBoxApiFilter extends PluginWebFilterAbstract {
 
     @Override
     public String getDescription() {
-        return "BlackBox recording API at /api/blackbox.";
+        return "BlackBox recording endpoint at /api/blackbox.";
     }
 
     public String getLabel() {

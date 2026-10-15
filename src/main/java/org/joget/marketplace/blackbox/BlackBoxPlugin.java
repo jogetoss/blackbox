@@ -39,6 +39,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
     static final String VERSION = "8.2-SNAPSHOT";
     private static final long DEFAULT_MAX_MB = 500;
+    private static final long DEFAULT_SERVER_LOG_MB = 20;
+    private static final long DEFAULT_KEEP_DAYS = 7;
     private static final Pattern RANGE = Pattern.compile("^bytes=(\\d*)-(\\d*)$");
 
     @Override
@@ -53,7 +55,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
     @Override
     public String getDescription() {
-        return "Stores and replays recordings (video, console and network log)";
+        return "Stores and replays browser recordings (video, console and network log)";
     }
 
     @Override
@@ -119,8 +121,36 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 JSONObject meta = viewable(response, store, access, id);
                 if (meta != null) {
                     meta.put("canDelete", access.canDelete(meta));
+                    meta.put("canViewServerLog", access.canViewServerLog());
                     json(response, meta);
                 }
+            } else if ("serverlog".equals(action) && !post) {
+                if (viewable(response, store, access, id) != null) {
+                    if (!access.canViewServerLog()) {
+                        error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to view server logs.");
+                    } else {
+                        sendFile(request, response, store.file(id, RecordingStore.SERVER_LOG), "application/json;charset=UTF-8", id + "-server-log.json");
+                    }
+                }
+            } else if ("download".equals(action) && !post) {
+                // The whole recording as one file: format=zip (to import elsewhere) or html (replays anywhere)
+                String format = request.getParameter("format");
+                if (!"zip".equals(format) && !"html".equals(format)) {
+                    error(response, HttpServletResponse.SC_BAD_REQUEST, "Unknown format: use zip or html.");
+                } else {
+                    JSONObject meta = viewable(response, store, access, id);
+                    if (meta != null && "zip".equals(format)) {
+                        downloadZip(response, store, access, id, meta);
+                    } else if (meta != null) {
+                        downloadHtml(response, store, access, id, meta);
+                    }
+                }
+            } else if ("import".equals(action) && post) {
+                importZip(request, response, store, access);
+            } else if ("serverlog-start".equals(action) && post) {
+                startServerLog(response, access, id);
+            } else if ("serverlog-stop".equals(action) && post) {
+                stopServerLog(response, access, id);
             } else if ("session".equals(action) && !post) {
                 if (viewable(response, store, access, id) != null) {
                     sendFile(request, response, store.file(id, RecordingStore.SESSION), "application/json;charset=UTF-8", id + "-session.json");
@@ -171,7 +201,13 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             meta = store.create(in, max, access.user.getUsername(), fullName(access.user),
                     request.getParameter("title"), request.getParameter("notes"));
         }
-        LogUtil.info(getClassName(), "Recording " + meta.getString("id") + " uploaded by " + access.user.getUsername());
+        String recId = meta.getString("id");
+        String serverLogId = (String) meta.remove("serverLogId");
+        if (serverLogId != null) {
+            meta.put("serverLog", attachServerLog(store, recId, serverLogId, access.user.getUsername()));
+            store.updateMeta(recId, meta);
+        }
+        LogUtil.info(getClassName(), "Recording " + recId + " uploaded by " + access.user.getUsername());
         // url: where the extension's "Open uploaded" link points
         meta.put("url", request.getContextPath() + "/blackbox/view?id=" + meta.getString("id"));
         json(response, meta);
@@ -208,6 +244,127 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         store.delete(id);
         LogUtil.info(getClassName(), "Recording " + id + " deleted by " + access.user.getUsername());
         json(response, new JSONObject().put("deleted", id));
+    }
+
+    /**
+     * One .html file that replays the recording in any browser (see {@link RecordingHtml}). The server log is included
+     * only for users allowed to view it.
+     */
+    private void downloadHtml(HttpServletResponse response, RecordingStore store, Access access, String id, JSONObject meta)
+            throws IOException {
+        Path session = store.file(id, RecordingStore.SESSION);
+        if (session == null) {
+            error(response, HttpServletResponse.SC_NOT_FOUND, "File not found.");
+            return;
+        }
+        Path serverLog = access.canViewServerLog() ? store.file(id, RecordingStore.SERVER_LOG) : null;
+        if (serverLog == null) {
+            meta.remove("serverLog"); // the summary would point at data that is not in the file
+        }
+        RecordingHtml export = RecordingHtml.fromResources();
+        response.setContentType("text/html;charset=UTF-8");
+        response.setHeader("Content-Disposition", "attachment; filename=\"blackbox-" + id + ".html\"");
+        export.write(response.getOutputStream(), meta.toString(), session, serverLog, store.file(id, RecordingStore.VIDEO));
+        LogUtil.info(getClassName(), "Recording " + id + " downloaded as HTML by " + access.user.getUsername());
+    }
+
+    /** The recording as one ZIP for {@link #importZip} on another server. The server log only for users allowed to view it. */
+    private void downloadZip(HttpServletResponse response, RecordingStore store, Access access, String id, JSONObject meta)
+            throws IOException {
+        Path session = store.file(id, RecordingStore.SESSION);
+        if (session == null) {
+            error(response, HttpServletResponse.SC_NOT_FOUND, "File not found.");
+            return;
+        }
+        Path serverLog = access.canViewServerLog() ? store.file(id, RecordingStore.SERVER_LOG) : null;
+        response.setContentType("application/zip");
+        response.setHeader("Content-Disposition", "attachment; filename=\"blackbox-" + id + ".zip\"");
+        RecordingZip.write(response.getOutputStream(), meta, session, serverLog, store.file(id, RecordingStore.VIDEO));
+    }
+
+    /** A ZIP from {@link #downloadZip} (raw request body) becomes a new recording owned by the user. */
+    private void importZip(HttpServletRequest request, HttpServletResponse response, RecordingStore store, Access access)
+            throws IOException, JSONException, RecordingStore.InvalidUpload {
+        if (!access.canUpload()) {
+            error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to upload recordings.");
+            return;
+        }
+        long max = maxSizeMb() * 1024 * 1024;
+        long maxZip = 2 * max + 64 * 1024 * 1024; // video + session.json + server log and meta
+        if (request.getContentLengthLong() > maxZip) {
+            throw new RecordingStore.InvalidUpload("The ZIP is larger than the limit.");
+        }
+        Path tmp = Files.createTempFile("blackbox-import-", ".zip");
+        try {
+            try (InputStream in = request.getInputStream(); OutputStream out = Files.newOutputStream(tmp)) {
+                byte[] buf = new byte[64 * 1024];
+                long size = 0;
+                int n;
+                while ((n = in.read(buf)) != -1) {
+                    size += n;
+                    if (size > maxZip) {
+                        throw new RecordingStore.InvalidUpload("The ZIP is larger than the limit.");
+                    }
+                    out.write(buf, 0, n);
+                }
+            }
+            JSONObject meta = RecordingZip.importZip(store, tmp, max, access.canViewServerLog(),
+                    access.user.getUsername(), fullName(access.user));
+            LogUtil.info(getClassName(), "Recording " + meta.getString("id") + " imported by " + access.user.getUsername());
+            meta.put("url", request.getContextPath() + "/blackbox/view?id=" + meta.getString("id"));
+            json(response, meta);
+        } finally {
+            Files.deleteIfExists(tmp);
+        }
+    }
+
+    // ---------- server log ----------
+
+    /** The extension starts capturing when a recording starts; id is its random UUID, sent on the tab's requests. */
+    private void startServerLog(HttpServletResponse response, Access access, String id) throws IOException, JSONException {
+        if (!"true".equals(getPropertyString("captureServerLogs"))) {
+            error(response, HttpServletResponse.SC_FORBIDDEN, "Server log capture is turned off in the BlackBox plugin settings.");
+            return;
+        }
+        if (!access.canUpload()) {
+            error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to upload recordings.");
+            return;
+        }
+        if (!ServerLogStore.isValidId(id)) {
+            error(response, HttpServletResponse.SC_BAD_REQUEST, "Invalid server log id.");
+            return;
+        }
+        long maxBytes = positive("serverLogMaxMb", DEFAULT_SERVER_LOG_MB) * 1024 * 1024;
+        long keepMs = positive("serverLogKeepDays", DEFAULT_KEEP_DAYS) * 24 * 3600 * 1000;
+        if (!ServerLogCapture.store().start(id, access.user.getUsername(), maxBytes, keepMs)) {
+            error(response, HttpServletResponse.SC_CONFLICT, "This server log id is already in use.");
+            return;
+        }
+        json(response, new JSONObject().put("serverLog", new JSONObject().put("id", id).put("maxMb", maxBytes / (1024 * 1024))));
+    }
+
+    private void stopServerLog(HttpServletResponse response, Access access, String id) throws IOException, JSONException {
+        if (!ServerLogStore.isValidId(id) || !ServerLogCapture.store().stop(id, access.user.getUsername())) {
+            error(response, HttpServletResponse.SC_NOT_FOUND, "Server log not found.");
+            return;
+        }
+        ServerLogCapture.close(id);
+        json(response, new JSONObject().put("stopped", id));
+    }
+
+    /** Moves the server log captured under serverLogId into the recording. Returns the summary for meta.json. */
+    private JSONObject attachServerLog(RecordingStore store, String recId, String serverLogId, String owner) throws JSONException {
+        ServerLogCapture.close(serverLogId); // flush this node's file
+        try {
+            JSONObject summary = ServerLogCapture.store().attach(serverLogId, owner, store.path(recId, RecordingStore.SERVER_LOG));
+            if (summary != null) {
+                return summary;
+            }
+        } catch (IOException e) {
+            LogUtil.error(getClassName(), e, "Could not attach the server log of recording " + recId);
+        }
+        // Never started, deleted after the keep period, or another user's
+        return new JSONObject().put("status", "unavailable");
     }
 
     /** Returns the meta when the user may view the recording, otherwise sends 404 and returns null. */
@@ -331,11 +488,15 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     }
 
     long maxSizeMb() {
+        return positive("maxSizeMb", DEFAULT_MAX_MB);
+    }
+
+    private long positive(String property, long fallback) {
         try {
-            long mb = Long.parseLong(getPropertyString("maxSizeMb").trim());
-            return mb > 0 ? mb : DEFAULT_MAX_MB;
+            long n = Long.parseLong(getPropertyString(property).trim());
+            return n > 0 ? n : fallback;
         } catch (NumberFormatException e) {
-            return DEFAULT_MAX_MB;
+            return fallback;
         }
     }
 
@@ -380,6 +541,10 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
         boolean canView(JSONObject meta) {
             return admin || (ownerAccess && isOwner(meta)) || allowed("viewPermission", false);
+        }
+
+        boolean canViewServerLog() {
+            return admin || allowed("serverLogPermission", false);
         }
 
         boolean canDelete(JSONObject meta) {
