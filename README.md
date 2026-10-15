@@ -3,14 +3,34 @@
 Joget DX 8.2 plugin that stores and replays recordings made by the BlackBox Chrome extension
 (`chrome-extension/`): `recording.webm` (video) + `session.json` (console, network, navigations).
 
-Built against `wflow-core` **8.2-SNAPSHOT** (javax.servlet). Jar: `target/blackbox-8.2.0.jar`.
+Built against `wflow-core` **8.2-SNAPSHOT** (javax.servlet). Jar: `target/blackbox-<version>.jar`.
 
 ## Build and install
 
 ```bash
-mvn -o package                                   # runs the unit tests too
-cp target/blackbox-8.2.0.jar <wflow>/app_plugins/ # or upload in Settings > Manage Plugins
+mvn -o package                                          # runs the unit tests too
+cp target/blackbox-8.2-SNAPSHOT.jar <wflow>/app_plugins/ # or upload in Settings > Manage Plugins
 ```
+
+## Versions
+
+The first two numbers are the Joget line the plugin runs on (8.2 = Joget DX 8.2); the third is the plugin's own
+patch level.
+
+| Version | Tag | Meaning |
+|---|---|---|
+| `8.2-SNAPSHOT` | none | Work in progress on the `8.2-SNAPSHOT` branch, between releases |
+| `8.2.0-beta.N` | `8.2.0-beta.N` | Unstable: features may still change |
+| `8.2.0-rc.N` | `8.2.0-rc.N` | Release candidate: feature-complete, testing only |
+| `8.2.0`, `8.2.1` | `8.2.0`, `8.2.1` | Stable release, then bug-fix releases |
+
+Release steps: set the version in `pom.xml` and `BlackBoxPlugin.VERSION`, commit `Plugin <version>`, tag it
+(annotated, message naming the plugin and extension versions), then commit `Back to 8.2-SNAPSHOT after the <version>
+tag`. Maven sorts `beta < rc < SNAPSHOT < release`; `PREVIEW` is not a Maven qualifier and sorts after the release, so
+it is no longer used (`8.2-PREVIEW` is the last such tag).
+
+The extension: Chrome's `version` takes only 1–4 numbers, so a pre-release is `"version": "0.10.0.1"` with
+`"version_name": "0.10.0-beta.1"` (the name Chrome shows); the stable release drops the 4th number and the name.
 
 The build copies `chrome-extension/viewer.js` and `viewer.css` into the jar, so the replay viewer is the same code
 in the extension and in Joget. Rebuild the jar after changing them.
