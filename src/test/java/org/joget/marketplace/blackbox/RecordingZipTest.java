@@ -42,6 +42,34 @@ public class RecordingZipTest {
     }
 
     @Test
+    public void tracesTravelWithTheServerLog() throws Exception {
+        String id = from.create(new ByteArrayInputStream(SESSION.getBytes(StandardCharsets.UTF_8)), 1 << 20,
+                "alice", "Alice", "T", "").getString("id");
+        Files.write(from.path(id, RecordingStore.SERVER_LOG), SERVER_LOG.getBytes(StandardCharsets.UTF_8));
+        Path dir = from.dir(id);
+        String file = "node-a-0123456789abcdef.html";
+        TraceStore.append(dir, "node-a", new JSONObject().put("key", "k1").put("ts", 3).put("state", "saved")
+                .put("file", file).put("updated", 1));
+        TraceStore.writeTrace(dir, file, "<html>trace</html>".getBytes(StandardCharsets.UTF_8));
+        Path zip = tmp.resolve("t.zip");
+        try (OutputStream out = Files.newOutputStream(zip)) {
+            RecordingZip.write(out, from.readMeta(id), from.file(id, RecordingStore.SESSION),
+                    from.file(id, RecordingStore.SERVER_LOG), null, dir);
+        }
+
+        String newId = RecordingZip.importZip(to, zip, 1 << 20, true, "bob", "Bob").getString("id");
+        org.json.JSONArray traces = TraceStore.merge(to.dir(newId), 2);
+        assertEquals(1, traces.length());
+        assertEquals(file, traces.getJSONObject(0).getString("file"));
+        assertEquals("<html>trace</html>", new String(Files.readAllBytes(to.traceFile(newId, file)), StandardCharsets.UTF_8));
+
+        String noLogId = RecordingZip.importZip(to, zip, 1 << 20, false, "carol", "Carol").getString("id");
+        assertEquals("no server log access, no traces", 0, TraceStore.merge(to.dir(noLogId), 2).length());
+        assertTrue("delete removes traces/ too", to.delete(newId));
+        assertNull(to.dir(newId));
+    }
+
+    @Test
     public void roundTrip() throws Exception {
         String id = from.create(new ByteArrayInputStream(SESSION.getBytes(StandardCharsets.UTF_8)), 1 << 20,
                 "alice", "Alice", "My title", "My notes").getString("id");

@@ -56,8 +56,27 @@ public class ServerLogStoreTest {
         assertEquals(200, entries.getJSONObject(1).getLong("ts"));
         assertEquals(300, entries.getJSONObject(2).getLong("ts"));
         assertTrue(body.has("stoppedAt"));
-        assertFalse("pending folder deleted", Files.exists(root.resolve(ID)));
+        assertFalse("node files deleted", Files.exists(store.nodeFile(ID, "node-a")));
+        assertEquals("pending meta points at the recording", root.getFileName().toString(), store.readMeta(ID).getString("recording"));
         assertNull("attached once only", store.attach(ID, "admin", target));
+    }
+
+    @Test
+    public void attachMovesTracesAndSweepDeletesTheForward() throws Exception {
+        store.start(ID, "admin", 1024, DAY, true, "");
+        TraceStore.append(store.dir(ID), "node-a", new JSONObject().put("key", "k1").put("ts", 5).put("state", "saved")
+                .put("file", "node-a-0123456789abcdef.html").put("updated", 1));
+        TraceStore.writeTrace(store.dir(ID), "node-a-0123456789abcdef.html", "<html></html>".getBytes(StandardCharsets.UTF_8));
+        Path rec = Files.createDirectories(root.getParent().resolve(root.getFileName() + "-rec"));
+        assertNotNull(store.attach(ID, "admin", rec.resolve(ServerLogStore.FILE)));
+
+        assertTrue(Files.isRegularFile(rec.resolve("traces/node-a.jsonl")));
+        assertTrue(Files.isRegularFile(rec.resolve("traces/node-a-0123456789abcdef.html")));
+        assertFalse(Files.exists(store.dir(ID).resolve("traces")));
+        assertEquals(1, TraceStore.merge(rec, 2).length());
+
+        assertEquals(1, store.sweep(System.currentTimeMillis() + 2 * DAY));
+        assertFalse("forward deleted with its folder", Files.exists(store.dir(ID)));
     }
 
     @Test

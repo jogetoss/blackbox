@@ -57,6 +57,11 @@ public class RecordingHtml {
      * meta: the recording's meta.json (title, owner, notes...). serverLog and video may be null.
      */
     public void write(OutputStream out, String meta, Path session, Path serverLog, Path video) throws IOException {
+        write(out, meta, session, serverLog, video, null);
+    }
+
+    /** traces: the recording's Glowroot trace summaries (TraceStore.merge), or null. The trace pages are not included. */
+    public void write(OutputStream out, String meta, Path session, Path serverLog, Path video, String traces) throws IOException {
         out.write(head.getBytes(StandardCharsets.UTF_8));
         block(out, "bb-meta", "application/json");
         escaped(new java.io.ByteArrayInputStream(meta.getBytes(StandardCharsets.UTF_8)), out);
@@ -71,6 +76,11 @@ public class RecordingHtml {
             try (InputStream in = Files.newInputStream(serverLog)) {
                 escaped(in, out);
             }
+            end(out);
+        }
+        if (traces != null) {
+            block(out, "bb-traces", "application/json");
+            escaped(new java.io.ByteArrayInputStream(traces.getBytes(StandardCharsets.UTF_8)), out);
             end(out);
         }
         if (video != null) {

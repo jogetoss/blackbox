@@ -11,7 +11,8 @@ import org.joget.apps.app.model.PluginWebFilterAbstract;
 
 /**
  * Marks requests that carry X-BlackBox-Id (added by the extension to the recorded tab's requests) so their log
- * lines are captured ({@link ServerLogCapture}), and records each one's method, URL, status and time.
+ * lines are captured ({@link ServerLogCapture}), records each one's method, URL, status and time, and hands slow
+ * and failed ones to {@link TraceCollector} for their Glowroot trace.
  *
  * Runs on every URL before Spring Security, so log lines from the login itself are captured too. Requests without
  * the header cost one header lookup.
@@ -76,6 +77,7 @@ public class ServerLogFilter extends PluginWebFilterAbstract {
         response.setHeader(ServerLogCapture.TIME_HEADER, String.valueOf(start));
         String url = request.getRequestURI() + (request.getQueryString() != null ? "?" + request.getQueryString() : "");
         Object prev = ServerLogCapture.begin(capture, request.getMethod() + " " + url);
+        TraceCollector.Running run = TraceCollector.begin(capture, request.getMethod(), url, start);
         Throwable failure = null;
         try {
             chain.doFilter(req, res);
@@ -84,7 +86,9 @@ public class ServerLogFilter extends PluginWebFilterAbstract {
             throw e;
         } finally {
             ServerLogCapture.end(prev);
-            capture.request(start, request.getMethod(), url, response.getStatus(), System.currentTimeMillis() - start, failure);
+            long ms = System.currentTimeMillis() - start;
+            capture.request(start, request.getMethod(), url, response.getStatus(), ms, failure);
+            TraceCollector.end(run, response.getStatus(), ms, failure);
         }
     }
 }

@@ -80,12 +80,14 @@ final class ServerLogCapture {
         });
         timer.scheduleWithFixedDelay(ServerLogCapture::flushAll, FLUSH_MS, FLUSH_MS, TimeUnit.MILLISECONDS);
         timer.scheduleWithFixedDelay(ServerLogCapture::sweep, 60 * 1000L, SWEEP_MS, TimeUnit.MILLISECONDS);
+        TraceCollector.start();
         running = true;
     }
 
     /** Called by the bundle activator. The filter may still run after this (cached chain); it then does nothing. */
     static synchronized void stop() {
         running = false;
+        TraceCollector.stop();
         if (appender != null) {
             appender.detach();
             appender = null;
@@ -122,7 +124,7 @@ final class ServerLogCapture {
             return null;
         }
         MISSES.remove(id);
-        return OPEN.computeIfAbsent(id, k -> new Capture(store.nodeFile(id, NODE), meta.optLong("maxBytes")));
+        return OPEN.computeIfAbsent(id, k -> new Capture(id, store.nodeFile(id, NODE), meta));
     }
 
     /** Closes this node's file of a capture (stop or upload). Later requests with the id are no longer captured. */
@@ -176,7 +178,7 @@ final class ServerLogCapture {
         }
     }
 
-    private static String nodeName() {
+    static String nodeName() {
         String name;
         try {
             name = InetAddress.getLocalHost().getHostName();
@@ -199,6 +201,9 @@ final class ServerLogCapture {
 
     /** One capture's file on this node. Lines are JSON objects; the file is closed when idle, stopped or attached. */
     static final class Capture {
+        final String id;
+        final boolean traces;      // copy the Glowroot traces of slow and failed requests (TraceCollector)
+        final String glowrootUrl;  // "" = find the local agent
         private final Path file;
         private final long maxBytes;
         private Writer out;
@@ -207,9 +212,12 @@ final class ServerLogCapture {
         private boolean closed;
         volatile long lastWrite = System.currentTimeMillis();
 
-        Capture(Path file, long maxBytes) {
+        Capture(String id, Path file, JSONObject meta) {
+            this.id = id;
+            this.traces = meta.optBoolean("traces");
+            this.glowrootUrl = meta.optString("glowrootUrl");
             this.file = file;
-            this.maxBytes = maxBytes;
+            this.maxBytes = meta.optLong("maxBytes");
             try {
                 bytes = Files.exists(file) ? Files.size(file) : 0; // this node may have written before (reopened after idle)
             } catch (IOException e) {

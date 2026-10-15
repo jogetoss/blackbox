@@ -42,6 +42,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     private static final long DEFAULT_SERVER_LOG_MB = 20;
     private static final long DEFAULT_KEEP_DAYS = 7;
     private static final Pattern RANGE = Pattern.compile("^bytes=(\\d*)-(\\d*)$");
+    private static final long RETRY_COOLDOWN_MS = 20 * 1000L;
+    private static final Map<String, Long> RETRIED_AT = new java.util.concurrent.ConcurrentHashMap<>();
 
     @Override
     public String getName() {
@@ -147,10 +149,17 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 }
             } else if ("import".equals(action) && post) {
                 importZip(request, response, store, access);
-            } else if ("serverlog-start".equals(action) && post) {
+            } else if (("recording-start".equals(action) || "serverlog-start".equals(action)) && post) {
+                // serverlog-start/-stop: the names used by extension 0.9.x
                 startServerLog(response, access, id);
-            } else if ("serverlog-stop".equals(action) && post) {
+            } else if (("recording-stop".equals(action) || "serverlog-stop".equals(action)) && post) {
                 stopServerLog(response, access, id);
+            } else if ("traces".equals(action) && !post) {
+                traces(response, store, access, id);
+            } else if ("trace".equals(action) && !post) {
+                trace(request, response, store, access, id);
+            } else if ("trace-retry".equals(action) && post) {
+                retryTraces(request, response, store, access, id);
             } else if ("session".equals(action) && !post) {
                 if (viewable(response, store, access, id) != null) {
                     sendFile(request, response, store.file(id, RecordingStore.SESSION), "application/json;charset=UTF-8", id + "-session.json");
@@ -264,7 +273,12 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         RecordingHtml export = RecordingHtml.fromResources();
         response.setContentType("text/html;charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=\"blackbox-" + id + ".html\"");
-        export.write(response.getOutputStream(), meta.toString(), session, serverLog, store.file(id, RecordingStore.VIDEO));
+        String traces = null;
+        if (serverLog != null) {
+            JSONArray list = TraceStore.merge(store.dir(id), System.currentTimeMillis());
+            traces = list.length() > 0 ? list.toString() : null;
+        }
+        export.write(response.getOutputStream(), meta.toString(), session, serverLog, store.file(id, RecordingStore.VIDEO), traces);
         LogUtil.info(getClassName(), "Recording " + id + " downloaded as HTML by " + access.user.getUsername());
     }
 
@@ -279,7 +293,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         Path serverLog = access.canViewServerLog() ? store.file(id, RecordingStore.SERVER_LOG) : null;
         response.setContentType("application/zip");
         response.setHeader("Content-Disposition", "attachment; filename=\"blackbox-" + id + ".zip\"");
-        RecordingZip.write(response.getOutputStream(), meta, session, serverLog, store.file(id, RecordingStore.VIDEO));
+        RecordingZip.write(response.getOutputStream(), meta, session, serverLog, store.file(id, RecordingStore.VIDEO),
+                serverLog != null ? store.dir(id) : null);
     }
 
     /** A ZIP from {@link #downloadZip} (raw request body) becomes a new recording owned by the user. */
@@ -336,11 +351,13 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
         long maxBytes = positive("serverLogMaxMb", DEFAULT_SERVER_LOG_MB) * 1024 * 1024;
         long keepMs = positive("serverLogKeepDays", DEFAULT_KEEP_DAYS) * 24 * 3600 * 1000;
-        if (!ServerLogCapture.store().start(id, access.user.getUsername(), maxBytes, keepMs)) {
+        boolean traces = !"false".equals(getPropertyString("captureTraces"));
+        if (!ServerLogCapture.store().start(id, access.user.getUsername(), maxBytes, keepMs, traces, getPropertyString("glowrootUrl"))) {
             error(response, HttpServletResponse.SC_CONFLICT, "This server log id is already in use.");
             return;
         }
-        json(response, new JSONObject().put("serverLog", new JSONObject().put("id", id).put("maxMb", maxBytes / (1024 * 1024))));
+        json(response, new JSONObject().put("serverLog", new JSONObject().put("id", id).put("maxMb", maxBytes / (1024 * 1024))
+                .put("traces", traces)));
     }
 
     private void stopServerLog(HttpServletResponse response, Access access, String id) throws IOException, JSONException {
@@ -350,6 +367,75 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
         ServerLogCapture.close(id);
         json(response, new JSONObject().put("stopped", id));
+    }
+
+    // ---------- Glowroot traces ----------
+
+    /** The recording's traces (TraceStore.merge): the Traces tab polls this while some are pending. */
+    private void traces(HttpServletResponse response, RecordingStore store, Access access, String id) throws IOException, JSONException {
+        if (viewable(response, store, access, id) == null) {
+            return;
+        }
+        if (!access.canViewServerLog()) {
+            error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to view server logs.");
+            return;
+        }
+        JSONArray list = TraceStore.merge(store.dir(id), System.currentTimeMillis());
+        json(response, new JSONObject().put("traces", list).put("pending", TraceStore.pending(list)));
+    }
+
+    /**
+     * Retry button: the failed traces (keys=k1,k2 or all) go back to pending, and the nodes that served them look in
+     * their Glowroot again (TraceCollector.requestRetry). Once per 20 seconds per recording, so Glowroot isn't hammered.
+     */
+    private void retryTraces(HttpServletRequest request, HttpServletResponse response, RecordingStore store, Access access, String id)
+            throws IOException, JSONException {
+        if (viewable(response, store, access, id) == null) {
+            return;
+        }
+        if (!access.canViewServerLog()) {
+            error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to view server logs.");
+            return;
+        }
+        long now = System.currentTimeMillis();
+        Long last = RETRIED_AT.get(id);
+        if (last != null && now - last < RETRY_COOLDOWN_MS) {
+            error(response, 429, "Retried a moment ago. Try again in " + ((RETRY_COOLDOWN_MS - (now - last)) / 1000 + 1) + " s.");
+            return;
+        }
+        RETRIED_AT.put(id, now);
+        RETRIED_AT.entrySet().removeIf(e -> now - e.getValue() > RETRY_COOLDOWN_MS);
+        java.util.Set<String> keys = new java.util.LinkedHashSet<>();
+        String param = request.getParameter("keys");
+        if (param != null) {
+            for (String k : param.split(",")) {
+                if (!k.trim().isEmpty()) {
+                    keys.add(k.trim());
+                }
+            }
+        }
+        int n = TraceCollector.requestRetry(id, store.dir(id), keys, getPropertyString("glowrootUrl"));
+        JSONArray list = TraceStore.merge(store.dir(id), System.currentTimeMillis());
+        json(response, new JSONObject().put("retried", n).put("traces", list).put("pending", TraceStore.pending(list)));
+    }
+
+    /**
+     * One trace file: Glowroot's export page. It runs Glowroot's own script, so it is served sandboxed (no access to
+     * this site's cookies or pages).
+     */
+    private void trace(HttpServletRequest request, HttpServletResponse response, RecordingStore store, Access access, String id)
+            throws IOException {
+        if (viewable(response, store, access, id) == null) {
+            return;
+        }
+        if (!access.canViewServerLog()) {
+            error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to view server logs.");
+            return;
+        }
+        String name = request.getParameter("file");
+        response.setHeader("Content-Security-Policy", "sandbox allow-scripts allow-popups");
+        response.setHeader("Referrer-Policy", "no-referrer");
+        sendFile(request, response, store.traceFile(id, name), "text/html;charset=UTF-8", name);
     }
 
     /** Moves the server log captured under serverLogId into the recording. Returns the summary for meta.json. */

@@ -72,18 +72,20 @@ after `create`. Logged-out users see "Not logged in" in the extension and log in
 | Who can view server logs | admins only | A Joget permission plugin; they must also be able to view the recording |
 | Max server log size per recording (MB) | 20 | Later lines are dropped and the viewer says it was cut off |
 | Delete server logs not uploaded after (days) | 7 | |
+| Copy Glowroot traces of slow and failed requests | Yes | Needs server log capture. See [Glowroot traces](#glowroot-traces) |
+| Glowroot address | empty | Empty = this Joget's own Glowroot agent (port from its `admin.json`, usually `http://localhost:4000`) |
 
 ## Server logs
 
 With **Capture server logs** on, a recording also keeps the Joget log lines written while serving the recorded tab's
 requests. They are shown only on this plugin's replay page (**Server** tab), never in the extension.
 
-1. When recording starts, the extension calls `serverlog-start` with a random id (the user must be logged in and allowed
+1. When recording starts, the extension calls `recording-start` with a random id (the user must be logged in and allowed
    to upload), then adds `X-BlackBox-Id: <id>` to the recorded tab's requests to the Upload URL's server.
 2. `ServerLogFilter` marks the threads of those requests; an appender on log4j's root logger keeps their log lines (what
    `joget.log` would show, level info and up) plus one entry per request (method, URL, status, time). They go to
    `<wflow>/blackbox/pending/<id>/server-log.<node>.jsonl`.
-3. Stop calls `serverlog-stop`. The lines wait on the server until the recording is uploaded; `session.json` carries the
+3. Stop calls `recording-stop`. The lines wait on the server until the recording is uploaded; `session.json` carries the
    id, and `create` moves them into the recording as `server-log.json`. Only the user who started the capture can
    attach it. Captures never uploaded are deleted after the keep period.
 4. The replay page loads `server-log.json` for users allowed by **Who can view server logs** and lines it up with the
@@ -94,10 +96,48 @@ requests. They are shown only on this plugin's replay page (**Server** tab), nev
 
 Not captured: work a request hands to another thread, and log lines below the root logger's level.
 
+`serverlog-start` / `serverlog-stop` (the names used by extension 0.9.x) still work.
+
+## Glowroot traces
+
+With **Copy Glowroot traces** on (and server logs captured), the recording also keeps the
+[Glowroot](https://glowroot.org) trace of each recorded request Glowroot stored one for. They are shown on the replay
+page's **Traces** tab, for the same users as the server log.
+
+- **Which requests:** only those Glowroot keeps a trace for, by its own settings: slower than its slow threshold
+  (default 2000 ms, or a lower per-transaction override), or failed (exception, 5xx, and 4xx when its servlet plugin
+  says so). BlackBox reads these settings and never changes them.
+- **When:** each node collects the traces of the requests it served, as soon as each request ends, not at stop or
+  upload. Glowroot stores a trace just after the request, so the node tries after 2, 5, 15, 30 and 60 seconds, then
+  every minute, for up to 10 minutes. A request still running past the threshold is listed as pending at once and
+  refreshed every 3 minutes while it runs.
+- **Clusters:** each node reads only its own Glowroot (on `localhost`) and writes its own files to the shared folder.
+- **What is kept:** `traces/<node>.jsonl` (one line per state change: pending, saved, none, failed, with a reason) and
+  `traces/<node>-<traceId>.html`, Glowroot's own export of the trace (a self-contained page, about 0.4–1 MB). At most
+  100 traces per recording per node.
+- **After the upload:** the files move into the recording with the server log. The pending folder keeps only
+  `meta.json` pointing at the recording for a day, so traces of requests still running go to the recording. The replay
+  page shows "⏳" on the Traces tab and a note while some are pending, refreshes every 5 seconds, and asks before a
+  download that would miss them. A trace with no news for 10 minutes is shown as failed.
+- **Glowroot not reachable:** the recording is saved as usual; the trace is marked failed with the reason (not
+  installed, connection refused, needs a login). Only Glowroot's anonymous access is supported.
+- **Retry:** a failed trace has a **Retry** button (and the tab **Retry failed (N)**). Traces marked "none" have
+  none: Glowroot kept nothing to find. Only the node that served a request can read its trace, and the click may reach
+  any node, so `trace-retry` marks the traces pending and writes `<wflow>/blackbox/retry/<recording>@<node>.json`;
+  each node picks up its own every 20 seconds and tries again as above. A node that never answers (removed, or
+  renamed) makes the trace failed again after 10 minutes. One retry per recording every 20 seconds. Glowroot keeps
+  traces for 14 days by default, so older ones may be gone. The newest state wins across nodes, so node clocks should
+  be in sync.
+- **Downloads:** the ZIP has `traces.json` and `traces/*.html`; the HTML file has the summaries only.
+- **Viewing a trace:** `trace&file=…` serves Glowroot's page with `Content-Security-Policy: sandbox allow-scripts`, so
+  its script runs without access to Joget's cookies or pages. It loads Google Fonts and Font Awesome from the internet.
+- **Sensitive data:** traces hold SQL with its parameter values and request parameters (Glowroot masks names like
+  `*password*` and `*token*`).
+
 ## Storage
 
-One folder per recording under `<wflow>/blackbox/<id>/`: `meta.json`, `session.json`, `recording.webm`, and
-`server-log.json` when a server log was attached. Server logs waiting for an upload are in `<wflow>/blackbox/pending/`.
+One folder per recording under `<wflow>/blackbox/<id>/`: `meta.json`, `session.json`, `recording.webm`,
+`server-log.json` when a server log was attached, and `traces/` when Glowroot traces were copied. Server logs waiting for an upload are in `<wflow>/blackbox/pending/`.
 No database tables. Folders on a shared `wflow` directory work for clustered nodes. Back up or clean that folder like
 any other `wflow` data; deleting a recording removes its folder.
 
@@ -105,7 +145,7 @@ any other `wflow` data; deleting a recording removes its folder.
 
 | Part | Job |
 |---|---|
-| `BlackBoxPlugin` | System settings + API logic: `me`, `list`, `meta`, `session`, `video` (GET with HTTP Range), `serverlog`, `download` (`format=zip` or `html`), `create`, `import`, `video` (POST), `delete`, `serverlog-start`, `serverlog-stop` |
+| `BlackBoxPlugin` | System settings + API logic: `me`, `list`, `meta`, `session`, `video` (GET with HTTP Range), `serverlog`, `download` (`format=zip` or `html`), `create`, `import`, `video` (POST), `delete`, `recording-start`, `recording-stop` (old names `serverlog-start`, `serverlog-stop`), `traces`, `trace`, `trace-retry` |
 | `BlackBoxApiFilter` | Serves the API at `/api/blackbox?action=…` |
 | `BlackBoxPageFilter` | Serves the static pages at `/blackbox/…` |
 | `RecordingStore` | Folder storage, validation (JSON shape, WebM header, size limits, id format) |
@@ -113,7 +153,10 @@ any other `wflow` data; deleting a recording removes its folder.
 | `RecordingHtml` | `download&format=html`: view.html with viewer.css/js inlined, the recording in `<script>` data blocks, `export.js` to open it |
 | `ServerLogFilter` | Marks requests that carry `X-BlackBox-Id` (all URLs, before Spring Security) |
 | `ServerLogCapture` | Root-logger appender, per-thread marking, pending files, flush/idle/cleanup timer |
-| `ServerLogStore` | Pending server log folders: start, stop, attach (merge nodes, sort by time), clean up |
+| `ServerLogStore` | Pending server log folders: start, stop, attach (merge nodes, sort by time, move traces), clean up |
+| `TraceCollector` | Per node: picks the slow and failed recorded requests, finds their Glowroot trace (retries), saves it; Retry requests per node |
+| `GlowrootClient` | Glowroot's JSON backend and trace export; finds the local agent's port |
+| `TraceStore` | `traces/` files: append, merge (latest state per request), move on upload, summary of a trace |
 | `src/main/resources/static/blackbox/` | Pages: list, view (+ shared viewer from the extension) |
 
 Notes:

@@ -87,6 +87,24 @@
             "value" : "7",
             "regex_validation" : "^[1-9][0-9]*$",
             "validation_message" : "Enter a whole number of days."
+        },
+        {
+            "name" : "captureTraces",
+            "label" : "Copy Glowroot traces of slow and failed requests",
+            "description" : "Needs server log capture. Glowroot's own slow threshold decides which requests have a trace; it is not changed.",
+            "type" : "selectbox",
+            "value" : "true",
+            "options" : [
+                {"value" : "true", "label" : "Yes"},
+                {"value" : "false", "label" : "No"}
+            ]
+        },
+        {
+            "name" : "glowrootUrl",
+            "label" : "Glowroot address",
+            "description" : "Empty = the Glowroot agent of this Joget (found from its admin.json, usually http://localhost:4000). Read as Glowroot's anonymous user.",
+            "type" : "textfield",
+            "value" : ""
         }
     ]
 }]

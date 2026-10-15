@@ -17,19 +17,27 @@ import org.json.JSONObject;
 
 /**
  * A recording as one ZIP, to move it to another Joget: meta.json (title, notes, who uploaded it), session.json,
- * server-log.json (if any) and recording.webm. {@link #importZip} turns such a ZIP into a new recording.
+ * server-log.json (if any), the Glowroot traces (traces.json and traces/*.html, if any) and recording.webm.
+ * {@link #importZip} turns such a ZIP into a new recording.
  */
 public class RecordingZip {
 
     static final String META = "meta.json";
     private static final String[] META_KEYS = {"title", "notes", "owner", "ownerName", "uploadedAt", "recording", "summary", "importedFrom"};
     private static final long MAX_META_BYTES = 64 * 1024;
+    private static final int MAX_TRACES = 1000;
 
     private RecordingZip() {
     }
 
     /** serverLog and video may be null. */
     public static void write(OutputStream out, JSONObject meta, Path session, Path serverLog, Path video) throws IOException {
+        write(out, meta, session, serverLog, video, null);
+    }
+
+    /** traceDir: the folder whose Glowroot traces go in (the recording's), or null for none. */
+    public static void write(OutputStream out, JSONObject meta, Path session, Path serverLog, Path video, Path traceDir)
+            throws IOException {
         JSONObject m = new JSONObject();
         try {
             for (String k : META_KEYS) {
@@ -47,6 +55,17 @@ public class RecordingZip {
         add(zip, RecordingStore.SESSION, session);
         if (serverLog != null) {
             add(zip, RecordingStore.SERVER_LOG, serverLog);
+        }
+        if (traceDir != null) {
+            JSONArray traces = TraceStore.merge(traceDir, System.currentTimeMillis());
+            if (traces.length() > 0) {
+                zip.putNextEntry(new ZipEntry(TraceStore.MERGED));
+                zip.write(traces.toString().getBytes(StandardCharsets.UTF_8));
+                zip.closeEntry();
+                for (Path f : TraceStore.traceFiles(traceDir)) {
+                    add(zip, TraceStore.DIR + "/" + f.getFileName().toString(), f);
+                }
+            }
         }
         if (video != null) {
             zip.setLevel(Deflater.NO_COMPRESSION); // WebM is compressed already
@@ -106,6 +125,7 @@ public class RecordingZip {
                 ZipEntry logEntry = zip.getEntry(RecordingStore.SERVER_LOG);
                 if (logEntry != null && keepServerLog) {
                     meta.put("serverLog", importServerLog(store, id, zip, logEntry, maxBytes));
+                    importTraces(store, id, zip, maxBytes);
                 }
                 if (!old.optString("owner").isEmpty()) {
                     meta.put("importedFrom", new JSONObject()
@@ -142,6 +162,45 @@ public class RecordingZip {
         }
         Files.write(store.path(id, RecordingStore.SERVER_LOG), bytes);
         return ServerLogStore.summary(entries, log.optBoolean("truncated"));
+    }
+
+    /** traces.json becomes the recording's traces/import.jsonl; trace files are copied as they are. */
+    private static void importTraces(RecordingStore store, String id, ZipFile zip, long maxBytes)
+            throws IOException, RecordingStore.InvalidUpload {
+        ZipEntry index = zip.getEntry(TraceStore.MERGED);
+        if (index == null) {
+            return;
+        }
+        JSONArray traces;
+        try (InputStream in = zip.getInputStream(index)) {
+            traces = new JSONArray(new String(read(in, maxBytes, TraceStore.MERGED), StandardCharsets.UTF_8));
+        } catch (JSONException e) {
+            throw new RecordingStore.InvalidUpload(TraceStore.MERGED + " in the ZIP is not valid JSON.");
+        }
+        if (traces.length() > MAX_TRACES) {
+            throw new RecordingStore.InvalidUpload("The ZIP has more than " + MAX_TRACES + " traces.");
+        }
+        Path dir = Files.createDirectories(store.dir(id).resolve(TraceStore.DIR));
+        StringBuilder lines = new StringBuilder();
+        for (int i = 0; i < traces.length(); i++) {
+            JSONObject e = traces.optJSONObject(i);
+            if (e == null || e.optString("key").isEmpty()) {
+                continue;
+            }
+            String file = e.optString("file");
+            if (!file.isEmpty()) {
+                ZipEntry f = TraceStore.isTraceFile(file) ? zip.getEntry(TraceStore.DIR + "/" + file) : null;
+                if (f == null) {
+                    e.remove("file");
+                } else {
+                    try (InputStream in = zip.getInputStream(f)) {
+                        Files.write(dir.resolve(file), read(in, GlowrootClient.MAX_EXPORT_BYTES, file));
+                    }
+                }
+            }
+            lines.append(e.toString()).append('\n');
+        }
+        Files.write(dir.resolve(TraceStore.IMPORT_NODE + ".jsonl"), lines.toString().getBytes(StandardCharsets.UTF_8));
     }
 
     private static byte[] read(InputStream in, long maxBytes, String name) throws IOException, RecordingStore.InvalidUpload {

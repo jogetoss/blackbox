@@ -26,6 +26,7 @@ public class ServerLogStore {
     public static final String FILE = "server-log.json";
     private static final String META = "meta.json";
     private static final Pattern ID = Pattern.compile("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
+    static final long FORWARD_MS = 24L * 3600 * 1000; // > TraceCollector.GIVE_UP_MS
     private static final Pattern NODE_FILE = Pattern.compile("^server-log\\.[A-Za-z0-9.-]+\\.jsonl$");
 
     private final Path root;
@@ -40,6 +41,11 @@ public class ServerLogStore {
 
     /** Starts a capture. Returns false when the id already belongs to another user. Starting it again is fine. */
     public boolean start(String id, String owner, long maxBytes, long keepMs) throws IOException {
+        return start(id, owner, maxBytes, keepMs, false, "");
+    }
+
+    /** traces: also copy the Glowroot traces of slow and failed requests, from glowrootUrl ("" = the local agent). */
+    public boolean start(String id, String owner, long maxBytes, long keepMs, boolean traces, String glowrootUrl) throws IOException {
         JSONObject meta = readMeta(id);
         if (meta != null) {
             return owner.equals(meta.optString("owner"));
@@ -52,7 +58,9 @@ public class ServerLogStore {
                     .put("owner", owner)
                     .put("startedAt", now)
                     .put("expiresAt", now + keepMs)
-                    .put("maxBytes", maxBytes));
+                    .put("maxBytes", maxBytes)
+                    .put("traces", traces)
+                    .put("glowrootUrl", glowrootUrl == null ? "" : glowrootUrl));
         } catch (JSONException e) {
             throw new IOException(e);
         }
@@ -89,18 +97,25 @@ public class ServerLogStore {
         }
     }
 
+    /** The capture's pending folder (it may not exist). id must be valid. */
+    Path dir(String id) {
+        return root.resolve(id);
+    }
+
     /** The file one node appends to. node must match [A-Za-z0-9.-]+. */
     Path nodeFile(String id, String node) {
         return root.resolve(id).resolve("server-log." + node + ".jsonl");
     }
 
     /**
-     * Merges the capture's node files into target (sorted by time) and deletes the pending folder.
-     * Returns a summary for the recording's meta, or null when the capture is missing, expired or not owner's.
+     * Merges the capture's node files into target (sorted by time) and moves its traces next to it.
+     * The pending folder then only keeps meta.json, pointing at the recording, for {@link #FORWARD_MS}: traces that
+     * are still being collected go to the recording (see {@link TraceCollector}).
+     * Returns a summary for the recording's meta, or null when the capture is missing, expired, attached or not owner's.
      */
     public JSONObject attach(String id, String owner, Path target) throws IOException {
         JSONObject meta = readMeta(id);
-        if (meta == null || !owner.equals(meta.optString("owner"))) {
+        if (meta == null || !owner.equals(meta.optString("owner")) || meta.has("recording")) {
             return null;
         }
         Path dir = root.resolve(id);
@@ -148,10 +163,24 @@ public class ServerLogStore {
             Files.write(tmp, body.toString().getBytes(StandardCharsets.UTF_8));
             Files.move(tmp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             summary = summary(list, truncated);
+            long now = System.currentTimeMillis();
+            meta.put("recording", target.getParent().getFileName().toString())
+                    .put("expiresAt", now + FORWARD_MS);
+            if (!meta.has("stoppedAt")) {
+                meta.put("stoppedAt", now);
+            }
+            writeMeta(id, meta);
         } catch (JSONException e) {
             throw new IOException(e);
         }
-        deleteDir(dir);
+        TraceStore.moveAll(dir, target.getParent());
+        try (DirectoryStream<Path> files = Files.newDirectoryStream(dir)) {
+            for (Path f : files) {
+                if (NODE_FILE.matcher(f.getFileName().toString()).matches()) {
+                    Files.deleteIfExists(f);
+                }
+            }
+        }
         return summary;
     }
 
@@ -215,14 +244,6 @@ public class ServerLogStore {
     }
 
     private static void deleteDir(Path dir) throws IOException {
-        if (!Files.isDirectory(dir)) {
-            return;
-        }
-        try (DirectoryStream<Path> files = Files.newDirectoryStream(dir)) {
-            for (Path f : files) {
-                Files.deleteIfExists(f);
-            }
-        }
-        Files.deleteIfExists(dir);
+        RecordingStore.deleteTree(dir); // traces/ too
     }
 }

@@ -221,6 +221,25 @@ public class RecordingStore {
         return Files.isRegularFile(file) ? file : null;
     }
 
+    /** A recording's folder, or null when the id is invalid or it does not exist. */
+    public Path dir(String id) {
+        if (!isValidId(id)) {
+            return null;
+        }
+        Path dir = root.resolve(id);
+        return Files.isDirectory(dir) ? dir : null;
+    }
+
+    /** A Glowroot trace file of a recording (see {@link TraceStore}), or null when the name is invalid or it is missing. */
+    public Path traceFile(String id, String name) {
+        Path dir = dir(id);
+        if (dir == null || !TraceStore.isTraceFile(name)) {
+            return null;
+        }
+        Path file = dir.resolve(TraceStore.DIR).resolve(name);
+        return Files.isRegularFile(file) ? file : null;
+    }
+
     /** Where a recording's file goes (it may not exist yet). id must be valid. */
     public Path path(String id, String name) {
         if (!isValidId(id)) {
@@ -244,13 +263,31 @@ public class RecordingStore {
         if (!Files.isDirectory(dir)) {
             return false;
         }
-        try (DirectoryStream<Path> files = Files.newDirectoryStream(dir)) {
-            for (Path f : files) {
-                Files.deleteIfExists(f);
-            }
-        }
-        Files.deleteIfExists(dir);
+        deleteTree(dir);
         return true;
+    }
+
+    /** Deletes a folder and everything in it (traces/ too). Links are deleted, never followed. */
+    static void deleteTree(Path dir) throws IOException {
+        if (!Files.isDirectory(dir, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            return;
+        }
+        Files.walkFileTree(dir, new java.nio.file.SimpleFileVisitor<Path>() {
+            @Override
+            public java.nio.file.FileVisitResult visitFile(Path f, java.nio.file.attribute.BasicFileAttributes a) throws IOException {
+                Files.deleteIfExists(f);
+                return java.nio.file.FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public java.nio.file.FileVisitResult postVisitDirectory(Path d, IOException e) throws IOException {
+                if (e != null) {
+                    throw e;
+                }
+                Files.deleteIfExists(d);
+                return java.nio.file.FileVisitResult.CONTINUE;
+            }
+        });
     }
 
     private void writeMeta(String id, JSONObject meta) throws IOException {
