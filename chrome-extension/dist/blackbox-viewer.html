@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BlackBox replay</title>
+  <title>BlackBox Replay</title>
   <style>
 :root {
   --bg: #ffffff;
@@ -19,6 +19,7 @@
   --warn-bg: #fef7e0;
   --nav: #1a73e8;
   --failed: #e8710a;
+  --server: #9334e6;
   --current: #e8f0fe;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
@@ -40,6 +41,7 @@
     --warn-bg: #3a3320;
     --nav: #8ab4f8;
     --failed: #fcad70;
+    --server: #c58af9;
     --current: #283a57;
   }
 }
@@ -58,6 +60,7 @@
   --warn-bg: #3a3320;
   --nav: #8ab4f8;
   --failed: #fcad70;
+  --server: #c58af9;
   --current: #283a57;
 }
 
@@ -74,6 +77,7 @@ button, .button {
   border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer;
 }
 button:hover, .button:hover { background: var(--bg-3); }
+a.button { display: inline-block; text-decoration: none; }
 input, select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
 code { font-family: var(--mono); }
 [hidden] { display: none !important; }
@@ -82,11 +86,10 @@ header {
   display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
   padding: 8px 16px; border-bottom: 1px solid var(--line);
 }
-header h1 { font-size: 15px; margin: 0; }
+header h1 { font-size: 15px; margin: 0; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 header h1 a { color: var(--accent); text-decoration: none; margin-right: 10px; font-weight: normal; }
 body.page-recordings { overflow: auto; }
 body.page-recordings .library { max-height: none; border-bottom: 0; background: var(--bg); }
-.meta { flex: 1; min-width: 0; color: var(--fg-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .actions { display: flex; gap: 8px; }
 #error { background: var(--error-bg); color: var(--error); padding: 8px 16px; }
 .empty { flex: 1; display: grid; place-items: center; color: var(--fg-2); padding: 16px; text-align: center; }
@@ -105,11 +108,15 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 6p
 .no-video { flex: 1; display: grid; place-items: center; text-align: center; background: var(--bg-2); border-radius: 6px; color: var(--fg-2); padding: 16px; }
 .clock-row { display: flex; justify-content: space-between; align-items: center; }
 #clock { font-family: var(--mono); }
-.jump { display: flex; gap: 6px; }
+.jump { display: flex; gap: 6px; white-space: nowrap; }
 .timeline { position: relative; height: 28px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
 .marker { position: absolute; top: 4px; bottom: 4px; width: 3px; margin-left: -1px; border-radius: 2px; }
 .marker.error { background: var(--error); }
 .marker.failed { background: var(--failed); top: 8px; bottom: 8px; }
+.marker.server { background: var(--server); top: 14px; bottom: 0; }
+.dot.server { background: var(--server); }
+.row.lvl-request .t { color: var(--fg-2); }
+.list.mini { flex: none; max-height: 240px; border: 1px solid var(--line); border-radius: 6px; }
 .marker.nav { background: var(--nav); top: 0; bottom: 0; width: 2px; opacity: .7; }
 .playhead { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--fg); pointer-events: none; }
 .legend { display: flex; gap: 16px; color: var(--fg-2); font-size: 12px; }
@@ -125,6 +132,7 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 6p
 .toolbar { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .toolbar input[type=search] { flex: 1; min-width: 120px; }
 .toolbar label { display: flex; align-items: center; gap: 4px; color: var(--fg-2); white-space: nowrap; }
+.levels { display: flex; gap: 10px; }
 
 .list { flex: 1; min-height: 0; overflow: auto; font-family: var(--mono); font-size: 12px; }
 .row {
@@ -132,7 +140,7 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 6p
   cursor: pointer; align-items: baseline;
 }
 .row > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row.console { grid-template-columns: 64px 56px minmax(0, 1fr) minmax(0, 140px); }
+.row.console, .row.server { grid-template-columns: 64px 56px minmax(0, 1fr) minmax(0, 140px); }
 .row.network { grid-template-columns: 64px 52px 44px minmax(0, 1fr) 64px 56px; }
 .row:hover { background: var(--bg-2); }
 .row.future { opacity: .4; }
@@ -184,19 +192,49 @@ button:disabled { opacity: .5; cursor: default; }
 .upload-box input, .upload-box textarea { font: inherit; padding: 6px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; }
 .upload-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
 .upload-box progress { width: 100%; }
-.rec-status { padding: 4px 16px; font-size: 13px; color: var(--fg-2); }
+/* Status bar under the header, the same on every replay page: where this copy is, then its actions */
+.rec-status { padding: 4px 16px; font-size: 13px; color: var(--fg-2); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+header .rec-status { padding: 0; }
+/* Replay pages, one row: [title (shrinks with "…" first) + Older / Newer] on the left, where + actions on the right.
+   The header wraps only when even a short title can't fit beside the buttons. */
+header.replay-head { gap: 8px 24px; }
+.header-left { display: flex; align-items: center; gap: 24px; flex: 1 1 280px; min-width: 0; }
+.header-left h1 { flex: 0 1 auto; }
+.header-right { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; white-space: nowrap; }
+.header-right .rec-status { flex-wrap: nowrap; }
+.rec-nav { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.rec-nav[hidden] { display: none !important; }
+.button.disabled { opacity: .45; pointer-events: none; }
+.where { font-weight: 600; color: var(--fg); background: var(--bg-3); border-radius: 10px; padding: 1px 9px; margin-right: 4px; cursor: help; }
+.notes { white-space: pre-wrap; padding: 4px 16px 8px; margin: 0; color: var(--fg-2); }
+.rec-status[hidden] { display: none !important; }
 .rec-status a, .upload-box a { color: var(--accent); }
 .muted { color: var(--fg-2); }
 </style>
 </head>
 <body>
-  <header>
-    <h1><a id="back" href="recordings.html" hidden>← Recordings</a> BlackBox replay</h1>
-    <div id="meta" class="meta"></div>
-    <div class="actions">
-      <label class="button">Open files…
-        <input type="file" id="files" multiple accept=".webm,.json,video/webm,application/json" hidden>
-      </label>
+  <header class="replay-head">
+    <div class="header-left">
+      <h1><a id="back" href="recordings.html" hidden>← Recordings</a> <span id="recTitle">BlackBox replay</span></h1>
+      <nav id="recNav" class="rec-nav" hidden>
+        <a id="olderRec" class="button" href="#">◀ Older</a>
+        <span id="recPos"></span>
+        <a id="newerRec" class="button" href="#">Newer ▶</a>
+      </nav>
+    </div>
+    <div class="header-right">
+      <div id="recStatus" class="rec-status" hidden></div>
+      <div class="actions">
+        <label class="button">Open files…
+          <input type="file" id="files" multiple accept=".webm,.json,.zip,video/webm,application/json,application/zip" hidden>
+        </label>
+        <select id="textSize" title="Text size (remembered in this browser)">
+          <option value="0.9">Aa 90%</option>
+          <option value="1" selected>Aa 100%</option>
+          <option value="1.15">Aa 115%</option>
+          <option value="1.3">Aa 130%</option>
+        </select>
+      </div>
     </div>
   </header>
 
@@ -204,12 +242,12 @@ button:disabled { opacity: .5; cursor: default; }
   <div id="folderAccess" class="rec-status" hidden>
     <button id="allowFolder">Allow access</button> This recording is in the linked folder; Chrome needs your OK to read it again.
   </div>
-  <div id="recStatus" class="rec-status" hidden></div>
 
   <div id="error" class="error" hidden></div>
 
   <main id="empty" class="empty">
     <p>Drop <code>recording.webm</code> and <code>session.json</code> here (from <code>Downloads/blackbox/…</code>),
+      or a recording ZIP from a BlackBox server,
       or use the buttons above.</p>
   </main>
 
@@ -228,8 +266,8 @@ button:disabled { opacity: .5; cursor: default; }
       <div class="clock-row">
         <span id="clock">0:00.0 / 0:00.0</span>
         <span class="jump">
-          <button id="prevIssue" title="Previous error or failed request">◀ Prev issue</button>
-          <button id="nextIssue" title="Next error or failed request">Next issue ▶</button>
+          <button id="prevIssue" title="Go to the previous error, failed request or server error">◀ Prev issue</button>
+          <button id="nextIssue" title="Go to the next error, failed request or server error">Next issue ▶</button>
         </span>
       </div>
       <div id="timeline" class="timeline" title="Click to seek">
@@ -269,6 +307,118 @@ button:disabled { opacity: .5; cursor: default; }
   </main>
 
   <script>
+// Reads a recording ZIP (Download ZIP on the server) without any library: the central directory gives each file's
+// place, and DecompressionStream inflates deflated files. Plain ZIPs only (no ZIP64, no encryption).
+// Used by the viewer (Open files…, also in the standalone file) and the Recordings and Replay pages (Import ZIP…,
+// Download ZIP: makeZip below).
+
+// Resolves to a Map of file name -> Blob, for files at the top level of the ZIP
+async function readZip(blob) {
+  const u32 = (v, o) => v.getUint32(o, true);
+  const u16 = (v, o) => v.getUint16(o, true);
+  // End of central directory record: in the last 64 KB + 22 bytes (after an optional comment)
+  const tailSize = Math.min(blob.size, 65557);
+  const tail = new DataView(await blob.slice(blob.size - tailSize).arrayBuffer());
+  let eocd = -1;
+  for (let i = tail.byteLength - 22; i >= 0; i--) {
+    if (u32(tail, i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) throw new Error('This is not a ZIP file.');
+  const count = u16(tail, eocd + 10);
+  const dirSize = u32(tail, eocd + 12);
+  const dirOffset = u32(tail, eocd + 16);
+  if (dirOffset === 0xffffffff) throw new Error('This ZIP is too large (ZIP64) to open here.');
+  const dir = new DataView(await blob.slice(dirOffset, dirOffset + dirSize).arrayBuffer());
+
+  const files = new Map();
+  for (let p = 0, i = 0; i < count; i++) {
+    if (u32(dir, p) !== 0x02014b50) throw new Error('This ZIP is damaged.');
+    const method = u16(dir, p + 10);
+    const size = u32(dir, p + 20);
+    const nameLen = u16(dir, p + 28);
+    const extraLen = u16(dir, p + 30);
+    const commentLen = u16(dir, p + 32);
+    const local = u32(dir, p + 42);
+    const name = new TextDecoder().decode(new Uint8Array(dir.buffer, dir.byteOffset + p + 46, nameLen));
+    p += 46 + nameLen + extraLen + commentLen;
+    if (name.includes('/')) continue; // only the top level
+
+    // The data starts after the local header, whose name/extra lengths can differ from the central ones
+    const head = new DataView(await blob.slice(local, local + 30).arrayBuffer());
+    const start = local + 30 + u16(head, 26) + u16(head, 28);
+    const data = blob.slice(start, start + size);
+    if (method === 0) files.set(name, data);
+    else if (method === 8) files.set(name, await new Response(data.stream().pipeThrough(new DecompressionStream('deflate-raw'))).blob());
+    else throw new Error(`${name} in the ZIP uses a compression this viewer can't read.`);
+  }
+  return files;
+}
+
+// Makes a ZIP Blob from [{ name, blob, deflate }], the same layout a BlackBox server's Download ZIP uses.
+// The video is stored as is (WebM is compressed already); JSON is deflated with CompressionStream.
+// The parts are not copied: the result is a Blob made of headers and the original Blobs.
+async function makeZip(files) {
+  const enc = new TextEncoder();
+  const parts = [];
+  const central = [];
+  let offset = 0;
+  const { date, time } = dosTime(new Date());
+  for (const f of files) {
+    const name = enc.encode(f.name);
+    const crc = await crc32(f.blob);
+    const data = f.deflate ? await new Response(f.blob.stream().pipeThrough(new CompressionStream('deflate-raw'))).blob() : f.blob;
+    const method = f.deflate ? 8 : 0;
+    const local = new DataView(new ArrayBuffer(30));
+    // signature, version 2.0, flags (bit 11: UTF-8 names), method, time, date, crc, sizes, name length, extra length
+    [[0, 0x04034b50, 4], [4, 20, 2], [6, 0x0800, 2], [8, method, 2], [10, time, 2], [12, date, 2], [14, crc, 4],
+      [18, data.size, 4], [22, f.blob.size, 4], [26, name.length, 2], [28, 0, 2]].forEach(([o, v, n]) => set(local, o, v, n));
+    parts.push(local.buffer, name, data);
+
+    const entry = new DataView(new ArrayBuffer(46));
+    [[0, 0x02014b50, 4], [4, 20, 2], [6, 20, 2], [8, 0x0800, 2], [10, method, 2], [12, time, 2], [14, date, 2],
+      [16, crc, 4], [20, data.size, 4], [24, f.blob.size, 4], [28, name.length, 2], [42, offset, 4]].forEach(([o, v, n]) => set(entry, o, v, n));
+    central.push(entry.buffer, name);
+    offset += 30 + name.length + data.size;
+  }
+  const dirSize = central.reduce((n, p) => n + p.byteLength, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  [[0, 0x06054b50, 4], [8, files.length, 2], [10, files.length, 2], [12, dirSize, 4], [16, offset, 4]].forEach(([o, v, n]) => set(end, o, v, n));
+  return new Blob([...parts, ...central, end.buffer], { type: 'application/zip' });
+
+  function set(view, o, v, n) {
+    if (n === 4) view.setUint32(o, v >>> 0, true); else view.setUint16(o, v, true);
+  }
+}
+
+function dosTime(d) {
+  return {
+    time: (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1),
+    date: ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate(),
+  };
+}
+
+let crcTable = null;
+// CRC-32 of a Blob, read in chunks so a large video is never in memory at once
+async function crc32(blob) {
+  if (!crcTable) {
+    crcTable = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      crcTable[n] = c >>> 0;
+    }
+  }
+  let crc = 0xffffffff;
+  const reader = blob.stream().getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    for (let i = 0; i < value.length; i++) crc = crcTable[(crc ^ value[i]) & 0xff] ^ (crc >>> 8);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+</script>
+  <script>
 // Replay viewer: plays recording.webm and keeps the console/network lists in sync with the playhead.
 // Every recorded entry has t = ms since start = position in the video.
 // All recorded text is shown with textContent, never innerHTML: it comes from untrusted pages.
@@ -276,7 +426,7 @@ button:disabled { opacity: .5; cursor: default; }
 const $ = (id) => document.getElementById(id);
 const video = $('video');
 
-let current = { video: null, report: null }; // what the user has loaded so far
+let current = { video: null, report: null, serverLog: null }; // what the user has loaded so far
 let report = null;
 let durationMs = 0;
 let hasVideo = false;
@@ -287,13 +437,14 @@ let rows = [];             // { t, el, item } for the visible list, sorted by t
 let pastCount = 0;         // rows[0 .. pastCount-1] have t <= playhead
 let selectedEl = null;
 let videoUrl = null;
-let issues = [];           // sorted t of console errors and failed requests
+let issues = [];           // sorted t of console errors, failed requests and server errors
+let serverItems = [];      // server log entries with t (server replay page only, see prepareServerLog)
+let serverOffset = 0;      // ms the server clock is ahead of the browser's (0 when too small to matter)
 
+// Filter list per tab (none on the Server tab). Console levels are picked with checkboxes (LEVEL_BOXES).
 const FILTERS = {
   console: [
-    ['all', 'All levels'],
-    ['error', 'Errors'],
-    ['warn', 'Warnings & errors'],
+    ['all', 'All sources'],
     ['page', 'Page console only'],
     ['browser', 'Browser messages only'],
   ],
@@ -305,6 +456,37 @@ const FILTERS = {
     ['other', 'Other (scripts, images…)'],
   ],
 };
+
+// Level checkboxes per tab: [value, label]. All are ticked at first.
+// Server: the request entries the BlackBox plugin adds (not in Joget's log) are not listed; a network request's
+// details show its own.
+const LEVEL_BOXES = {
+  console: [['DEBUG', 'DEBUG'], ['LOG', 'LOG'], ['INFO', 'INFO'], ['WARN', 'WARN'], ['ERROR', 'ERROR'], ['NAV', 'Navigations']],
+  server: [['DEBUG', 'DEBUG'], ['INFO', 'INFO'], ['WARN', 'WARN'], ['ERROR', 'ERROR'], ['FATAL', 'FATAL']],
+};
+const pickedLevels = Object.fromEntries(Object.entries(LEVEL_BOXES).map(([t, list]) => [t, new Set(list.map(([v]) => v))]));
+
+// ---------- text size ----------
+
+// Scales the whole page (CSS zoom), like browser zoom but for this page only. Remembered per browser in
+// localStorage ('bb-text-size'); the extension also keeps it in its settings (theme.js).
+const TEXT_SIZES = ['0.9', '1', '1.15', '1.3'];
+
+function applyTextSize(v) {
+  if (!TEXT_SIZES.includes(String(v))) v = '1';
+  document.documentElement.style.zoom = v === '1' ? '' : v;
+  if ($('textSize')) $('textSize').value = v;
+}
+
+try { applyTextSize(localStorage.getItem('bb-text-size') || '1'); } catch (e) { /* storage blocked: default size */ }
+if ($('textSize')) {
+  $('textSize').onchange = () => {
+    const v = $('textSize').value;
+    applyTextSize(v);
+    try { localStorage.setItem('bb-text-size', v); } catch (e) { /* not remembered */ }
+    document.dispatchEvent(new CustomEvent('blackbox-text-size', { detail: v }));
+  };
+}
 
 // ---------- loading ----------
 
@@ -320,13 +502,32 @@ document.addEventListener('drop', (e) => {
   loadFiles([...e.dataTransfer.files]).catch(showError);
 });
 
-// Lets a host page (e.g. a server that shows uploaded recordings) open a recording: video = URL or Blob (or null), report = parsed session.json.
-window.blackboxOpen = (videoSrc, sessionReport) => {
-  current = { video: videoSrc || null, report: sessionReport };
+// Lets a host page (e.g. a server that shows uploaded recordings) open a recording: video = URL or Blob (or null),
+// report = parsed session.json, extra.serverLog = parsed server-log.json (shows the Server tab),
+// extra.title = the title in the header (default: the recorded tab's title),
+// extra.info = { label: value } shown first in the Info tab (e.g. who uploaded it).
+window.blackboxOpen = (videoSrc, sessionReport, extra) => {
+  current = { video: videoSrc || null, report: sessionReport, serverLog: extra?.serverLog || null, title: extra?.title || '', info: extra?.info || {} };
   openRecording();
 };
 
 window.blackboxShowError = (e) => showError(e);
+
+// Older / Newer in the header, set by the page that knows the list (extension: Recordings page rows, newest
+// first; server: the user's list). Each is { href, title } or null; pos and total give "3 / 10".
+window.blackboxSetNeighbours = ({ older, newer, pos, total }) => {
+  const link = (a, target, word) => {
+    a.classList.toggle('disabled', !target);
+    a.setAttribute('aria-disabled', String(!target));
+    a.href = target ? target.href : '#';
+    a.title = target ? `${word} recording: ${target.title}` : `No ${word.toLowerCase()} recording`;
+  };
+  link($('olderRec'), older, 'Older');
+  link($('newerRec'), newer, 'Newer');
+  $('recPos').textContent = total ? `${pos} / ${total}` : '';
+  $('recPos').title = 'Position in the recordings list (newest first)';
+  $('recNav').hidden = !total;
+};
 
 // Unloads the open recording and goes back to the empty screen (nothing is deleted).
 window.blackboxClose = () => {
@@ -335,12 +536,13 @@ window.blackboxClose = () => {
   video.load();
   if (videoUrl) URL.revokeObjectURL(videoUrl);
   videoUrl = null;
-  current = { video: null, report: null };
+  current = { video: null, report: null, serverLog: null };
   report = null;
+  $('recTitle').textContent = 'BlackBox replay';
+  $('recTitle').title = '';
+  document.title = 'BlackBox Replay';
   hasVideo = false;
   closeDetail();
-  $('meta').textContent = '';
-  $('meta').title = '';
   showError(null);
   $('app').hidden = true;
   $('empty').hidden = false;
@@ -351,12 +553,27 @@ window.blackboxCurrent = () => current;
 
 async function loadFiles(files) {
   const name = (f) => f.name.toLowerCase();
+  const zip = files.find((f) => name(f).endsWith('.zip'));
+  if (zip) {
+    // A recording ZIP (Download ZIP on the server) is a whole recording: it replaces what is open.
+    // Its server-log.json is not shown here; server logs are shown on the server's replay page.
+    const parts = await readZip(zip);
+    if (!parts.has('session.json')) throw new Error(`${zip.name} has no session.json: it is not a BlackBox recording ZIP.`);
+    current = { video: null, report: null, serverLog: null };
+    files = [new File([parts.get('session.json')], 'session.json', { type: 'application/json' })];
+    if (parts.has('recording.webm')) files.push(new File([parts.get('recording.webm')], 'recording.webm', { type: 'video/webm' }));
+  }
   const json = files.find((f) => name(f).endsWith('.json'));
   const webm = files.find((f) => name(f).endsWith('.webm') || f.type.startsWith('video/'));
+  // Files picked here are not named by the page's address: no ?t= for them
+  window.blackboxTimeInUrl = false;
   if (!json && !webm) throw new Error(`Not a recording file: ${files.map((f) => f.name).join(', ')}. Pick recording.webm and session.json.`);
   if (webm && webm.size === 0) throw new Error(`${webm.name} is empty (0 bytes): the video was not recorded.`);
   if (webm) current.video = webm;
-  if (json) current.report = JSON.parse(await json.text());
+  if (json) {
+    current.report = JSON.parse(await json.text());
+    current.serverLog = null;
+  }
   if (!current.report) {
     showError('Video loaded. Now add session.json from the same folder.');
     return;
@@ -392,19 +609,24 @@ function openRecording() {
 
   const rec = r.recording || {};
   const tabInfo = rec.tab || {};
-  $('meta').textContent = [
-    tabInfo.title || tabInfo.url,
-    rec.startedAt && new Date(rec.startedAt).toLocaleString(),
-    fmt(durationMs),
-    rec.capturedSurface,
-  ].filter(Boolean).join('  ·  ');
-  $('meta').title = tabInfo.url || '';
+  // Start time, length, surface and the tab's URL are in the Info tab; the header only names the recording
+  $('recTitle').textContent = current.title || tabInfo.title || tabInfo.url || 'BlackBox replay';
+  // The same browser tab title on every replay page
+  document.title = 'BlackBox Replay · ' + $('recTitle').textContent;
+  $('recTitle').title = tabInfo.url || '';
 
   $('consoleCount').textContent = r.console.length;
   $('networkCount').textContent = r.network.length;
+  serverItems = prepareServerLog(current.serverLog, r);
+  if ($('serverTab')) {
+    $('serverTab').hidden = !current.serverLog;
+    $('serverCount').textContent = serverItems.filter((e) => e.kind === 'log').length;
+  }
+  if (tab === 'server' && !current.serverLog) tab = 'console';
   issues = [
     ...r.console.filter((e) => e.level === 'error').map((e) => e.t),
     ...r.network.filter(isBad).map((e) => e.t),
+    ...serverItems.filter(isServerError).map((e) => e.t),
   ].sort((a, b) => a - b);
 
   $('empty').hidden = true;
@@ -412,7 +634,9 @@ function openRecording() {
   renderMarkers();
   renderInfo();
   setTab(tab);
-  onTime();
+  startMs = Math.min(timeFromUrl(), durationMs);
+  if (startMs) seek(startMs); // before the video loads, this sets where it starts
+  else onTime();
 }
 
 video.addEventListener('error', () => {
@@ -427,11 +651,40 @@ video.addEventListener('loadedmetadata', () => {
   if (video.duration !== Infinity) return;
   fixingDuration = true;
   video.addEventListener('durationchange', () => {
-    video.currentTime = 0;
+    video.currentTime = startMs / 1000; // back to the start, or to ?t=
     fixingDuration = false;
   }, { once: true });
   video.currentTime = 1e101;
 });
+
+// ---------- time in the address ----------
+
+// Pages whose address names one recording (extension ?id= / ?disk=, server ?id=, the downloaded file) set
+// window.blackboxTimeInUrl: then ?t=<seconds> opens it at that moment, and the address follows the playhead
+// (replaceState: no new Back step per seek), so it can be copied as a link to that moment.
+let startMs = 0;           // where the open recording starts (from ?t=)
+let urlTimer = null;
+
+function timeFromUrl() {
+  const t = parseFloat(new URLSearchParams(location.search).get('t'));
+  return window.blackboxTimeInUrl && t > 0 ? t * 1000 : 0;
+}
+
+function saveTimeInUrl() {
+  if (!window.blackboxTimeInUrl || !report) return;
+  clearTimeout(urlTimer);
+  urlTimer = setTimeout(() => {
+    const params = new URLSearchParams(location.search);
+    const s = Math.round(nowMs() / 100) / 10;
+    if (s > 0) params.set('t', s.toFixed(1)); else params.delete('t');
+    const q = params.toString();
+    try {
+      history.replaceState(history.state, '', location.pathname + (q ? '?' + q : '') + location.hash);
+    } catch (e) { /* a file:// page may refuse: the time just isn't in the address */ }
+  }, 250);
+}
+video.addEventListener('seeked', saveTimeInUrl);
+video.addEventListener('pause', saveTimeInUrl);
 
 // ---------- playhead ----------
 
@@ -444,6 +697,7 @@ function seek(ms) {
   if (hasVideo) video.currentTime = ms / 1000;
   else manualMs = ms;
   onTime();
+  saveTimeInUrl();
 }
 
 function frame() {
@@ -518,11 +772,85 @@ function renderMarkers() {
   for (const n of report.navigations || []) add(n.t, 'nav', `Navigated to ${n.url}`);
   for (const n of report.network.filter(isBad)) add(n.t, 'failed', `${n.status || 'ERR'} ${n.method} ${n.url}`, () => openRow('network', n));
   for (const c of report.console.filter((e) => e.level === 'error')) add(c.t, 'error', c.text, () => openRow('console', c));
+  for (const e of serverItems.filter(isServerError)) add(e.t, 'server', `Server: ${serverText(e)}`, () => openRow('server', e));
+}
+
+// ---------- server log ----------
+
+// Entries have ts = server clock (epoch ms). t = ts - recording start, minus the server clock's offset, measured
+// from the X-BlackBox-Time header the plugin adds to the tagged responses (server time when the request arrived).
+// Small offsets are mostly network delay, so only an offset over 250 ms is corrected.
+function prepareServerLog(log, r) {
+  serverOffset = 0;
+  const start = Date.parse(r.recording?.startedAt);
+  if (!log || !start) return [];
+  const offsets = [];
+  for (const n of r.network) {
+    const v = Number(header(n.responseHeaders, 'x-blackbox-time'));
+    if (v) offsets.push(v - (start + n.t));
+  }
+  if (offsets.length) {
+    offsets.sort((a, b) => a - b);
+    const median = offsets[offsets.length >> 1];
+    if (Math.abs(median) > 250) serverOffset = Math.round(median);
+  }
+  return (log.entries || []).map((e) => ({ ...e, t: e.ts - start - serverOffset, lvl: serverLevel(e) }));
+}
+
+// Timeline markers and Prev/Next issue: error log lines (a failed request already has a network marker)
+function isServerError(e) {
+  return e.kind === 'log' && e.lvl === 'error';
+}
+
+function serverLevel(e) {
+  if (e.kind === 'request') return e.error || e.status >= 500 ? 'error' : e.status >= 400 ? 'warn' : 'request';
+  const l = String(e.level || '').toLowerCase();
+  return l === 'fatal' ? 'error' : l;
+}
+
+function serverText(e) {
+  if (e.kind === 'request') return `${e.method} ${e.url} → ${e.error ? 'ERR' : e.status} (${e.ms} ms)`;
+  return String(e.message ?? '').split('\n')[0];
+}
+
+function header(headers, name) {
+  for (const [k, v] of Object.entries(headers || {})) if (k.toLowerCase() === name) return v;
+  return undefined;
+}
+
+// The log lines written while serving a server request entry
+function requestLines(req) {
+  const key = `${req.method} ${req.url}`;
+  return serverItems.filter((x) => x.kind === 'log' && x.req === key && x.ts >= req.ts && x.ts <= req.ts + req.ms + 5);
+}
+
+// The server request entry of a recorded network request: same method and path, nearest in time
+function serverRequestFor(n) {
+  const u = safeUrl(n.url);
+  if (!u || !serverItems.length) return null;
+  const path = u.pathname + u.search;
+  let best = null;
+  for (const e of serverItems) {
+    if (e.kind !== 'request' || e.method !== n.method || e.url !== path) continue;
+    const d = Math.abs(e.t - n.t);
+    if (d <= 2000 + (n.durationMs || 0) && (!best || d < Math.abs(best.t - n.t))) best = e;
+  }
+  return best;
+}
+
+function serverList(items) {
+  const box = el('div', 'list mini');
+  for (const item of items) {
+    const row = serverRow(item);
+    row.onclick = () => { seek(item.t); openRow('server', item); };
+    box.append(row);
+  }
+  return box;
 }
 
 // ---------- tabs and lists ----------
 
-document.querySelectorAll('.tabs button').forEach((b) => { b.onclick = () => setTab(b.dataset.tab); });
+document.querySelectorAll('.tabs button[data-tab]').forEach((b) => { b.onclick = () => setTab(b.dataset.tab); });
 $('search').oninput = () => renderList();
 $('filter').onchange = () => renderList();
 $('hideFuture').onchange = () => $('list').classList.toggle('hide-future', $('hideFuture').checked);
@@ -536,14 +864,52 @@ function setTab(name) {
   $('list').hidden = isInfo;
   $('info').hidden = !isInfo;
   if (!isInfo) {
-    $('filter').replaceChildren(...FILTERS[name].map(([v, label]) => {
-      const o = el('option', null, label);
-      o.value = v;
-      return o;
-    }));
+    $('filter').hidden = !FILTERS[name];
+    for (const t of Object.keys(LEVEL_BOXES)) levelBoxes(t).hidden = t !== name;
+    if (FILTERS[name]) {
+      $('filter').replaceChildren(...FILTERS[name].map(([v, label]) => {
+        const o = el('option', null, label);
+        o.value = v;
+        return o;
+      }));
+    }
     renderList();
   }
   closeDetail();
+}
+
+// A tab's level checkboxes, made on first use next to the filter list
+function levelBoxes(name) {
+  let box = $('levels-' + name);
+  if (box) return box;
+  box = el('span', 'levels');
+  box.id = 'levels-' + name;
+  for (const [level, text] of LEVEL_BOXES[name]) {
+    const label = el('label');
+    const cb = el('input');
+    cb.type = 'checkbox';
+    cb.checked = pickedLevels[name].has(level);
+    cb.onchange = () => {
+      if (cb.checked) pickedLevels[name].add(level); else pickedLevels[name].delete(level);
+      renderList();
+    };
+    label.append(cb, ' ' + text);
+    box.append(label);
+  }
+  $('filter').after(box);
+  return box;
+}
+
+// Console entry level -> checkbox: console.* types, CDP Log levels (verbose, info, warn, error), exceptions (error)
+function consoleLevel(item) {
+  switch (item.level) {
+    case 'nav': return 'NAV';
+    case 'error': case 'assert': return 'ERROR';
+    case 'warn': return 'WARN';
+    case 'info': return 'INFO';
+    case 'debug': case 'verbose': return 'DEBUG';
+    default: return 'LOG'; // log, dir, table, trace, count, group…
+  }
 }
 
 function consoleItems() {
@@ -552,9 +918,11 @@ function consoleItems() {
 }
 
 function matchesFilter(item, f) {
+  if (tab === 'server') {
+    return item.kind === 'log' && pickedLevels.server.has(String(item.level).toUpperCase());
+  }
   if (tab === 'console') {
-    if (f === 'error') return item.level === 'error';
-    if (f === 'warn') return item.level === 'error' || item.level === 'warn';
+    if (!pickedLevels.console.has(consoleLevel(item))) return false;
     if (f === 'page') return item.source === 'console' || item.source === 'exception';
     if (f === 'browser') return item.source?.startsWith('browser:');
     return true;
@@ -569,11 +937,12 @@ function matchesFilter(item, f) {
 function renderList() {
   const q = $('search').value.trim().toLowerCase();
   const f = $('filter').value;
-  const items = (tab === 'console' ? consoleItems() : [...report.network].sort((a, b) => a.t - b.t))
+  const items = (tab === 'console' ? consoleItems() : tab === 'server' ? serverItems : [...report.network].sort((a, b) => a.t - b.t))
     .filter((it) => matchesFilter(it, f))
     .filter((it) => !q || searchText(it).includes(q));
 
-  rows = items.map((item) => ({ t: item.t, item, el: tab === 'console' ? consoleRow(item) : networkRow(item) }));
+  const rowOf = { console: consoleRow, network: networkRow, server: serverRow }[tab];
+  rows = items.map((item) => ({ t: item.t, item, el: rowOf(item) }));
   for (const r of rows) {
     r.el.classList.add('future');
     r.el.onclick = () => { seek(r.t); select(r.el, r.item); };
@@ -587,6 +956,7 @@ function renderList() {
 }
 
 function searchText(it) {
+  if (tab === 'server') return `${serverText(it)} ${it.logger || ''} ${it.req || ''} ${it.thrown || ''}`.toLowerCase();
   return tab === 'console'
     ? `${it.text} ${it.location || ''} ${it.source}`.toLowerCase()
     : `${it.method} ${it.url} ${it.status ?? ''} ${it.type || ''}`.toLowerCase();
@@ -601,6 +971,18 @@ function consoleRow(c) {
     el('span', 'muted right', shortLocation(c.location)),
   );
   row.title = c.text;
+  return row;
+}
+
+function serverRow(e) {
+  const row = el('div', `row server lvl-${e.lvl}`);
+  row.append(
+    el('span', 't', fmt(e.t)),
+    el('span', null, e.kind === 'request' ? 'request' : e.lvl),
+    el('span', null, serverText(e)),
+    el('span', 'muted right', e.kind === 'request' ? '' : String(e.logger || '').split('.').pop()),
+  );
+  row.title = e.kind === 'request' ? `${e.method} ${e.url}` : String(e.message ?? '');
   return row;
 }
 
@@ -649,7 +1031,33 @@ function showDetail(item) {
   body.replaceChildren();
   actions.replaceChildren();
 
-  if ('method' in item) {
+  if (item.kind === 'request') {
+    $('detailTitle').textContent = `Server: ${item.method} ${item.error ? 'ERR' : item.status}  ${item.url}`;
+    section(body, 'General', kv({
+      URL: item.url,
+      Method: item.method,
+      Status: item.status,
+      Error: item.error,
+      Duration: `${item.ms} ms`,
+      'Arrived at': fmt(item.t),
+      'Server time': new Date(item.ts).toISOString(),
+    }));
+    const lines = requestLines(item);
+    section(body, 'Log lines of this request', lines.length ? serverList(lines) : el('div', 'muted', 'None.'));
+  } else if (item.kind === 'log') {
+    $('detailTitle').textContent = `Server ${item.lvl}  ${fmt(item.t)}`;
+    actions.append(copyButton('Copy', () => [item.message, item.thrown].filter(Boolean).join('\n')));
+    section(body, 'Message', pre(String(item.message ?? '')));
+    if (item.thrown) section(body, 'Exception', pre(item.thrown));
+    section(body, 'Details', kv({
+      Level: item.level,
+      Logger: item.logger,
+      Thread: item.thread,
+      Request: item.req,
+      Time: fmt(item.t),
+      'Server time': new Date(item.ts).toISOString(),
+    }));
+  } else if ('method' in item) {
     $('detailTitle').textContent = `${item.method} ${statusText(item)}  ${item.url}`;
     actions.append(copyButton('Copy as cURL', () => toCurl(item)));
     if (item.responseBody?.text != null) actions.append(copyButton('Copy response', () => item.responseBody.text));
@@ -674,6 +1082,10 @@ function showDetail(item) {
     else if (item.hasPostData) section(body, 'Request body', el('div', 'muted', 'Not captured (over 64 KB).'));
     if (item.responseHeaders) section(body, 'Response headers', kv(item.responseHeaders));
     section(body, 'Response body', responseBody(item));
+    if (serverItems.length) {
+      const req = serverRequestFor(item);
+      section(body, 'Server log', req ? serverList([req, ...requestLines(req)]) : el('div', 'muted', 'No server entry for this request.'));
+    }
   } else {
     $('detailTitle').textContent = `${item.level}  ${fmt(item.t)}`;
     actions.append(copyButton('Copy', () => item.text));
@@ -709,6 +1121,7 @@ function renderInfo() {
   const s = report.summary || {};
   $('info').replaceChildren(
     kv({
+      ...current.info,
       'Tab title': rec.tab?.title,
       'Tab URL': rec.tab?.url,
       'Started': rec.startedAt && new Date(rec.startedAt).toLocaleString(),
@@ -721,10 +1134,23 @@ function renderInfo() {
       'Requests': s.requests,
       'Failed requests': s.failedRequests,
       'Navigations': (report.navigations || []).length,
+      'Server log': serverLogInfo(rec.serverLog),
+      'Server clock offset': serverOffset ? `${serverOffset} ms (corrected)` : undefined,
       'User agent': rec.userAgent,
       'Recorded with': report.tool,
     }),
   );
+}
+
+function serverLogInfo(s) {
+  const log = current.serverLog;
+  if (log) {
+    const n = serverItems.filter((e) => e.kind === 'log').length;
+    return `${n} log lines, ${serverItems.length - n} requests${log.truncated ? ' (cut off at the size limit)' : ''}`;
+  }
+  if (!s) return undefined;
+  if (s.status === 'on') return `Captured on ${s.server}; shown on the server's replay page after upload`;
+  return `Not captured${s.message ? ': ' + s.message : ''}`;
 }
 
 // ---------- helpers ----------
@@ -799,5 +1225,15 @@ function showError(e) {
   $('error').textContent = e ? (e.message || String(e)) : '';
 }
 </script>
+  <script>
+document.addEventListener('blackbox-files-opened', () => {
+  const where = document.createElement('span');
+  where.className = 'where';
+  where.textContent = 'Opened from files';
+  where.title = 'Read from the files you picked. Nothing is sent anywhere.';
+  document.getElementById('recStatus').replaceChildren(where);
+  document.getElementById('recStatus').hidden = false;
+});
+  </script>
 </body>
 </html>
