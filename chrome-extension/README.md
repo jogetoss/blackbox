@@ -99,9 +99,19 @@ Replay:
   **Hide future**), the latest row is marked and kept in view (**Follow**).
 - Click a row to jump the video there and see details: headers, request body, response body (JSON pretty-printed),
   **Copy as cURL**.
-- The timeline under the video marks console errors (red), failed requests (orange), server errors (purple, server
-  page) and page navigations (blue). **◀ Prev issue / Next issue ▶**, beside the clock under the video, jump the video
-  between them; they move through the problems, not by a fixed time.
+- The **Issues** timeline under the video marks console errors (red), failed requests (orange), server errors (purple,
+  server page) and page navigations (blue). **◀ Prev issue / Next issue ▶**, beside the clock under the video, jump
+  the video between them; they move through the problems, not by a fixed time.
+- **Requests** strip at the top of the Network tab (like the DevTools Network overview): one bar per request, from its
+  start to its end, coloured by kind (Document, Fetch / XHR, Other, Failed). Drag across it to list only the requests
+  active in that time range (Network tab); click to seek; double-click or **✕** to show all again. Each Network row
+  has a small waterfall bar on the same scale (on the picked range when there is one).
+- **Traces** tab (plugin replay page only): the Glowroot traces of slow and failed requests, with a summary (time, CPU,
+  SQL count and time, where the time went, slowest queries, error) and **Open full trace** (Glowroot's page). A
+  network request's details link to its trace. "⏳" means some are still being collected; the tab updates by itself.
+  Failed traces have **Retry** (one) and **Retry failed (N)** (all).
+- **Resize:** drag the line between the video and the panel (panel width), or the line above a row's details (details
+  height). Double-click a line to reset it. The sizes are remembered in this browser.
 - **◀ Older / Newer ▶** in the middle of the header open the next recording in the Recordings list (newest first), with
   its position (e.g. "5 / 6"). Extension: recordings in browser storage and the linked folder. Server: the recordings
   you can see.
@@ -118,9 +128,10 @@ files. Rebuild it after changing the viewer: `python3 build-standalone.py`.
 If the server supports it (the BlackBox Joget plugin with **Capture server logs** on), the server's log lines for the
 recorded tab's requests are kept with the recording:
 
-- At start, the extension asks the Upload URL's server to capture (`POST ?action=serverlog-start&id=<random uuid>`,
+- At start, the extension asks the Upload URL's server to capture (`POST ?action=recording-start&id=<random uuid>`,
   with your login), then adds `X-BlackBox-Id: <id>` to the recorded tab's requests to that server
-  (`declarativeNetRequest` session rule). At stop it removes the rule and calls `serverlog-stop`.
+  (`declarativeNetRequest` session rule). At stop it removes the rule and calls `recording-stop`.
+  A server with an older plugin only knows `serverlog-start` / `serverlog-stop`; the extension falls back to them.
 - Requests made by a service worker carry no tab id, and Joget's PWA service worker re-fetches almost every userview
   request, so those are tagged too. A service worker serves every tab of its site, so while recording, other tabs on
   the same server can add lines to the server log.

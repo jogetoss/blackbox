@@ -59,15 +59,16 @@
           <button id="nextIssue" title="Go to the next error, failed request or server error">Next issue ▶</button>
         </span>
       </div>
-      <div id="timeline" class="timeline" title="Click to seek">
-        <div id="markers"></div>
-        <div id="playhead" class="playhead"></div>
-      </div>
       <div class="legend">
+        <span>Issues</span>
         <span><i class="dot error"></i>Console error</span>
         <span><i class="dot failed"></i>Failed request</span>
         <span><i class="dot nav"></i>Navigation</span>
         <span id="serverLegend" hidden><i class="dot server"></i>Server error</span>
+      </div>
+      <div id="timeline" class="timeline" title="Click to seek">
+        <div id="markers"></div>
+        <div id="playhead" class="playhead"></div>
       </div>
     </section>
 
@@ -76,6 +77,7 @@
         <button data-tab="console" class="active">Console <span id="consoleCount" class="count"></span></button>
         <button data-tab="network">Network <span id="networkCount" class="count"></span></button>
         <button data-tab="server" id="serverTab" hidden>Server <span id="serverCount" class="count"></span></button>
+        <button data-tab="traces" id="tracesTab" hidden>Traces <span id="tracesCount" class="count"></span></button>
         <button data-tab="info">Info</button>
       </nav>
       <div id="toolbar" class="toolbar">

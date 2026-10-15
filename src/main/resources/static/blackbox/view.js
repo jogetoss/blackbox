@@ -40,17 +40,55 @@
       $('delete').onclick = remove;
     }
 
-    // Server log: only for users the plugin settings allow; the extension's own viewer never shows it
+    // Server log and Glowroot traces: only for users the plugin settings allow; the extension's own viewer never shows them
     let serverLog = null;
     let serverLogError = null;
+    let traces = null;
     if (meta.serverLog && meta.serverLog.status === 'attached' && meta.canViewServerLog) {
       serverLog = await BB.getJson('serverlog', { id }).catch((e) => { serverLogError = e; return null; });
+      traces = await BB.getJson('traces', { id }).catch(() => null);
     }
     $('serverLegend').hidden = !serverLog;
-    window.blackboxOpen(meta.videoSize ? BB.url('video', { id }) : null, report, { serverLog, title: meta.title, info: BB.uploadInfo(meta) });
+    window.blackboxOpen(meta.videoSize ? BB.url('video', { id }) : null, report, {
+      serverLog,
+      traces: traces && traces.traces,
+      traceUrl: (t) => BB.url('trace', { id, file: t.file }),
+      retryTraces: async (keys) => {
+        const next = await BB.post('trace-retry', { id, keys: keys.join(',') });
+        window.blackboxSetTraces(next.traces);
+        followTraces(next);
+      },
+      title: meta.title,
+      info: BB.uploadInfo(meta),
+    });
+    if (traces) followTraces(traces);
     $('recStatus').hidden = false;
     neighbours().catch(() => { /* no Older / Newer, the recording still plays */ });
     if (serverLogError) window.blackboxShowError('Could not load the server log: ' + (serverLogError.message || serverLogError));
+  }
+
+  // Traces of slow requests can arrive after the upload: poll while some are still being collected
+  let pendingTraces = 0;
+  let traceTimer = null;
+  function followTraces(t) {
+    pendingTraces = t.pending;
+    clearTimeout(traceTimer); // one poll loop, also after a retry
+    if (!t.pending) return;
+    traceTimer = setTimeout(async () => {
+      const next = await BB.getJson('traces', { id }).catch(() => null);
+      if (!next) return followTraces(t); // try again later
+      window.blackboxSetTraces(next.traces);
+      followTraces(next);
+    }, 5000);
+  }
+
+  // A download made now would miss the traces still being collected
+  for (const a of ['dlZip', 'dlHtml']) {
+    $(a).addEventListener('click', (e) => {
+      if (pendingTraces && !confirm(`${pendingTraces} Glowroot ${pendingTraces === 1 ? 'trace is' : 'traces are'} still being collected and would be missing from this download. Download anyway?`)) {
+        e.preventDefault();
+      }
+    });
   }
 
   // Older / Newer: the recordings this user can see, in the list page's order (newest first)

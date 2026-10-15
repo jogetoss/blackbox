@@ -113,7 +113,7 @@ async function startServerLog(tabId) {
   }
   const id = crypto.randomUUID();
   try {
-    const res = await fetch(uploadUrl + '?' + new URLSearchParams({ action: 'serverlog-start', id }), { method: 'POST', credentials: 'include' });
+    const res = await postAction(uploadUrl, 'recording-start', 'serverlog-start', id);
     const body = await res.json().catch(() => null);
     if (!res.ok) {
       const message = res.status === 401 ? `Not logged in to ${origin}.` : body?.error?.message || `HTTP ${res.status}`;
@@ -141,8 +141,17 @@ async function startServerLog(tabId) {
 async function stopServerLog(serverLog) {
   await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [SERVER_LOG_RULE] }).catch(() => {});
   if (!serverLog?.id) return;
-  await fetch(serverLog.uploadUrl + '?' + new URLSearchParams({ action: 'serverlog-stop', id: serverLog.id }), { method: 'POST', credentials: 'include' })
+  await postAction(serverLog.uploadUrl, 'recording-stop', 'serverlog-stop', serverLog.id)
     .catch(() => {}); // the server also stops capturing once the id goes quiet
+}
+
+// POSTs action; a server with an older BlackBox plugin only knows the old name and answers 400 "Unknown action"
+async function postAction(uploadUrl, action, oldName, id) {
+  const send = (a) => fetch(uploadUrl + '?' + new URLSearchParams({ action: a, id }), { method: 'POST', credentials: 'include' });
+  const res = await send(action);
+  if (res.status !== 400) return res;
+  const body = await res.clone().json().catch(() => null);
+  return body?.error?.message === 'Unknown action.' ? send(oldName) : res;
 }
 
 async function stop(reason) {

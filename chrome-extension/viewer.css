@@ -12,6 +12,7 @@
   --warn-bg: #fef7e0;
   --nav: #1a73e8;
   --failed: #e8710a;
+  --api: #188038;
   --server: #9334e6;
   --current: #e8f0fe;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -34,6 +35,7 @@
     --warn-bg: #3a3320;
     --nav: #8ab4f8;
     --failed: #fcad70;
+    --api: #81c995;
     --server: #c58af9;
     --current: #283a57;
   }
@@ -53,6 +55,7 @@
   --warn-bg: #3a3320;
   --nav: #8ab4f8;
   --failed: #fcad70;
+  --api: #81c995;
   --server: #c58af9;
   --current: #283a57;
 }
@@ -89,10 +92,11 @@ body.page-recordings .library { max-height: none; border-bottom: 0; background: 
 
 #app {
   flex: 1; min-height: 0;
-  display: grid; grid-template-columns: minmax(0, 3fr) minmax(380px, 2fr);
+  display: grid; grid-template-columns: minmax(0, 3fr) var(--panel-w, minmax(380px, 2fr));
 }
 @media (max-width: 900px) {
   #app { grid-template-columns: 1fr; grid-template-rows: auto minmax(400px, 1fr); }
+  .splitter.split-x { display: none; }
 }
 
 /* ---- player ---- */
@@ -112,12 +116,43 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 6p
 .list.mini { flex: none; max-height: 240px; border: 1px solid var(--line); border-radius: 6px; }
 .marker.nav { background: var(--nav); top: 0; bottom: 0; width: 2px; opacity: .7; }
 .playhead { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--fg); pointer-events: none; }
-.legend { display: flex; gap: 16px; color: var(--fg-2); font-size: 12px; }
+.legend { display: flex; align-items: center; gap: 4px 14px; flex-wrap: wrap; color: var(--fg-2); font-size: 12px; margin-bottom: -5px; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
 .dot.error { background: var(--error); } .dot.failed { background: var(--failed); } .dot.nav { background: var(--nav); }
 
+/* Network overview on the Network tab, under the toolbar (viewer.js builds it) */
+.net-overview { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.ov-head { display: flex; align-items: center; gap: 4px 14px; flex-wrap: wrap; color: var(--fg-2); font-size: 12px; }
+.ov-head .dot { border-radius: 2px; }
+.dot.doc { background: var(--nav); } .dot.api { background: var(--api); } .dot.other { background: var(--fg-2); }
+.ov-range { margin-left: auto; display: flex; align-items: center; gap: 6px; font-family: var(--mono); color: var(--fg); }
+.ov-range button { padding: 0 6px; }
+.ov-strip {
+  position: relative; height: 44px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px;
+  cursor: crosshair; touch-action: none; user-select: none;
+}
+.ov-strip canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ov-sel {
+  position: absolute; top: 0; bottom: 0; pointer-events: none;
+  background: color-mix(in srgb, var(--accent) 18%, transparent); border: 1px solid var(--accent); border-width: 0 1px;
+}
+/* Waterfall column of a network row */
+.row .wf { position: relative; align-self: center; height: 8px; background: var(--bg-2); border-radius: 2px; }
+.wf-bar { position: absolute; top: 0; bottom: 0; border-radius: 2px; background: var(--fg-2); }
+.wf-bar.doc { background: var(--nav); } .wf-bar.api { background: var(--api); } .wf-bar.failed { background: var(--failed); }
+
+/* Resize handles (viewer.js): between video and panel, and above the detail pane */
+.splitter { position: absolute; z-index: 5; touch-action: none; }
+.splitter.split-x { top: 0; bottom: 0; left: -4px; width: 8px; cursor: col-resize; }
+.splitter.split-y { left: 0; right: 0; top: -5px; height: 8px; cursor: row-resize; }
+.splitter:hover, .resizing-split-x .split-x, .resizing-split-y .split-y {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+body.resizing-split-x { cursor: col-resize; user-select: none; }
+body.resizing-split-y { cursor: row-resize; user-select: none; }
+
 /* ---- panel ---- */
-.panel { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.panel { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .tabs { display: flex; border-bottom: 1px solid var(--line); }
 .tabs button { border: 0; border-radius: 0; background: none; padding: 8px 14px; border-bottom: 2px solid transparent; }
 .tabs button.active { border-bottom-color: var(--accent); color: var(--accent); }
@@ -134,7 +169,13 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 6p
 }
 .row > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row.console, .row.server { grid-template-columns: 64px 56px minmax(0, 1fr) minmax(0, 140px); }
-.row.network { grid-template-columns: 64px 52px 44px minmax(0, 1fr) 64px 56px; }
+.row.trace { grid-template-columns: 64px 78px 36px minmax(0, 1fr) 56px 64px; }
+.row.trace .state { color: var(--fg-2); }
+.row.state-failed .state { color: var(--error); }
+.row.state-pending .state { color: var(--warn); }
+.row.state-saved .state { color: var(--accent); }
+.tab-note { padding: 6px 10px; border-bottom: 1px solid var(--line); background: var(--warn-bg); color: var(--warn); font-size: 12px; }
+.row.network { grid-template-columns: 64px 52px 44px minmax(0, 1fr) 64px 56px 72px; }
 .row:hover { background: var(--bg-2); }
 .row.future { opacity: .4; }
 .list.hide-future .row.future { display: none; }
@@ -153,7 +194,7 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 6p
 .kv dt { color: var(--fg-2); }
 .kv dd { margin: 0; word-break: break-all; font-family: var(--mono); font-size: 12px; }
 
-.detail { flex: 0 0 45%; min-height: 0; display: flex; flex-direction: column; border-top: 2px solid var(--line); }
+.detail { position: relative; flex: 0 0 var(--detail-h, 45%); min-height: 0; display: flex; flex-direction: column; border-top: 2px solid var(--line); }
 .detail-head { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: var(--bg-2); }
 .detail-head strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .detail-actions { display: flex; gap: 6px; }

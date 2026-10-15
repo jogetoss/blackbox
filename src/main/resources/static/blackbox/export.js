@@ -7,6 +7,7 @@
     const meta = JSON.parse(text('bb-meta'));
     const report = JSON.parse(text('bb-session'));
     const serverLog = text('bb-serverlog') ? JSON.parse(text('bb-serverlog')) : null;
+    const traces = text('bb-traces') ? JSON.parse(text('bb-traces')) : null; // summaries; the full pages are in the ZIP
 
     // Nothing here talks to a server: no downloads, no delete, no link to the recordings list
     for (const id of ['dlZip', 'dlHtml', 'delete', 'back']) if ($(id)) $(id).hidden = true;
@@ -24,7 +25,7 @@
     const video = b64 ? await (await fetch('data:video/webm;base64,' + b64)).blob() : null;
     $('serverLegend').hidden = !serverLog;
     window.blackboxTimeInUrl = true; // blackbox-….html?t=… opens at that moment
-    window.blackboxOpen(video, report, { serverLog, title: meta.title, info: uploadInfo(meta) });
+    window.blackboxOpen(video, report, { serverLog, traces, title: meta.title, info: uploadInfo(meta) });
     $('recStatus').hidden = false;
   } catch (e) {
     $('loading').textContent = '';
