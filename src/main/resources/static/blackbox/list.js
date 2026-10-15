@@ -5,11 +5,36 @@
 
   load();
   $('search').oninput = render;
+  $('importFile').onchange = (e) => {
+    const file = e.target.files[0];
+    e.target.value = '';
+    if (file) importZip(file);
+  };
+
+  // A ZIP from Download ZIP (here or on another Joget) becomes a new recording owned by the user
+  async function importZip(file) {
+    const label = $('importLabel');
+    const text = label.firstChild;
+    label.classList.add('busy');
+    $('error').hidden = true;
+    try {
+      const meta = await BB.post('import', {}, file, 'application/zip', (done, total) => {
+        text.textContent = 'Importing… ' + Math.round(100 * done / total) + '% ';
+      });
+      location.href = 'view?id=' + encodeURIComponent(meta.id);
+    } catch (e) {
+      if (!BB.loginNeeded(e, $('error'))) showError(e);
+    } finally {
+      text.textContent = 'Import ZIP… ';
+      label.classList.remove('busy');
+    }
+  }
 
   async function load() {
     try {
       const data = await BB.getJson('list');
       $('who').textContent = data.user.name;
+      $('importLabel').hidden = !data.canUpload;
       recordings = data.recordings;
       $('content').hidden = false;
       render();
@@ -60,16 +85,10 @@
     const v = el('a', null, 'View');
     v.href = view;
     actions.append(v);
-    if (r.videoSize) {
-      const dv = el('a', null, 'Video');
-      dv.href = BB.url('video', { id: r.id, download: 1 });
-      dv.title = 'Download recording.webm';
-      actions.append(dv);
-    }
-    const ds = el('a', null, 'JSON');
-    ds.href = BB.url('session', { id: r.id, download: 1 });
-    ds.title = 'Download session.json';
-    actions.append(ds);
+    const zip = el('a', null, 'ZIP');
+    zip.href = BB.url('download', { id: r.id, format: 'zip' });
+    zip.title = 'Download the recording as one ZIP (to import it elsewhere)';
+    actions.append(zip);
     if (r.canDelete) {
       const del = el('button', 'del', 'Delete');
       del.onclick = () => remove(r, del);

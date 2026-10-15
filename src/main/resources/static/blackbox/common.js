@@ -93,5 +93,16 @@
     return true;
   }
 
-  window.BB = { ctx, service, url, getJson, post, el, fmtDuration, fmtSize, fmtDate, loginNeeded, ApiError };
+  // "Uploaded by" rows for the Info tab (the replay page and the downloaded HTML file)
+  function uploadInfo(meta) {
+    const who = (o) => (o.ownerName && o.ownerName !== o.owner ? o.ownerName + ' (' + o.owner + ')' : o.owner);
+    const info = { 'Uploaded by': who(meta), 'Uploaded': fmtDate(meta.uploadedAt) };
+    if (meta.importedFrom) {
+      info['First uploaded by'] = who(meta.importedFrom);
+      info['First uploaded'] = fmtDate(meta.importedFrom.uploadedAt);
+    }
+    return info;
+  }
+
+  window.BB = { ctx, service, url, getJson, post, el, fmtDuration, fmtSize, fmtDate, loginNeeded, ApiError, uploadInfo };
 })();
