@@ -11,7 +11,7 @@ const Store = (() => {
   // { kind: 'saved' | 'disk' | 'history', id, startedAt, durationMs, tab, uploaded, onDisk }, newest first.
   // 'history' = uploaded, local copy gone.
   async function allRows() {
-    const saved = (await idbList()).map((r) => ({ kind: 'saved', id: r.id, ...summary(r.report), uploaded: r.uploaded, recovered: !!r.recovered, onDisk: false }));
+    const saved = (await idbList()).map((r) => ({ kind: 'saved', id: r.id, ...summary(r.report), uploaded: r.uploaded, recovered: !!r.recovered, imported: !!r.imported, onDisk: false }));
     const savedIds = new Set(saved.map((r) => r.id));
     for (const r of saved) if (state.diskItems.some((d) => d.id === r.id)) r.onDisk = true;
     const disk = [];
@@ -149,6 +149,7 @@ const Store = (() => {
       out.push(badge(r.uploaded ? 'Uploaded' : 'Not uploaded', !!r.uploaded));
     }
     if (r.recovered) out.push(badge('Recovered', false));
+    if (r.imported) out.push(badge('Imported', false));
     if (r.kind === 'disk') out.push(badge('On disk', true));
     else if (r.onDisk) out.push(badge('Also on disk', true));
     return out;

@@ -12,6 +12,7 @@
   --warn-bg: #fef7e0;
   --nav: #1a73e8;
   --failed: #e8710a;
+  --server: #9334e6;
   --current: #e8f0fe;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
@@ -33,6 +34,7 @@
     --warn-bg: #3a3320;
     --nav: #8ab4f8;
     --failed: #fcad70;
+    --server: #c58af9;
     --current: #283a57;
   }
 }
@@ -51,6 +53,7 @@
   --warn-bg: #3a3320;
   --nav: #8ab4f8;
   --failed: #fcad70;
+  --server: #c58af9;
   --current: #283a57;
 }
 
@@ -67,6 +70,7 @@ button, .button {
   border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer;
 }
 button:hover, .button:hover { background: var(--bg-3); }
+a.button { display: inline-block; text-decoration: none; }
 input, select { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 3px 6px; }
 code { font-family: var(--mono); }
 [hidden] { display: none !important; }
@@ -75,11 +79,10 @@ header {
   display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
   padding: 8px 16px; border-bottom: 1px solid var(--line);
 }
-header h1 { font-size: 15px; margin: 0; }
+header h1 { font-size: 15px; margin: 0; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 header h1 a { color: var(--accent); text-decoration: none; margin-right: 10px; font-weight: normal; }
 body.page-recordings { overflow: auto; }
 body.page-recordings .library { max-height: none; border-bottom: 0; background: var(--bg); }
-.meta { flex: 1; min-width: 0; color: var(--fg-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .actions { display: flex; gap: 8px; }
 #error { background: var(--error-bg); color: var(--error); padding: 8px 16px; }
 .empty { flex: 1; display: grid; place-items: center; color: var(--fg-2); padding: 16px; text-align: center; }
@@ -98,11 +101,15 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 6p
 .no-video { flex: 1; display: grid; place-items: center; text-align: center; background: var(--bg-2); border-radius: 6px; color: var(--fg-2); padding: 16px; }
 .clock-row { display: flex; justify-content: space-between; align-items: center; }
 #clock { font-family: var(--mono); }
-.jump { display: flex; gap: 6px; }
+.jump { display: flex; gap: 6px; white-space: nowrap; }
 .timeline { position: relative; height: 28px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
 .marker { position: absolute; top: 4px; bottom: 4px; width: 3px; margin-left: -1px; border-radius: 2px; }
 .marker.error { background: var(--error); }
 .marker.failed { background: var(--failed); top: 8px; bottom: 8px; }
+.marker.server { background: var(--server); top: 14px; bottom: 0; }
+.dot.server { background: var(--server); }
+.row.lvl-request .t { color: var(--fg-2); }
+.list.mini { flex: none; max-height: 240px; border: 1px solid var(--line); border-radius: 6px; }
 .marker.nav { background: var(--nav); top: 0; bottom: 0; width: 2px; opacity: .7; }
 .playhead { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--fg); pointer-events: none; }
 .legend { display: flex; gap: 16px; color: var(--fg-2); font-size: 12px; }
@@ -118,6 +125,7 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 6p
 .toolbar { display: flex; gap: 8px; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .toolbar input[type=search] { flex: 1; min-width: 120px; }
 .toolbar label { display: flex; align-items: center; gap: 4px; color: var(--fg-2); white-space: nowrap; }
+.levels { display: flex; gap: 10px; }
 
 .list { flex: 1; min-height: 0; overflow: auto; font-family: var(--mono); font-size: 12px; }
 .row {
@@ -125,7 +133,7 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 6p
   cursor: pointer; align-items: baseline;
 }
 .row > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row.console { grid-template-columns: 64px 56px minmax(0, 1fr) minmax(0, 140px); }
+.row.console, .row.server { grid-template-columns: 64px 56px minmax(0, 1fr) minmax(0, 140px); }
 .row.network { grid-template-columns: 64px 52px 44px minmax(0, 1fr) 64px 56px; }
 .row:hover { background: var(--bg-2); }
 .row.future { opacity: .4; }
@@ -177,6 +185,21 @@ button:disabled { opacity: .5; cursor: default; }
 .upload-box input, .upload-box textarea { font: inherit; padding: 6px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; }
 .upload-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
 .upload-box progress { width: 100%; }
-.rec-status { padding: 4px 16px; font-size: 13px; color: var(--fg-2); }
+/* Status bar under the header, the same on every replay page: where this copy is, then its actions */
+.rec-status { padding: 4px 16px; font-size: 13px; color: var(--fg-2); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+header .rec-status { padding: 0; }
+/* Replay pages, one row: [title (shrinks with "…" first) + Older / Newer] on the left, where + actions on the right.
+   The header wraps only when even a short title can't fit beside the buttons. */
+header.replay-head { gap: 8px 24px; }
+.header-left { display: flex; align-items: center; gap: 24px; flex: 1 1 280px; min-width: 0; }
+.header-left h1 { flex: 0 1 auto; }
+.header-right { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; white-space: nowrap; }
+.header-right .rec-status { flex-wrap: nowrap; }
+.rec-nav { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.rec-nav[hidden] { display: none !important; }
+.button.disabled { opacity: .45; pointer-events: none; }
+.where { font-weight: 600; color: var(--fg); background: var(--bg-3); border-radius: 10px; padding: 1px 9px; margin-right: 4px; cursor: help; }
+.notes { white-space: pre-wrap; padding: 4px 16px 8px; margin: 0; color: var(--fg-2); }
+.rec-status[hidden] { display: none !important; }
 .rec-status a, .upload-box a { color: var(--accent); }
 .muted { color: var(--fg-2); }

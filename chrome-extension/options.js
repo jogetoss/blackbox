@@ -8,8 +8,14 @@ Server.getSettings().then((saved) => {
   if (saved.uploadUrl) check(saved.uploadUrl);
 });
 
-chrome.storage.local.get('theme').then(({ theme }) => { $('theme').value = theme || ''; });
+chrome.storage.local.get(['theme', 'autoUpload', 'textSize']).then(({ theme, autoUpload, textSize }) => {
+  $('theme').value = theme || '';
+  $('textSize').value = textSize || '1';
+  $('autoUpload').checked = !!autoUpload;
+});
 $('theme').onchange = () => chrome.storage.local.set({ theme: $('theme').value });
+$('textSize').onchange = () => chrome.storage.local.set({ textSize: $('textSize').value });
+$('autoUpload').onchange = () => chrome.storage.local.set({ autoUpload: $('autoUpload').checked });
 
 for (const id of ['url', 'viewUrl']) $(id).onkeydown = (e) => { if (e.key === 'Enter') $('save').click(); };
 

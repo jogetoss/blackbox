@@ -14,6 +14,7 @@ function buildReport(meta, consoleEntries, navigations, network, stoppedAt, reas
       capturedSurface: meta.settings?.displaySurface, // "window", "monitor" or "browser" (tab)
       tab: meta.tab,
       userAgent: meta.userAgent || navigator.userAgent,
+      serverLog: meta.serverLog ? { status: meta.serverLog.status, id: meta.serverLog.id, server: meta.serverLog.server, message: meta.serverLog.message } : undefined,
     },
     summary: {
       console: consoleEntries.length,

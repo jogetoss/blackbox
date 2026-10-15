@@ -23,6 +23,8 @@
       <button id="linkFolder" title="Pick Downloads/blackbox to list recordings saved on disk">Link folder…</button>
       <button id="allowFolder" hidden>Allow access</button>
       <button id="unlinkFolder" hidden>Unlink folder</button>
+      <label class="button" title="Add a recording ZIP (Download ZIP on a BlackBox server) to the extension">Import ZIP…
+        <input type="file" id="importZip" accept=".zip,application/zip" hidden></label>
       <span id="folderInfo" class="muted"></span>
     </div>
     <table>
@@ -49,9 +51,11 @@
   </section>
 
   <script src="idb.js"></script>
+  <script src="zip.js"></script>
   <script src="report.js"></script>
   <script src="server.js"></script>
   <script src="store.js"></script>
+  <script src="actions.js"></script>
   <script src="recordings.js"></script>
 </body>
 </html>

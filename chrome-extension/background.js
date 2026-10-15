@@ -20,11 +20,18 @@ const FORWARDED_EVENTS = new Set([
   'Page.frameNavigated',
 ]);
 
+// Server log capture: requests from the recorded tab to the Upload URL's server carry this header, so the
+// BlackBox plugin can keep their log lines (see README "Server logs").
+const SERVER_LOG_RULE = 1;
+const SERVER_LOG_HEADER = 'X-BlackBox-Id';
+const ALL_RESOURCE_TYPES = ['main_frame', 'sub_frame', 'stylesheet', 'script', 'image', 'font', 'object',
+  'xmlhttprequest', 'ping', 'csp_report', 'media', 'websocket', 'other'];
+
 // requestId -> resource type, so we only fetch bodies worth keeping.
 // If the worker restarts this map is empty and we simply fetch every body.
 const resourceTypes = new Map();
 
-// rec = { tabId, windowId, startedAt? }  (startedAt is set once the user has picked a source)
+// rec = { tabId, windowId, startedAt?, serverLog? }  (startedAt is set once the user has picked a source)
 async function getState() {
   return (await chrome.storage.session.get('rec')).rec || null;
 }
@@ -83,10 +90,59 @@ async function sourcePicked(startedAt) {
     await chrome.debugger.detach({ tabId }).catch(() => {});
     throw new Error('Could not attach the debugger: ' + e.message);
   }
+  const serverLog = await startServerLog(tabId);
+  if (serverLog.id) {
+    const now = await getState();
+    if (now?.startedAt === startedAt) await setState({ ...now, serverLog });
+    else await stopServerLog(serverLog); // stopped while the server was answering
+  }
   await chrome.action.setBadgeBackgroundColor({ color: '#d93025' });
   await chrome.action.setBadgeText({ text: 'REC' });
   const tab = await chrome.tabs.get(tabId);
-  return { url: tab.url, title: tab.title };
+  return { url: tab.url, title: tab.title, serverLog };
+}
+
+// Asks the Upload URL's server to capture its log lines for this recording, then tags the tab's requests to it.
+// Returns { status: 'on', id, server } or { status: 'off', message } (the recording works either way).
+async function startServerLog(tabId) {
+  const { uploadUrl } = await chrome.storage.local.get('uploadUrl');
+  if (!uploadUrl) return { status: 'off', message: 'No Upload URL in Settings.' };
+  const origin = new URL(uploadUrl).origin;
+  if (!(await chrome.permissions.contains({ origins: [origin + '/*'] }))) {
+    return { status: 'off', message: `No access to ${origin} (Settings > Save).` };
+  }
+  const id = crypto.randomUUID();
+  try {
+    const res = await fetch(uploadUrl + '?' + new URLSearchParams({ action: 'serverlog-start', id }), { method: 'POST', credentials: 'include' });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      const message = res.status === 401 ? `Not logged in to ${origin}.` : body?.error?.message || `HTTP ${res.status}`;
+      return { status: 'off', server: origin, message };
+    }
+  } catch (e) {
+    return { status: 'off', server: origin, message: e.message };
+  }
+  await chrome.declarativeNetRequest.updateSessionRules({
+    removeRuleIds: [SERVER_LOG_RULE],
+    addRules: [{
+      id: SERVER_LOG_RULE,
+      priority: 1,
+      action: { type: 'modifyHeaders', requestHeaders: [{ header: SERVER_LOG_HEADER, operation: 'set', value: id }] },
+      // TAB_ID_NONE: requests a service worker makes. Joget's PWA service worker (sw.js) re-fetches almost every
+      // userview request, and those carry no tab id. A service worker serves all tabs of its origin, so other tabs
+      // on the same server are tagged too while recording.
+      condition: { tabIds: [tabId, chrome.tabs.TAB_ID_NONE], urlFilter: '|' + origin + '/', resourceTypes: ALL_RESOURCE_TYPES },
+    }],
+  });
+  return { status: 'on', id, server: origin, uploadUrl };
+}
+
+// Stops tagging requests and tells the server the capture is over (its lines stay there until the upload).
+async function stopServerLog(serverLog) {
+  await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [SERVER_LOG_RULE] }).catch(() => {});
+  if (!serverLog?.id) return;
+  await fetch(serverLog.uploadUrl + '?' + new URLSearchParams({ action: 'serverlog-stop', id: serverLog.id }), { method: 'POST', credentials: 'include' })
+    .catch(() => {}); // the server also stops capturing once the id goes quiet
 }
 
 async function stop(reason) {
@@ -100,6 +156,7 @@ async function stop(reason) {
     return null;
   }
   await chrome.debugger.detach({ tabId: rec.tabId }).catch(() => {});
+  await stopServerLog(rec.serverLog);
   const res = await toRecorder({ type: 'stop', reason });
   if (res?.error) throw new Error(res.error);
   return res;
@@ -169,6 +226,7 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
   await chrome.action.setBadgeText({ text: '' });
   if (rec.startedAt) {
     await chrome.debugger.detach({ tabId: rec.tabId }).catch(() => {});
+    await stopServerLog(rec.serverLog);
     await recoverPartials().catch((e) => console.warn('Could not recover the recording:', e));
   }
 });

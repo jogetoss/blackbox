@@ -11,7 +11,8 @@
     "downloads",
     "storage",
     "unlimitedStorage",
-    "activeTab"
+    "activeTab",
+    "declarativeNetRequestWithHostAccess"
   ],
   "action": {
     "default_popup": "popup.html",

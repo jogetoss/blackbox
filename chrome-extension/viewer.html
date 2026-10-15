@@ -3,18 +3,33 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BlackBox replay</title>
+  <title>BlackBox Replay</title>
   <link rel="stylesheet" href="viewer.css">
   <script src="theme.js"></script>
 </head>
 <body>
-  <header>
-    <h1><a id="back" href="recordings.html" hidden>← Recordings</a> BlackBox replay</h1>
-    <div id="meta" class="meta"></div>
-    <div class="actions">
-      <label class="button">Open files…
-        <input type="file" id="files" multiple accept=".webm,.json,video/webm,application/json" hidden>
-      </label>
+  <header class="replay-head">
+    <div class="header-left">
+      <h1><a id="back" href="recordings.html" hidden>← Recordings</a> <span id="recTitle">BlackBox replay</span></h1>
+      <nav id="recNav" class="rec-nav" hidden>
+        <a id="olderRec" class="button" href="#">◀ Older</a>
+        <span id="recPos"></span>
+        <a id="newerRec" class="button" href="#">Newer ▶</a>
+      </nav>
+    </div>
+    <div class="header-right">
+      <div id="recStatus" class="rec-status" hidden></div>
+      <div class="actions">
+        <label class="button">Open files…
+          <input type="file" id="files" multiple accept=".webm,.json,.zip,video/webm,application/json,application/zip" hidden>
+        </label>
+        <select id="textSize" title="Text size (remembered in this browser)">
+          <option value="0.9">Aa 90%</option>
+          <option value="1" selected>Aa 100%</option>
+          <option value="1.15">Aa 115%</option>
+          <option value="1.3">Aa 130%</option>
+        </select>
+      </div>
     </div>
   </header>
 
@@ -22,12 +37,27 @@
   <div id="folderAccess" class="rec-status" hidden>
     <button id="allowFolder">Allow access</button> This recording is in the linked folder; Chrome needs your OK to read it again.
   </div>
-  <div id="recStatus" class="rec-status" hidden></div>
+  <!-- upload form (actions.js) -->
+  <section id="uploadBox" class="upload-box" hidden>
+    <strong id="upHeading">Upload</strong>
+    <label for="upTitle">Title</label>
+    <input id="upTitle" type="text" maxlength="200">
+    <label for="upNotes">Notes <span class="muted">(steps, what went wrong)</span></label>
+    <textarea id="upNotes" maxlength="5000" rows="3"></textarea>
+    <div class="upload-actions">
+      <button id="upSend" class="primary">Send</button>
+      <button id="upCancel">Cancel</button>
+      <span id="upStatus"></span>
+    </div>
+    <progress id="upProgress" max="1" value="0" hidden></progress>
+  </section>
+  <!-- /upload form -->
 
   <div id="error" class="error" hidden></div>
 
   <main id="empty" class="empty">
     <p>Drop <code>recording.webm</code> and <code>session.json</code> here (from <code>Downloads/blackbox/…</code>),
+      or a recording ZIP from a BlackBox server,
       or use the buttons above.</p>
   </main>
 
@@ -46,8 +76,8 @@
       <div class="clock-row">
         <span id="clock">0:00.0 / 0:00.0</span>
         <span class="jump">
-          <button id="prevIssue" title="Previous error or failed request">◀ Prev issue</button>
-          <button id="nextIssue" title="Next error or failed request">Next issue ▶</button>
+          <button id="prevIssue" title="Go to the previous error, failed request or server error">◀ Prev issue</button>
+          <button id="nextIssue" title="Go to the next error, failed request or server error">Next issue ▶</button>
         </span>
       </div>
       <div id="timeline" class="timeline" title="Click to seek">
@@ -87,8 +117,11 @@
   </main>
 
   <script src="idb.js"></script>
+  <script src="zip.js"></script>
   <script src="viewer.js"></script>
   <script src="store.js"></script>
+  <script src="server.js"></script>
+  <script src="actions.js"></script>
   <script src="replay.js"></script>
 </body>
 </html>
