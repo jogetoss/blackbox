@@ -17,7 +17,9 @@ import org.json.JSONObject;
 
 /**
  * A recording as one ZIP, to move it to another Joget: meta.json (title, notes, who uploaded it), session.json,
- * server-log.json (if any), the Glowroot traces (traces.json and traces/*.html, if any) and recording.webm.
+ * system-log.json (if any), the Glowroot traces (traces.json and traces/*.html, if any), the server load samples
+ * (gauges.json, if any), the System Info snapshot (server-info.json, if any), each node's Glowroot data
+ * (glowroot/{node}.zip with glowroot/{node}.json, if any) and recording.webm.
  * {@link #importZip} turns such a ZIP into a new recording.
  */
 public class RecordingZip {
@@ -30,13 +32,13 @@ public class RecordingZip {
     private RecordingZip() {
     }
 
-    /** serverLog and video may be null. */
-    public static void write(OutputStream out, JSONObject meta, Path session, Path serverLog, Path video) throws IOException {
-        write(out, meta, session, serverLog, video, null);
+    /** systemLog and video may be null. */
+    public static void write(OutputStream out, JSONObject meta, Path session, Path systemLog, Path video) throws IOException {
+        write(out, meta, session, systemLog, video, null);
     }
 
     /** traceDir: the folder whose Glowroot traces go in (the recording's), or null for none. */
-    public static void write(OutputStream out, JSONObject meta, Path session, Path serverLog, Path video, Path traceDir)
+    public static void write(OutputStream out, JSONObject meta, Path session, Path systemLog, Path video, Path traceDir)
             throws IOException {
         JSONObject m = new JSONObject();
         try {
@@ -53,8 +55,8 @@ public class RecordingZip {
         zip.write(m.toString().getBytes(StandardCharsets.UTF_8));
         zip.closeEntry();
         add(zip, RecordingStore.SESSION, session);
-        if (serverLog != null) {
-            add(zip, RecordingStore.SERVER_LOG, serverLog);
+        if (systemLog != null) {
+            add(zip, RecordingStore.SYSTEM_LOG, systemLog);
         }
         if (traceDir != null) {
             JSONArray traces = TraceStore.merge(traceDir, System.currentTimeMillis());
@@ -64,6 +66,31 @@ public class RecordingZip {
                 zip.closeEntry();
                 for (Path f : TraceStore.traceFiles(traceDir)) {
                     add(zip, TraceStore.DIR + "/" + f.getFileName().toString(), f);
+                }
+            }
+            Path info = traceDir.resolve(ServerInfo.FILE);
+            if (Files.isRegularFile(info)) {
+                add(zip, ServerInfo.FILE, info);
+            }
+            JSONObject gauges = GaugeStore.merge(traceDir);
+            if (gauges != null) {
+                zip.putNextEntry(new ZipEntry(GaugeStore.MERGED));
+                zip.write(gauges.toString().getBytes(StandardCharsets.UTF_8));
+                zip.closeEntry();
+            }
+        }
+        if (traceDir != null) {
+            // Glowroot data: built packages only, with their status; stored as they are (ZIPs already)
+            zip.setLevel(Deflater.NO_COMPRESSION);
+            JSONArray statuses = GlowrootData.statuses(traceDir);
+            for (int i = 0; i < statuses.length(); i++) {
+                JSONObject s = statuses.optJSONObject(i);
+                Path pkg = s != null && "saved".equals(s.optString("state")) ? GlowrootData.zipFile(traceDir, s.optString("node")) : null;
+                if (pkg != null) {
+                    add(zip, GlowrootData.DIR + "/" + s.optString("node") + ".zip", pkg);
+                    zip.putNextEntry(new ZipEntry(GlowrootData.DIR + "/" + s.optString("node") + ".json"));
+                    zip.write(s.toString().getBytes(StandardCharsets.UTF_8));
+                    zip.closeEntry();
                 }
             }
         }
@@ -83,10 +110,10 @@ public class RecordingZip {
 
     /**
      * Creates a recording from a ZIP made by {@link #write} (or any ZIP with session.json at its top level).
-     * The importer becomes the owner; who uploaded it first is kept as importedFrom. The server log is kept only
-     * when keepServerLog is true. Each file is limited to maxBytes. Nothing is kept if any part is invalid.
+     * The importer becomes the owner; who uploaded it first is kept as importedFrom. The system log is kept only
+     * when keepSystemLog is true. Each file is limited to maxBytes. Nothing is kept if any part is invalid.
      */
-    public static JSONObject importZip(RecordingStore store, Path zipFile, long maxBytes, boolean keepServerLog,
+    public static JSONObject importZip(RecordingStore store, Path zipFile, long maxBytes, boolean keepSystemLog,
             String owner, String ownerName) throws IOException, RecordingStore.InvalidUpload {
         ZipFile zip;
         try {
@@ -113,7 +140,7 @@ public class RecordingZip {
             try (InputStream in = zip.getInputStream(sessionEntry)) {
                 meta = store.create(in, maxBytes, owner, ownerName, old.optString("title"), old.optString("notes"));
             }
-            meta.remove("serverLogId"); // a capture id from the other server: nothing to attach here
+            meta.remove("systemLogId"); // a capture id from the other server: nothing to attach here
             String id = meta.optString("id");
             try {
                 ZipEntry videoEntry = zip.getEntry(RecordingStore.VIDEO);
@@ -122,10 +149,13 @@ public class RecordingZip {
                         meta = store.writeVideo(id, in, maxBytes);
                     }
                 }
-                ZipEntry logEntry = zip.getEntry(RecordingStore.SERVER_LOG);
-                if (logEntry != null && keepServerLog) {
-                    meta.put("serverLog", importServerLog(store, id, zip, logEntry, maxBytes));
+                ZipEntry logEntry = zip.getEntry(RecordingStore.SYSTEM_LOG);
+                if (logEntry != null && keepSystemLog) {
+                    meta.put("systemLog", importSystemLog(store, id, zip, logEntry, maxBytes));
                     importTraces(store, id, zip, maxBytes);
+                    importGauges(store, id, zip, maxBytes);
+                    importServerInfo(store, id, zip);
+                    importGlowroot(store, id, zip, maxBytes);
                 }
                 if (!old.optString("owner").isEmpty()) {
                     meta.put("importedFrom", new JSONObject()
@@ -144,24 +174,92 @@ public class RecordingZip {
         }
     }
 
-    private static JSONObject importServerLog(RecordingStore store, String id, ZipFile zip, ZipEntry entry, long maxBytes)
+    private static JSONObject importSystemLog(RecordingStore store, String id, ZipFile zip, ZipEntry entry, long maxBytes)
             throws IOException, RecordingStore.InvalidUpload, JSONException {
         byte[] bytes;
         try (InputStream in = zip.getInputStream(entry)) {
-            bytes = read(in, maxBytes, RecordingStore.SERVER_LOG);
+            bytes = read(in, maxBytes, RecordingStore.SYSTEM_LOG);
         }
         JSONObject log;
         try {
             log = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
         } catch (JSONException e) {
-            throw new RecordingStore.InvalidUpload("server-log.json in the ZIP is not valid JSON.");
+            throw new RecordingStore.InvalidUpload("system-log.json in the ZIP is not valid JSON.");
         }
         JSONArray entries = log.optJSONArray("entries");
         if (entries == null) {
-            throw new RecordingStore.InvalidUpload("server-log.json in the ZIP has no entries list.");
+            throw new RecordingStore.InvalidUpload("system-log.json in the ZIP has no entries list.");
         }
-        Files.write(store.path(id, RecordingStore.SERVER_LOG), bytes);
-        return ServerLogStore.summary(entries, log.optBoolean("truncated"));
+        Files.write(store.path(id, RecordingStore.SYSTEM_LOG), bytes);
+        return SystemLogStore.summary(entries, log.optBoolean("truncated"));
+    }
+
+    /** glowroot/{node}.zip with its glowroot/{node}.json, as written; a package without a valid saved status is skipped. */
+    private static void importGlowroot(RecordingStore store, String id, ZipFile zip, long maxBytes)
+            throws IOException, RecordingStore.InvalidUpload {
+        java.util.Enumeration<? extends ZipEntry> all = zip.entries();
+        while (all.hasMoreElements()) {
+            ZipEntry e = all.nextElement();
+            String name = e.getName();
+            if (!name.startsWith(GlowrootData.DIR + "/") || !name.endsWith(".zip")) {
+                continue;
+            }
+            String file = name.substring(GlowrootData.DIR.length() + 1);
+            String node = file.substring(0, file.length() - 4);
+            ZipEntry statusEntry = zip.getEntry(GlowrootData.DIR + "/" + node + ".json");
+            if (!GlowrootData.NODE_ZIP.matcher(file).matches() || statusEntry == null) {
+                continue;
+            }
+            JSONObject status;
+            try (InputStream in = zip.getInputStream(statusEntry)) {
+                status = new JSONObject(new String(read(in, MAX_META_BYTES, statusEntry.getName()), StandardCharsets.UTF_8));
+            } catch (JSONException ex) {
+                continue;
+            }
+            if (!"saved".equals(status.optString("state")) || !node.equals(status.optString("node"))) {
+                continue;
+            }
+            Path dir = Files.createDirectories(store.dir(id).resolve(GlowrootData.DIR));
+            try (InputStream in = zip.getInputStream(e)) {
+                Files.write(dir.resolve(file), read(in, maxBytes, name));
+            }
+            try {
+                status.put("imported", true);
+            } catch (JSONException ex) {
+                throw new IOException(ex);
+            }
+            GlowrootData.writeStatus(store.dir(id), node, status);
+        }
+    }
+
+    private static void importServerInfo(RecordingStore store, String id, ZipFile zip) throws IOException, RecordingStore.InvalidUpload {
+        ZipEntry entry = zip.getEntry(ServerInfo.FILE);
+        if (entry == null) {
+            return;
+        }
+        byte[] bytes;
+        try (InputStream in = zip.getInputStream(entry)) {
+            bytes = read(in, MAX_META_BYTES * 16, ServerInfo.FILE);
+        }
+        try {
+            new JSONObject(new String(bytes, StandardCharsets.UTF_8));
+        } catch (JSONException e) {
+            throw new RecordingStore.InvalidUpload(ServerInfo.FILE + " in the ZIP is not valid JSON.");
+        }
+        Files.write(store.path(id, ServerInfo.FILE), bytes);
+    }
+
+    private static void importGauges(RecordingStore store, String id, ZipFile zip, long maxBytes)
+            throws IOException, RecordingStore.InvalidUpload {
+        ZipEntry entry = zip.getEntry(GaugeStore.MERGED);
+        if (entry == null) {
+            return;
+        }
+        try (InputStream in = zip.getInputStream(entry)) {
+            GaugeStore.write(store.dir(id), new JSONObject(new String(read(in, maxBytes, GaugeStore.MERGED), StandardCharsets.UTF_8)));
+        } catch (JSONException e) {
+            throw new RecordingStore.InvalidUpload(GaugeStore.MERGED + " in the ZIP is not valid JSON.");
+        }
     }
 
     /** traces.json becomes the recording's traces/import.jsonl; trace files are copied as they are. */

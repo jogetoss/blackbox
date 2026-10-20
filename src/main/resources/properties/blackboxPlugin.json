@@ -49,12 +49,12 @@
             "validation_message" : "Enter a whole number of MB."
         },
         {
-            "label" : "Server logs: the extension tags the recorded tab's requests, and their Joget log lines are kept with the recording.",
+            "label" : "System logs: the extension tags the recorded tab's requests, and their Joget log lines are kept with the recording.",
             "type" : "header"
         },
         {
-            "name" : "captureServerLogs",
-            "label" : "Capture server logs during recordings",
+            "name" : "captureSystemLogs",
+            "label" : "Capture system logs during recordings",
             "type" : "selectbox",
             "value" : "false",
             "options" : [
@@ -63,16 +63,27 @@
             ]
         },
         {
-            "name" : "serverLogPermission",
-            "label" : "Who can view server logs",
+            "name" : "systemLogPermission",
+            "label" : "Who can view system logs",
             "description" : "Empty = admins only. They must also be able to view the recording.",
             "type" : "elementselect",
             "options_ajax" : "[CONTEXT_PATH]/web/property/json/getElements?classname=org.joget.apps.form.model.FormPermission",
             "url" : "[CONTEXT_PATH]/web/property/json[APP_PATH]/getPropertyOptions"
         },
         {
-            "name" : "serverLogMaxMb",
-            "label" : "Max server log size per recording (MB)",
+            "name" : "ownServerData",
+            "label" : "Uploaders can view the server data of their own recordings",
+            "description" : "System logs, traces, server load and System Info (license key, system properties). No = only the users above.",
+            "type" : "selectbox",
+            "value" : "false",
+            "options" : [
+                {"value" : "true", "label" : "Yes"},
+                {"value" : "false", "label" : "No"}
+            ]
+        },
+        {
+            "name" : "systemLogMaxMb",
+            "label" : "Max size of system logs per recording (MB)",
             "description" : "Lines after this are dropped; the viewer says the log was cut off.",
             "type" : "textfield",
             "value" : "20",
@@ -80,8 +91,8 @@
             "validation_message" : "Enter a whole number of MB."
         },
         {
-            "name" : "serverLogKeepDays",
-            "label" : "Delete server logs not uploaded after (days)",
+            "name" : "systemLogKeepDays",
+            "label" : "Delete system logs not uploaded after (days)",
             "description" : "Captured lines wait on the server until the recording is uploaded.",
             "type" : "textfield",
             "value" : "7",
@@ -89,11 +100,33 @@
             "validation_message" : "Enter a whole number of days."
         },
         {
-            "name" : "captureTraces",
-            "label" : "Copy Glowroot traces of slow and failed requests",
-            "description" : "Needs server log capture. Glowroot's own slow threshold decides which requests have a trace; it is not changed.",
+            "name" : "captureGauges",
+            "label" : "Sample server load during recordings",
+            "description" : "Needs \"Capture system logs during recordings\". Every second: heap, GC time, CPU, busy request threads and database connections, shown as the Server load strip.",
             "type" : "selectbox",
             "value" : "true",
+            "options" : [
+                {"value" : "true", "label" : "Yes"},
+                {"value" : "false", "label" : "No"}
+            ]
+        },
+        {
+            "name" : "captureTraces",
+            "label" : "Copy Glowroot traces of slow and failed requests",
+            "description" : "Needs \"Capture system logs during recordings\". Glowroot's own slow threshold decides which requests have a trace; it is not changed.",
+            "type" : "selectbox",
+            "value" : "true",
+            "options" : [
+                {"value" : "true", "label" : "Yes"},
+                {"value" : "false", "label" : "No"}
+            ]
+        },
+        {
+            "name" : "captureGlowrootData",
+            "label" : "Copy Glowroot data for the recording",
+            "description" : "Needs \"Capture system logs during recordings\" and Glowroot 0.14 on each node. About a minute after a recording stops, each node cuts the recording out of its Glowroot data, in Glowroot's own format: the traces of the recorded requests, plus the aggregates and gauges of all traffic during the recording. Download it on the replay page and open it in a standalone Glowroot. Each build needs free disk space in Joget's temp folder of about the size of Glowroot's data.h2.db (it is skipped, with the reason, when there is not enough).",
+            "type" : "selectbox",
+            "value" : "false",
             "options" : [
                 {"value" : "true", "label" : "Yes"},
                 {"value" : "false", "label" : "No"}

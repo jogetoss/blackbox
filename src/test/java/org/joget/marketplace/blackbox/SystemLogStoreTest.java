@@ -10,18 +10,18 @@ import org.json.JSONObject;
 import org.junit.Before;
 import org.junit.Test;
 
-public class ServerLogStoreTest {
+public class SystemLogStoreTest {
 
     private static final String ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
     private static final long DAY = 24L * 3600 * 1000;
 
     private Path root;
-    private ServerLogStore store;
+    private SystemLogStore store;
 
     @Before
     public void setUp() throws Exception {
-        root = Files.createTempDirectory("bb-serverlog");
-        store = new ServerLogStore(root);
+        root = Files.createTempDirectory("bb-systemlog");
+        store = new SystemLogStore(root);
     }
 
     private void lines(String node, String... json) throws Exception {
@@ -41,7 +41,7 @@ public class ServerLogStoreTest {
                 "{\"kind\":\"truncated\",\"ts\":260}");
         assertTrue(store.stop(ID, "admin"));
 
-        Path target = root.resolve("server-log.json");
+        Path target = root.resolve("system-log.json");
         JSONObject summary = store.attach(ID, "admin", target);
         assertEquals("attached", summary.getString("status"));
         assertEquals(2, summary.getInt("entries"));
@@ -63,16 +63,19 @@ public class ServerLogStoreTest {
 
     @Test
     public void attachMovesTracesAndSweepDeletesTheForward() throws Exception {
-        store.start(ID, "admin", 1024, DAY, true, "");
+        store.start(ID, "admin", 1024, DAY, true, "", true);
+        GaugeStore.append(store.dir(ID), "node-a", new JSONObject().put("ts", 1).put("cpu", 0.2));
         TraceStore.append(store.dir(ID), "node-a", new JSONObject().put("key", "k1").put("ts", 5).put("state", "saved")
                 .put("file", "node-a-0123456789abcdef.html").put("updated", 1));
         TraceStore.writeTrace(store.dir(ID), "node-a-0123456789abcdef.html", "<html></html>".getBytes(StandardCharsets.UTF_8));
         Path rec = Files.createDirectories(root.getParent().resolve(root.getFileName() + "-rec"));
-        assertNotNull(store.attach(ID, "admin", rec.resolve(ServerLogStore.FILE)));
+        assertNotNull(store.attach(ID, "admin", rec.resolve(SystemLogStore.FILE)));
 
         assertTrue(Files.isRegularFile(rec.resolve("traces/node-a.jsonl")));
         assertTrue(Files.isRegularFile(rec.resolve("traces/node-a-0123456789abcdef.html")));
         assertFalse(Files.exists(store.dir(ID).resolve("traces")));
+        assertTrue("gauges move too", Files.isRegularFile(rec.resolve("gauges/node-a.jsonl")));
+        assertTrue(store.readMeta(ID).getBoolean("gauges"));
         assertEquals(1, TraceStore.merge(rec, 2).length());
 
         assertEquals(1, store.sweep(System.currentTimeMillis() + 2 * DAY));
@@ -100,8 +103,8 @@ public class ServerLogStoreTest {
 
     @Test
     public void rejectsBadIds() throws Exception {
-        assertFalse(ServerLogStore.isValidId("../x"));
-        assertFalse(ServerLogStore.isValidId("0F8FAD5B-D9CB-469F-A165-70867728950E")); // the extension sends lower case
+        assertFalse(SystemLogStore.isValidId("../x"));
+        assertFalse(SystemLogStore.isValidId("0F8FAD5B-D9CB-469F-A165-70867728950E")); // the extension sends lower case
         assertNull(store.readMeta("../../etc"));
     }
 }

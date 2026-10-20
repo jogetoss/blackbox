@@ -4,38 +4,55 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BlackBox recordings</title>
-  <link rel="stylesheet" href="assets/blackbox.css">
+  <link rel="stylesheet" href="assets/viewer.css">
 </head>
-<body>
-  <header class="bb-header">
-    <h1><a href="./">BlackBox recordings</a></h1>
-    <span class="spacer"></span>
-    <span id="who" class="who"></span>
-  </header>
-  <main class="bb-main">
-    <div id="error" class="bb-error" hidden></div>
-    <div id="content" hidden>
-      <div class="bb-toolbar">
-        <input id="search" type="search" placeholder="Filter by title, owner, URL or notes">
-        <label id="importLabel" class="bb-button secondary" title="Add a recording from a ZIP made with Download ZIP" hidden>Import ZIP… <input id="importFile" type="file" accept=".zip,application/zip" hidden></label>
-      </div>
-      <div id="empty" class="bb-empty" hidden></div>
-      <table id="table" class="bb-table" hidden>
-        <thead>
-          <tr>
-            <th>Recording</th>
-            <th class="hide-sm">Owner</th>
-            <th>Uploaded</th>
-            <th class="hide-sm">Length</th>
-            <th>Issues</th>
-            <th class="hide-sm">Video</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="rows"></tbody>
-      </table>
+<!-- Same look as the replay pages and the extension's Recordings page (viewer.css) -->
+<body class="page-recordings">
+  <header>
+    <h1>BlackBox recordings</h1>
+    <span id="who" class="muted"></span>
+    <div class="actions">
+      <label id="importLabel" class="button" title="Add a recording from a ZIP made with Download ZIP" hidden>Import ZIP…
+        <input id="importFile" type="file" accept=".zip,application/zip" hidden></label>
+      <select id="textSize" title="Text size (remembered in this browser)">
+        <option value="0.9">Aa 90%</option>
+        <option value="1" selected>Aa 100%</option>
+        <option value="1.15">Aa 115%</option>
+        <option value="1.3">Aa 130%</option>
+      </select>
     </div>
-  </main>
+  </header>
+
+  <div id="error" class="error" hidden></div>
+
+  <section id="content" class="library" hidden>
+    <div class="library-bar">
+      <input id="search" type="search" placeholder="Filter by title, owner, URL or notes">
+      <span class="batch" id="batch">
+        <span id="selCount" class="muted">Tick recordings to download or delete several at once</span>
+        <button id="batchZip" disabled title="One ZIP per recording (to import it elsewhere)">Download ZIP</button>
+        <button id="batchDelete" disabled>Delete selected</button>
+      </span>
+    </div>
+    <table id="table" hidden>
+      <thead>
+        <tr>
+          <th class="sel"><input type="checkbox" id="selAll" title="Select all shown"></th>
+          <th>Recording</th>
+          <th class="hide-sm">Owner</th>
+          <th>Uploaded</th>
+          <th class="hide-sm">Length</th>
+          <th class="server-col" title="Errors in the system logs, slow requests (Glowroot's slow threshold) and peak load">Server issues</th>
+          <th title="Console errors and failed requests in the browser">Browser</th>
+          <th class="server-col hide-sm">Server data</th>
+          <th class="hide-sm">Video</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p id="empty" class="muted" hidden></p>
+  </section>
+
   <script src="assets/common.js"></script>
   <script src="assets/list.js"></script>
 </body>

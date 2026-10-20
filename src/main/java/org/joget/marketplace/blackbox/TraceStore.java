@@ -140,16 +140,24 @@ final class TraceStore {
 
     /** Moves the trace files of from into to (the upload). Safe to run again and from two nodes at once. */
     static void moveAll(Path fromOuter, Path toOuter) throws IOException {
-        Path from = fromOuter.resolve(DIR);
+        moveFolder(fromOuter, toOuter, DIR, TraceStore::isTraceFile);
+    }
+
+    /**
+     * Moves outer/dir/ of from into to: *.jsonl files are appended to the target's (a node may still be writing),
+     * files accepted by other are moved. Safe to run again and from two nodes at once.
+     */
+    static void moveFolder(Path fromOuter, Path toOuter, String dir, java.util.function.Predicate<String> other) throws IOException {
+        Path from = fromOuter.resolve(dir);
         if (!Files.isDirectory(from)) {
             return;
         }
-        Path to = Files.createDirectories(toOuter.resolve(DIR));
+        Path to = Files.createDirectories(toOuter.resolve(dir));
         List<Path> files = new ArrayList<>();
         try (DirectoryStream<Path> list = Files.newDirectoryStream(from)) {
             for (Path f : list) {
                 String name = f.getFileName().toString();
-                if (isIndexFile(name) || isTraceFile(name)) {
+                if (isIndexFile(name) || other.test(name)) {
                     files.add(f);
                 }
             }

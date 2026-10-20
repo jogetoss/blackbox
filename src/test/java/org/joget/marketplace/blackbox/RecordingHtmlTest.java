@@ -48,7 +48,7 @@ public class RecordingHtmlTest {
         assertEquals("a<b", new JSONObject(block(html, "bb-meta")).getString("title"));
         JSONObject parsed = new JSONObject(block(html, "bb-session"));
         assertEquals("</script><b>x</b> ünïcode", parsed.getJSONArray("console").getJSONObject(0).getString("text"));
-        assertNull("no server log given", block(html, "bb-serverlog"));
+        assertNull("no system log given", block(html, "bb-systemlog"));
         assertArrayEquals(video, Base64.getDecoder().decode(block(html, "bb-video")));
     }
 

@@ -22,9 +22,11 @@
         <span id="where" class="where"></span>
         <a id="dlZip" class="button" href="#" title="The recording as one ZIP, to import it into another Joget or open it in the BlackBox viewer">Download ZIP</a>
         <a id="dlHtml" class="button" href="#" title="One file that replays this recording in any browser, without BlackBox">Download HTML</a>
+        <span id="dlGlowroot" hidden></span><!-- view.js: one button per node's Glowroot data -->
         <button id="delete" hidden>Delete</button>
       </div>
       <div class="actions">
+        <button id="featuresBtn" title="What this replay page can do">? Features</button>
         <select id="textSize" title="Text size (remembered in this browser)">
           <option value="0.9">Aa 90%</option>
           <option value="1" selected>Aa 100%</option>
@@ -35,6 +37,14 @@
       <input type="file" id="files" hidden><!-- viewer.js expects it; recordings come from the server here -->
     </div>
   </header>
+  <!-- Features drawer (viewer.js): opened by the Features button in the header -->
+  <aside id="featuresDrawer" class="drawer" role="dialog" aria-labelledby="featuresTitle" hidden>
+    <div class="drawer-head">
+      <strong id="featuresTitle">Features</strong>
+      <button id="featuresClose" title="Close (Esc)">✕</button>
+    </div>
+    <div id="features" class="drawer-body features"></div>
+  </aside>
   <p id="notes" class="notes" hidden></p>
 
   <div id="error" class="error" hidden></div>
@@ -76,7 +86,7 @@
       <nav class="tabs">
         <button data-tab="console" class="active">Console <span id="consoleCount" class="count"></span></button>
         <button data-tab="network">Network <span id="networkCount" class="count"></span></button>
-        <button data-tab="server" id="serverTab" hidden>Server <span id="serverCount" class="count"></span></button>
+        <button data-tab="server" id="serverTab" hidden>System logs <span id="serverCount" class="count"></span></button>
         <button data-tab="traces" id="tracesTab" hidden>Traces <span id="tracesCount" class="count"></span></button>
         <button data-tab="info">Info</button>
       </nav>

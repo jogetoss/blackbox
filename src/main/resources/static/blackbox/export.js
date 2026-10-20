@@ -1,16 +1,19 @@
 // Start-up code of a downloaded recording (one .html file, see RecordingHtml.java): the recording is inside this file,
 // in <script> data blocks written before this one. No server, no extension, no network.
+window.blackboxPage = 'file'; // for the Features list
 (async function () {
   const $ = (id) => document.getElementById(id);
   const text = (id) => ($(id) ? $(id).textContent : '');
   try {
     const meta = JSON.parse(text('bb-meta'));
     const report = JSON.parse(text('bb-session'));
-    const serverLog = text('bb-serverlog') ? JSON.parse(text('bb-serverlog')) : null;
+    const systemLog = text('bb-systemlog') ? JSON.parse(text('bb-systemlog')) : null;
     const traces = text('bb-traces') ? JSON.parse(text('bb-traces')) : null; // summaries; the full pages are in the ZIP
+    const gauges = text('bb-gauges') ? JSON.parse(text('bb-gauges')) : null;
+    const serverInfo = text('bb-serverinfo') ? JSON.parse(text('bb-serverinfo')) : null;
 
     // Nothing here talks to a server: no downloads, no delete, no link to the recordings list
-    for (const id of ['dlZip', 'dlHtml', 'delete', 'back']) if ($(id)) $(id).hidden = true;
+    for (const id of ['dlZip', 'dlHtml', 'dlGlowroot', 'delete', 'back']) if ($(id)) $(id).hidden = true;
     $('where').textContent = 'Downloaded file';
     $('where').title = 'Everything is inside this file. Opening it sends nothing anywhere.';
     document.addEventListener('drop', (e) => { e.preventDefault(); e.stopImmediatePropagation(); }, true);
@@ -23,9 +26,9 @@
     // Base64 in the page -> Blob; fetch() of a data: URL decodes large videos without blocking the page
     const b64 = text('bb-video').trim();
     const video = b64 ? await (await fetch('data:video/webm;base64,' + b64)).blob() : null;
-    $('serverLegend').hidden = !serverLog;
+    $('serverLegend').hidden = !systemLog;
     window.blackboxTimeInUrl = true; // blackbox-….html?t=… opens at that moment
-    window.blackboxOpen(video, report, { serverLog, traces, title: meta.title, info: uploadInfo(meta) });
+    window.blackboxOpen(video, report, { systemLog, traces, gauges, serverInfo, title: meta.title, info: uploadInfo(meta) });
     $('recStatus').hidden = false;
   } catch (e) {
     $('loading').textContent = '';

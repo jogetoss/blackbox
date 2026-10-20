@@ -39,7 +39,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
     static final String VERSION = "8.2-SNAPSHOT";
     private static final long DEFAULT_MAX_MB = 500;
-    private static final long DEFAULT_SERVER_LOG_MB = 20;
+    private static final long DEFAULT_SYSTEM_LOG_MB = 20;
     private static final long DEFAULT_KEEP_DAYS = 7;
     private static final Pattern RANGE = Pattern.compile("^bytes=(\\d*)-(\\d*)$");
     private static final long RETRY_COOLDOWN_MS = 20 * 1000L;
@@ -123,15 +123,15 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 JSONObject meta = viewable(response, store, access, id);
                 if (meta != null) {
                     meta.put("canDelete", access.canDelete(meta));
-                    meta.put("canViewServerLog", access.canViewServerLog());
+                    meta.put("canViewSystemLog", access.canViewSystemLog(meta));
                     json(response, meta);
                 }
-            } else if ("serverlog".equals(action) && !post) {
+            } else if ("systemlog".equals(action) && !post) {
                 if (viewable(response, store, access, id) != null) {
-                    if (!access.canViewServerLog()) {
-                        error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to view server logs.");
+                    if (!access.canViewSystemLog(store.readMeta(id))) {
+                        error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to view system logs.");
                     } else {
-                        sendFile(request, response, store.file(id, RecordingStore.SERVER_LOG), "application/json;charset=UTF-8", id + "-server-log.json");
+                        sendFile(request, response, store.file(id, RecordingStore.SYSTEM_LOG), "application/json;charset=UTF-8", id + "-system-log.json");
                     }
                 }
             } else if ("download".equals(action) && !post) {
@@ -149,15 +149,26 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 }
             } else if ("import".equals(action) && post) {
                 importZip(request, response, store, access);
-            } else if (("recording-start".equals(action) || "serverlog-start".equals(action)) && post) {
-                // serverlog-start/-stop: the names used by extension 0.9.x
-                startServerLog(response, access, id);
-            } else if (("recording-stop".equals(action) || "serverlog-stop".equals(action)) && post) {
-                stopServerLog(response, access, id);
+            } else if ("recording-start".equals(action) && post) {
+                startSystemLog(request, response, access, id);
+            } else if ("recording-stop".equals(action) && post) {
+                stopSystemLog(response, access, id);
             } else if ("traces".equals(action) && !post) {
                 traces(response, store, access, id);
             } else if ("trace".equals(action) && !post) {
                 trace(request, response, store, access, id);
+            } else if ("serverinfo".equals(action) && !post) {
+                if (viewable(response, store, access, id) != null) {
+                    if (!access.canViewSystemLog(store.readMeta(id))) {
+                        error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to view system logs.");
+                    } else {
+                        sendFile(request, response, store.file(id, ServerInfo.FILE), "application/json;charset=UTF-8", id + "-server-info.json");
+                    }
+                }
+            } else if ("gauges".equals(action) && !post) {
+                gauges(response, store, access, id);
+            } else if ("glowroot".equals(action) && !post) {
+                glowrootData(request, response, store, access, id);
             } else if ("trace-retry".equals(action) && post) {
                 retryTraces(request, response, store, access, id);
             } else if ("session".equals(action) && !post) {
@@ -184,6 +195,12 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         for (JSONObject meta : store.list()) {
             if (access.canView(meta)) {
                 meta.put("canDelete", access.canDelete(meta));
+                boolean server = access.canViewSystemLog(meta);
+                meta.put("canViewSystemLog", server);
+                if (!server) {
+                    meta.remove("systemLog"); // its error count is server data too
+                    meta.remove("serverData");
+                }
                 rows.put(meta);
             }
         }
@@ -211,9 +228,16 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                     request.getParameter("title"), request.getParameter("notes"));
         }
         String recId = meta.getString("id");
-        String serverLogId = (String) meta.remove("serverLogId");
-        if (serverLogId != null) {
-            meta.put("serverLog", attachServerLog(store, recId, serverLogId, access.user.getUsername()));
+        String systemLogId = (String) meta.remove("systemLogId");
+        if (systemLogId != null) {
+            meta.put("systemLog", attachSystemLog(store, recId, systemLogId, access.user.getUsername()));
+            if ("attached".equals(meta.getJSONObject("systemLog").optString("status"))) {
+                try {
+                    meta.put("serverData", ServerData.of(store.dir(recId), slowMs()));
+                } catch (IOException e) {
+                    LogUtil.warn(getClassName(), "Could not sum up the server data of recording " + recId + ": " + e.getMessage());
+                }
+            }
             store.updateMeta(recId, meta);
         }
         LogUtil.info(getClassName(), "Recording " + recId + " uploaded by " + access.user.getUsername());
@@ -256,7 +280,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     }
 
     /**
-     * One .html file that replays the recording in any browser (see {@link RecordingHtml}). The server log is included
+     * One .html file that replays the recording in any browser (see {@link RecordingHtml}). The system log is included
      * only for users allowed to view it.
      */
     private void downloadHtml(HttpServletResponse response, RecordingStore store, Access access, String id, JSONObject meta)
@@ -266,23 +290,26 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             error(response, HttpServletResponse.SC_NOT_FOUND, "File not found.");
             return;
         }
-        Path serverLog = access.canViewServerLog() ? store.file(id, RecordingStore.SERVER_LOG) : null;
-        if (serverLog == null) {
-            meta.remove("serverLog"); // the summary would point at data that is not in the file
+        Path systemLog = access.canViewSystemLog(meta) ? store.file(id, RecordingStore.SYSTEM_LOG) : null;
+        if (systemLog == null) {
+            meta.remove("systemLog"); // the summary would point at data that is not in the file
         }
         RecordingHtml export = RecordingHtml.fromResources();
         response.setContentType("text/html;charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=\"blackbox-" + id + ".html\"");
         String traces = null;
-        if (serverLog != null) {
+        if (systemLog != null) {
             JSONArray list = TraceStore.merge(store.dir(id), System.currentTimeMillis());
             traces = list.length() > 0 ? list.toString() : null;
         }
-        export.write(response.getOutputStream(), meta.toString(), session, serverLog, store.file(id, RecordingStore.VIDEO), traces);
+        JSONObject gauges = systemLog != null ? GaugeStore.merge(store.dir(id)) : null;
+        Path info = systemLog != null ? store.file(id, ServerInfo.FILE) : null;
+        export.write(response.getOutputStream(), meta.toString(), session, systemLog, store.file(id, RecordingStore.VIDEO), traces,
+                gauges != null ? gauges.toString() : null, info);
         LogUtil.info(getClassName(), "Recording " + id + " downloaded as HTML by " + access.user.getUsername());
     }
 
-    /** The recording as one ZIP for {@link #importZip} on another server. The server log only for users allowed to view it. */
+    /** The recording as one ZIP for {@link #importZip} on another server. The system log only for users allowed to view it. */
     private void downloadZip(HttpServletResponse response, RecordingStore store, Access access, String id, JSONObject meta)
             throws IOException {
         Path session = store.file(id, RecordingStore.SESSION);
@@ -290,11 +317,21 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             error(response, HttpServletResponse.SC_NOT_FOUND, "File not found.");
             return;
         }
-        Path serverLog = access.canViewServerLog() ? store.file(id, RecordingStore.SERVER_LOG) : null;
+        Path systemLog = access.canViewSystemLog(meta) ? store.file(id, RecordingStore.SYSTEM_LOG) : null;
+        try {
+            // the ZIP carries the Glowroot data for these users: wait until every node has built it
+            if (systemLog != null && "building".equals(GlowrootData.overall(GlowrootData.statuses(store.dir(id))))) {
+                error(response, HttpServletResponse.SC_CONFLICT, "The Glowroot data is still being built (about a minute after the"
+                        + " recording stopped). Download the ZIP once it is ready.");
+                return;
+            }
+        } catch (IOException e) {
+            // unreadable statuses: the ZIP has whatever packages are there
+        }
         response.setContentType("application/zip");
         response.setHeader("Content-Disposition", "attachment; filename=\"blackbox-" + id + ".zip\"");
-        RecordingZip.write(response.getOutputStream(), meta, session, serverLog, store.file(id, RecordingStore.VIDEO),
-                serverLog != null ? store.dir(id) : null);
+        RecordingZip.write(response.getOutputStream(), meta, session, systemLog, store.file(id, RecordingStore.VIDEO),
+                systemLog != null ? store.dir(id) : null);
     }
 
     /** A ZIP from {@link #downloadZip} (raw request body) becomes a new recording owned by the user. */
@@ -305,7 +342,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             return;
         }
         long max = maxSizeMb() * 1024 * 1024;
-        long maxZip = 2 * max + 64 * 1024 * 1024; // video + session.json + server log and meta
+        long maxZip = 2 * max + 64 * 1024 * 1024; // video + session.json + system log and meta
         if (request.getContentLengthLong() > maxZip) {
             throw new RecordingStore.InvalidUpload("The ZIP is larger than the limit.");
         }
@@ -323,8 +360,13 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                     out.write(buf, 0, n);
                 }
             }
-            JSONObject meta = RecordingZip.importZip(store, tmp, max, access.canViewServerLog(),
+            JSONObject meta = RecordingZip.importZip(store, tmp, max, access.canViewSystemLog(),
                     access.user.getUsername(), fullName(access.user));
+            if (meta.has("systemLog")) {
+                // the list's server data tags (traces, load, info, Glowroot data), as after an upload
+                meta.put("serverData", ServerData.of(store.dir(meta.getString("id")), slowMs()));
+                store.updateMeta(meta.getString("id"), meta);
+            }
             LogUtil.info(getClassName(), "Recording " + meta.getString("id") + " imported by " + access.user.getUsername());
             meta.put("url", request.getContextPath() + "/blackbox/view?id=" + meta.getString("id"));
             json(response, meta);
@@ -333,39 +375,59 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
     }
 
-    // ---------- server log ----------
+    // ---------- system log ----------
 
     /** The extension starts capturing when a recording starts; id is its random UUID, sent on the tab's requests. */
-    private void startServerLog(HttpServletResponse response, Access access, String id) throws IOException, JSONException {
-        if (!"true".equals(getPropertyString("captureServerLogs"))) {
-            error(response, HttpServletResponse.SC_FORBIDDEN, "Server log capture is turned off in the BlackBox plugin settings.");
+    private void startSystemLog(HttpServletRequest request, HttpServletResponse response, Access access, String id)
+            throws IOException, JSONException {
+        if (!"true".equals(getPropertyString("captureSystemLogs"))) {
+            error(response, HttpServletResponse.SC_FORBIDDEN, "System log capture is turned off in the BlackBox plugin settings.");
             return;
         }
         if (!access.canUpload()) {
             error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to upload recordings.");
             return;
         }
-        if (!ServerLogStore.isValidId(id)) {
-            error(response, HttpServletResponse.SC_BAD_REQUEST, "Invalid server log id.");
+        if (!SystemLogStore.isValidId(id)) {
+            error(response, HttpServletResponse.SC_BAD_REQUEST, "Invalid system log id.");
             return;
         }
-        long maxBytes = positive("serverLogMaxMb", DEFAULT_SERVER_LOG_MB) * 1024 * 1024;
-        long keepMs = positive("serverLogKeepDays", DEFAULT_KEEP_DAYS) * 24 * 3600 * 1000;
+        long maxBytes = positive("systemLogMaxMb", DEFAULT_SYSTEM_LOG_MB) * 1024 * 1024;
+        long keepMs = positive("systemLogKeepDays", DEFAULT_KEEP_DAYS) * 24 * 3600 * 1000;
         boolean traces = !"false".equals(getPropertyString("captureTraces"));
-        if (!ServerLogCapture.store().start(id, access.user.getUsername(), maxBytes, keepMs, traces, getPropertyString("glowrootUrl"))) {
-            error(response, HttpServletResponse.SC_CONFLICT, "This server log id is already in use.");
+        boolean gauges = !"false".equals(getPropertyString("captureGauges"));
+        boolean glowrootData = "true".equals(getPropertyString("captureGlowrootData"));
+        if (!SystemLogCapture.store().start(id, access.user.getUsername(), maxBytes, keepMs, traces, getPropertyString("glowrootUrl"), gauges,
+                glowrootData)) {
+            error(response, HttpServletResponse.SC_CONFLICT, "This system log id is already in use.");
             return;
         }
-        json(response, new JSONObject().put("serverLog", new JSONObject().put("id", id).put("maxMb", maxBytes / (1024 * 1024))
-                .put("traces", traces)));
+        SystemLogCapture.find(id); // this node samples the server load from now (GaugeSampler)
+        ServerInfo.save(SystemLogCapture.store().dir(id), request); // System Info as it is now
+        JSONObject started = new JSONObject().put("id", id).put("maxMb", maxBytes / (1024 * 1024))
+                .put("traces", traces).put("gauges", gauges).put("glowrootData", glowrootData).put("slowThresholdMs", slowMs());
+        json(response, new JSONObject().put("systemLog", started));
     }
 
-    private void stopServerLog(HttpServletResponse response, Access access, String id) throws IOException, JSONException {
-        if (!ServerLogStore.isValidId(id) || !ServerLogCapture.store().stop(id, access.user.getUsername())) {
-            error(response, HttpServletResponse.SC_NOT_FOUND, "Server log not found.");
+    /** "Slow" for the recordings lists: Glowroot's slow threshold (ServerData.slowMs), or 2 s without Glowroot. */
+    private long slowMs() {
+        GlowrootClient g = GlowrootClient.find(getPropertyString("glowrootUrl"));
+        if (g == null) {
+            return ServerData.DEFAULT_SLOW_MS;
+        }
+        try {
+            return ServerData.slowMs(g.settings().mainThresholdMs);
+        } catch (IOException e) {
+            return ServerData.DEFAULT_SLOW_MS;
+        }
+    }
+
+    private void stopSystemLog(HttpServletResponse response, Access access, String id) throws IOException, JSONException {
+        if (!SystemLogStore.isValidId(id) || !SystemLogCapture.store().stop(id, access.user.getUsername())) {
+            error(response, HttpServletResponse.SC_NOT_FOUND, "System log not found.");
             return;
         }
-        ServerLogCapture.close(id);
+        SystemLogCapture.close(id);
         json(response, new JSONObject().put("stopped", id));
     }
 
@@ -376,12 +438,51 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         if (viewable(response, store, access, id) == null) {
             return;
         }
-        if (!access.canViewServerLog()) {
-            error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to view server logs.");
+        if (!access.canViewSystemLog(store.readMeta(id))) {
+            error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to view system logs.");
             return;
         }
         JSONArray list = TraceStore.merge(store.dir(id), System.currentTimeMillis());
         json(response, new JSONObject().put("traces", list).put("pending", TraceStore.pending(list)));
+    }
+
+    /** The server load samples of each node (GaugeStore.merge), or {} when there are none. */
+    private void gauges(HttpServletResponse response, RecordingStore store, Access access, String id) throws IOException {
+        if (viewable(response, store, access, id) == null) {
+            return;
+        }
+        if (!access.canViewSystemLog(store.readMeta(id))) {
+            error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to view system logs.");
+            return;
+        }
+        JSONObject merged = GaugeStore.merge(store.dir(id));
+        json(response, merged != null ? merged : new JSONObject());
+    }
+
+    /**
+     * The Glowroot data packages (GlowrootPackager): without node, each node's status {nodes: [...]}; with node, that
+     * node's ZIP. For the same users as the system log.
+     */
+    private void glowrootData(HttpServletRequest request, HttpServletResponse response, RecordingStore store, Access access, String id)
+            throws IOException, JSONException {
+        if (viewable(response, store, access, id) == null) {
+            return;
+        }
+        if (!access.canViewSystemLog(store.readMeta(id))) {
+            error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to view system logs.");
+            return;
+        }
+        String node = request.getParameter("node");
+        if (node == null || node.isEmpty()) {
+            json(response, new JSONObject().put("nodes", GlowrootData.statuses(store.dir(id))));
+            return;
+        }
+        java.nio.file.Path zip = GlowrootData.zipFile(store.dir(id), node);
+        if (zip == null) {
+            error(response, HttpServletResponse.SC_NOT_FOUND, "No Glowroot data from that node.");
+            return;
+        }
+        sendFile(request, response, zip, "application/zip", id + "-glowroot-" + node + ".zip");
     }
 
     /**
@@ -393,8 +494,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         if (viewable(response, store, access, id) == null) {
             return;
         }
-        if (!access.canViewServerLog()) {
-            error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to view server logs.");
+        if (!access.canViewSystemLog(store.readMeta(id))) {
+            error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to view system logs.");
             return;
         }
         long now = System.currentTimeMillis();
@@ -428,8 +529,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         if (viewable(response, store, access, id) == null) {
             return;
         }
-        if (!access.canViewServerLog()) {
-            error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to view server logs.");
+        if (!access.canViewSystemLog(store.readMeta(id))) {
+            error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to view system logs.");
             return;
         }
         String name = request.getParameter("file");
@@ -438,16 +539,16 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         sendFile(request, response, store.traceFile(id, name), "text/html;charset=UTF-8", name);
     }
 
-    /** Moves the server log captured under serverLogId into the recording. Returns the summary for meta.json. */
-    private JSONObject attachServerLog(RecordingStore store, String recId, String serverLogId, String owner) throws JSONException {
-        ServerLogCapture.close(serverLogId); // flush this node's file
+    /** Moves the system log captured under systemLogId into the recording. Returns the summary for meta.json. */
+    private JSONObject attachSystemLog(RecordingStore store, String recId, String systemLogId, String owner) throws JSONException {
+        SystemLogCapture.close(systemLogId); // flush this node's file
         try {
-            JSONObject summary = ServerLogCapture.store().attach(serverLogId, owner, store.path(recId, RecordingStore.SERVER_LOG));
+            JSONObject summary = SystemLogCapture.store().attach(systemLogId, owner, store.path(recId, RecordingStore.SYSTEM_LOG));
             if (summary != null) {
                 return summary;
             }
         } catch (IOException e) {
-            LogUtil.error(getClassName(), e, "Could not attach the server log of recording " + recId);
+            LogUtil.error(getClassName(), e, "Could not attach the system log of recording " + recId);
         }
         // Never started, deleted after the keep period, or another user's
         return new JSONObject().put("status", "unavailable");
@@ -629,8 +730,14 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             return admin || (ownerAccess && isOwner(meta)) || allowed("viewPermission", false);
         }
 
-        boolean canViewServerLog() {
-            return admin || allowed("serverLogPermission", false);
+        /** Server data in general: imports, and recordings without an owner check. */
+        boolean canViewSystemLog() {
+            return admin || allowed("systemLogPermission", false);
+        }
+
+        /** Server data of one recording: also its uploader, when the setting allows it (default: no). */
+        boolean canViewSystemLog(JSONObject meta) {
+            return canViewSystemLog() || (meta != null && "true".equals(getPropertyString("ownServerData")) && isOwner(meta));
         }
 
         boolean canDelete(JSONObject meta) {

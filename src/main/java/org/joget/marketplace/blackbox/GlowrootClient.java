@@ -56,16 +56,36 @@ final class GlowrootClient {
         return url == null ? null : new GlowrootClient(url);
     }
 
-    private static String detect() {
-        Path jar = null;
+    /** The Glowroot agent jar of this JVM (its -javaagent), or null. */
+    static Path agentJar() {
         for (String arg : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
             if (arg.startsWith("-javaagent:") && arg.contains("glowroot")) {
                 String path = arg.substring("-javaagent:".length());
                 int eq = path.indexOf('=');
-                jar = Paths.get(eq < 0 ? path : path.substring(0, eq));
-                break;
+                return Paths.get(eq < 0 ? path : path.substring(0, eq));
             }
         }
+        return null;
+    }
+
+    /** "0.14.2, built 2024-04-06 19:02:00 +0000" from the agent jar's manifest (as Glowroot's Environment page shows it), or null. */
+    static String agentVersion() {
+        Path jar = agentJar();
+        if (jar == null || !Files.isRegularFile(jar)) {
+            return null;
+        }
+        try (java.util.jar.JarFile f = new java.util.jar.JarFile(jar.toFile())) {
+            java.util.jar.Manifest m = f.getManifest();
+            String v = m != null ? m.getMainAttributes().getValue("Implementation-Version") : null;
+            String built = m != null ? m.getMainAttributes().getValue("Build-Time") : null;
+            return v == null ? null : built == null ? v : v + ", built " + built;
+        } catch (IOException e) {
+            return null;
+        }
+    }
+
+    private static String detect() {
+        Path jar = agentJar();
         if (jar == null || jar.getParent() == null) {
             return null;
         }
@@ -98,10 +118,16 @@ final class GlowrootClient {
     /** What Glowroot keeps traces for: requests at least this slow, and errors. */
     static final class Settings {
         final long thresholdMs;   // the lowest of the slow threshold and its per-transaction overrides
+        final long mainThresholdMs; // the slow threshold set in Glowroot's UI (Configuration > Transactions)
         final boolean errorOn4xx; // servlet plugin: a 4xx response makes the trace an error
 
         Settings(long thresholdMs, boolean errorOn4xx) {
+            this(thresholdMs, thresholdMs, errorOn4xx);
+        }
+
+        Settings(long thresholdMs, long mainThresholdMs, boolean errorOn4xx) {
             this.thresholdMs = thresholdMs;
+            this.mainThresholdMs = mainThresholdMs;
             this.errorOn4xx = errorOn4xx;
         }
 
@@ -118,6 +144,7 @@ final class GlowrootClient {
         }
         JSONObject tx = getJson("/backend/config/transaction?agent-id=").optJSONObject("config");
         long threshold = tx != null ? tx.optLong("slowThresholdMillis", 2000) : 2000;
+        long main = threshold;
         JSONArray overrides = tx != null ? tx.optJSONArray("slowThresholdOverrides") : null;
         for (int i = 0; overrides != null && i < overrides.length(); i++) {
             JSONObject o = overrides.optJSONObject(i);
@@ -133,7 +160,7 @@ final class GlowrootClient {
                 on4xx = p.optBoolean("value");
             }
         }
-        settings = new Settings(threshold, on4xx);
+        settings = new Settings(threshold, main, on4xx);
         settingsAt = now;
         return settings;
     }

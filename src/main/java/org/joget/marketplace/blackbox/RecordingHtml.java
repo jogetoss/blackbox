@@ -13,7 +13,7 @@ import java.util.Base64;
 /**
  * Writes one recording as a single .html file that replays it in any browser, with no server or extension:
  * the replay page (view.html) with viewer.css and viewer.js inlined, the recording in data blocks
- * (meta, session.json, server-log.json, the video as base64) and export.js to open it.
+ * (meta, session.json, system-log.json, the video as base64) and export.js to open it.
  *
  * Data blocks are &lt;script type="application/json"&gt; elements. JSON text never needs a raw '&lt;' (in strings it can
  * be written <), so every '&lt;' is escaped and no "&lt;/script" can end a block early.
@@ -54,14 +54,15 @@ public class RecordingHtml {
     }
 
     /**
-     * meta: the recording's meta.json (title, owner, notes...). serverLog and video may be null.
+     * meta: the recording's meta.json (title, owner, notes...). systemLog and video may be null.
      */
-    public void write(OutputStream out, String meta, Path session, Path serverLog, Path video) throws IOException {
-        write(out, meta, session, serverLog, video, null);
+    public void write(OutputStream out, String meta, Path session, Path systemLog, Path video) throws IOException {
+        write(out, meta, session, systemLog, video, null, null, null);
     }
 
     /** traces: the recording's Glowroot trace summaries (TraceStore.merge), or null. The trace pages are not included. */
-    public void write(OutputStream out, String meta, Path session, Path serverLog, Path video, String traces) throws IOException {
+    public void write(OutputStream out, String meta, Path session, Path systemLog, Path video, String traces, String gauges,
+            Path serverInfo) throws IOException {
         out.write(head.getBytes(StandardCharsets.UTF_8));
         block(out, "bb-meta", "application/json");
         escaped(new java.io.ByteArrayInputStream(meta.getBytes(StandardCharsets.UTF_8)), out);
@@ -71,9 +72,9 @@ public class RecordingHtml {
             escaped(in, out);
         }
         end(out);
-        if (serverLog != null) {
-            block(out, "bb-serverlog", "application/json");
-            try (InputStream in = Files.newInputStream(serverLog)) {
+        if (systemLog != null) {
+            block(out, "bb-systemlog", "application/json");
+            try (InputStream in = Files.newInputStream(systemLog)) {
                 escaped(in, out);
             }
             end(out);
@@ -81,6 +82,18 @@ public class RecordingHtml {
         if (traces != null) {
             block(out, "bb-traces", "application/json");
             escaped(new java.io.ByteArrayInputStream(traces.getBytes(StandardCharsets.UTF_8)), out);
+            end(out);
+        }
+        if (gauges != null) {
+            block(out, "bb-gauges", "application/json");
+            escaped(new java.io.ByteArrayInputStream(gauges.getBytes(StandardCharsets.UTF_8)), out);
+            end(out);
+        }
+        if (serverInfo != null) {
+            block(out, "bb-serverinfo", "application/json");
+            try (InputStream in = Files.newInputStream(serverInfo)) {
+                escaped(in, out);
+            }
             end(out);
         }
         if (video != null) {

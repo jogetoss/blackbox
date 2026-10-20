@@ -31,7 +31,7 @@ public class RecordingStore {
     public static final String META = "meta.json";
     public static final String SESSION = "session.json";
     public static final String VIDEO = "recording.webm";
-    public static final String SERVER_LOG = ServerLogStore.FILE;
+    public static final String SYSTEM_LOG = SystemLogStore.FILE;
 
     // yyyyMMdd-HHmmss-<8 hex>: sorts by upload time and can never contain a path separator
     private static final Pattern ID = Pattern.compile("^[0-9]{8}-[0-9]{6}-[0-9a-f]{8}$");
@@ -118,11 +118,11 @@ public class RecordingStore {
             throw new IOException(e);
         }
         writeMeta(id, meta);
-        // Not saved in meta.json: the caller attaches the server log captured under this id (session.json has it)
-        JSONObject serverLog = rec != null ? rec.optJSONObject("serverLog") : null;
-        if (serverLog != null && ServerLogStore.isValidId(serverLog.optString("id"))) {
+        // Not saved in meta.json: the caller attaches the system log captured under this id (session.json has it)
+        JSONObject systemLog = rec != null ? rec.optJSONObject("systemLog") : null;
+        if (systemLog != null && SystemLogStore.isValidId(systemLog.optString("id"))) {
             try {
-                meta.put("serverLogId", serverLog.optString("id"));
+                meta.put("systemLogId", systemLog.optString("id"));
             } catch (JSONException e) {
                 throw new IOException(e);
             }
@@ -214,7 +214,7 @@ public class RecordingStore {
 
     /** Path of a stored file, or null when the id is invalid or the file is missing. */
     public Path file(String id, String name) {
-        if (!isValidId(id) || !(SESSION.equals(name) || VIDEO.equals(name) || SERVER_LOG.equals(name))) {
+        if (!isValidId(id) || !(SESSION.equals(name) || VIDEO.equals(name) || SYSTEM_LOG.equals(name) || ServerInfo.FILE.equals(name))) {
             return null;
         }
         Path file = root.resolve(id).resolve(name);

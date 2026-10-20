@@ -28,7 +28,7 @@ public class BlackBoxPageFilter extends PluginWebFilterAbstract {
         FILES.put("", "list.html");
         FILES.put("/", "list.html");
         FILES.put("/view", "view.html");
-        for (String f : new String[]{"blackbox.css", "common.js", "list.js", "view.js", "viewer.js", "viewer.css"}) {
+        for (String f : new String[]{"common.js", "list.js", "view.js", "viewer.js", "viewer.css"}) {
             FILES.put("/assets/" + f, f);
         }
     }

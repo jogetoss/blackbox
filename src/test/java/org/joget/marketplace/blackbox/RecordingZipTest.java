@@ -15,9 +15,9 @@ import org.junit.Test;
 
 public class RecordingZipTest {
 
-    private static final String SESSION = "{\"recording\":{\"tab\":{\"title\":\"Tab\"},\"serverLog\":{\"status\":\"on\","
+    private static final String SESSION = "{\"recording\":{\"tab\":{\"title\":\"Tab\"},\"systemLog\":{\"status\":\"on\","
             + "\"id\":\"0f8fad5b-d9cb-469f-a165-70867728950e\"}},\"console\":[],\"network\":[]}";
-    private static final String SERVER_LOG = "{\"entries\":[{\"ts\":1,\"kind\":\"log\",\"level\":\"ERROR\"},"
+    private static final String SYSTEM_LOG = "{\"entries\":[{\"ts\":1,\"kind\":\"log\",\"level\":\"ERROR\"},"
             + "{\"ts\":2,\"kind\":\"request\"}],\"truncated\":false}";
     private static final byte[] WEBM = {0x1A, 0x45, (byte) 0xDF, (byte) 0xA3, 9, 9};
 
@@ -36,16 +36,16 @@ public class RecordingZipTest {
         Path zip = tmp.resolve(id + ".zip");
         try (OutputStream out = Files.newOutputStream(zip)) {
             RecordingZip.write(out, from.readMeta(id), from.file(id, RecordingStore.SESSION),
-                    withLog ? from.file(id, RecordingStore.SERVER_LOG) : null, from.file(id, RecordingStore.VIDEO));
+                    withLog ? from.file(id, RecordingStore.SYSTEM_LOG) : null, from.file(id, RecordingStore.VIDEO));
         }
         return zip;
     }
 
     @Test
-    public void tracesTravelWithTheServerLog() throws Exception {
+    public void tracesTravelWithTheSystemLog() throws Exception {
         String id = from.create(new ByteArrayInputStream(SESSION.getBytes(StandardCharsets.UTF_8)), 1 << 20,
                 "alice", "Alice", "T", "").getString("id");
-        Files.write(from.path(id, RecordingStore.SERVER_LOG), SERVER_LOG.getBytes(StandardCharsets.UTF_8));
+        Files.write(from.path(id, RecordingStore.SYSTEM_LOG), SYSTEM_LOG.getBytes(StandardCharsets.UTF_8));
         Path dir = from.dir(id);
         String file = "node-a-0123456789abcdef.html";
         TraceStore.append(dir, "node-a", new JSONObject().put("key", "k1").put("ts", 3).put("state", "saved")
@@ -54,7 +54,7 @@ public class RecordingZipTest {
         Path zip = tmp.resolve("t.zip");
         try (OutputStream out = Files.newOutputStream(zip)) {
             RecordingZip.write(out, from.readMeta(id), from.file(id, RecordingStore.SESSION),
-                    from.file(id, RecordingStore.SERVER_LOG), null, dir);
+                    from.file(id, RecordingStore.SYSTEM_LOG), null, dir);
         }
 
         String newId = RecordingZip.importZip(to, zip, 1 << 20, true, "bob", "Bob").getString("id");
@@ -64,9 +64,41 @@ public class RecordingZipTest {
         assertEquals("<html>trace</html>", new String(Files.readAllBytes(to.traceFile(newId, file)), StandardCharsets.UTF_8));
 
         String noLogId = RecordingZip.importZip(to, zip, 1 << 20, false, "carol", "Carol").getString("id");
-        assertEquals("no server log access, no traces", 0, TraceStore.merge(to.dir(noLogId), 2).length());
+        assertEquals("no system log access, no traces", 0, TraceStore.merge(to.dir(noLogId), 2).length());
         assertTrue("delete removes traces/ too", to.delete(newId));
         assertNull(to.dir(newId));
+    }
+
+    @Test
+    public void glowrootDataTravelsWithTheSystemLog() throws Exception {
+        String id = from.create(new ByteArrayInputStream(SESSION.getBytes(StandardCharsets.UTF_8)), 1 << 20,
+                "alice", "Alice", "T", "").getString("id");
+        Files.write(from.path(id, RecordingStore.SYSTEM_LOG), SYSTEM_LOG.getBytes(StandardCharsets.UTF_8));
+        Path dir = from.dir(id);
+        byte[] pkg = {'P', 'K', 3, 4, 7};
+        GlowrootData.writeStatus(dir, "node-a", new JSONObject().put("node", "node-a").put("state", "saved").put("bytes", 5));
+        Files.write(dir.resolve(GlowrootData.DIR).resolve("node-a.zip"), pkg);
+        GlowrootData.writeStatus(dir, "node-b", new JSONObject().put("node", "node-b").put("state", "failed"));
+        Path zip = tmp.resolve("g.zip");
+        try (OutputStream out = Files.newOutputStream(zip)) {
+            RecordingZip.write(out, from.readMeta(id), from.file(id, RecordingStore.SESSION),
+                    from.file(id, RecordingStore.SYSTEM_LOG), null, dir);
+        }
+        try (java.util.zip.ZipFile z = new java.util.zip.ZipFile(zip.toFile())) {
+            assertNotNull(z.getEntry("glowroot/node-a.zip"));
+            assertNotNull(z.getEntry("glowroot/node-a.json"));
+            assertNull("failed builds have no package", z.getEntry("glowroot/node-b.json"));
+        }
+
+        String newId = RecordingZip.importZip(to, zip, 1 << 20, true, "bob", "Bob").getString("id");
+        org.json.JSONArray statuses = GlowrootData.statuses(to.dir(newId));
+        assertEquals(1, statuses.length());
+        assertTrue(statuses.getJSONObject(0).getBoolean("imported"));
+        assertArrayEquals(pkg, Files.readAllBytes(GlowrootData.zipFile(to.dir(newId), "node-a")));
+        assertEquals("saved", GlowrootData.overall(statuses));
+
+        String noLogId = RecordingZip.importZip(to, zip, 1 << 20, false, "carol", "Carol").getString("id");
+        assertNull("no system log access, no Glowroot data", GlowrootData.zipFile(to.dir(noLogId), "node-a"));
     }
 
     @Test
@@ -74,7 +106,7 @@ public class RecordingZipTest {
         String id = from.create(new ByteArrayInputStream(SESSION.getBytes(StandardCharsets.UTF_8)), 1 << 20,
                 "alice", "Alice", "My title", "My notes").getString("id");
         from.writeVideo(id, new ByteArrayInputStream(WEBM), 1024);
-        Files.write(from.path(id, RecordingStore.SERVER_LOG), SERVER_LOG.getBytes(StandardCharsets.UTF_8));
+        Files.write(from.path(id, RecordingStore.SYSTEM_LOG), SYSTEM_LOG.getBytes(StandardCharsets.UTF_8));
 
         JSONObject meta = RecordingZip.importZip(to, zipOf(id, true), 1 << 20, true, "bob", "Bob");
         String newId = meta.getString("id");
@@ -82,17 +114,17 @@ public class RecordingZipTest {
         assertEquals("My title", meta.getString("title"));
         assertEquals("My notes", meta.getString("notes"));
         assertEquals("alice", meta.getJSONObject("importedFrom").getString("owner"));
-        assertEquals(1, meta.getJSONObject("serverLog").getInt("entries"));
-        assertEquals(1, meta.getJSONObject("serverLog").getInt("errors"));
-        assertFalse("capture id of the other server is not kept", meta.has("serverLogId"));
+        assertEquals(1, meta.getJSONObject("systemLog").getInt("entries"));
+        assertEquals(1, meta.getJSONObject("systemLog").getInt("errors"));
+        assertFalse("capture id of the other server is not kept", meta.has("systemLogId"));
         assertEquals(WEBM.length, to.readMeta(newId).getLong("videoSize"));
         assertArrayEquals(WEBM, Files.readAllBytes(to.file(newId, RecordingStore.VIDEO)));
         assertEquals(SESSION, new String(Files.readAllBytes(to.file(newId, RecordingStore.SESSION)), StandardCharsets.UTF_8));
 
-        // Not allowed to see server logs: the recording comes in without it
+        // Not allowed to see system logs: the recording comes in without it
         JSONObject noLog = RecordingZip.importZip(to, zipOf(id, true), 1 << 20, false, "carol", "Carol");
-        assertFalse(noLog.has("serverLog"));
-        assertNull(to.file(noLog.getString("id"), RecordingStore.SERVER_LOG));
+        assertFalse(noLog.has("systemLog"));
+        assertNull(to.file(noLog.getString("id"), RecordingStore.SYSTEM_LOG));
     }
 
     @Test

@@ -15,23 +15,23 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * Server log lines captured while a recording runs, kept until the recording is uploaded:
- * {root}/{id}/meta.json + server-log.{node}.jsonl (one file per cluster node, so two nodes never write the same file).
- * On upload, {@link #attach} merges them into the recording's server-log.json and deletes the pending folder.
+ * System log lines captured while a recording runs, kept until the recording is uploaded:
+ * {root}/{id}/meta.json + system-log.{node}.jsonl (one file per cluster node, so two nodes never write the same file).
+ * On upload, {@link #attach} merges them into the recording's system-log.json and deletes the pending folder.
  *
  * The id is a random UUID made by the extension; only the user who started the capture can attach it.
  */
-public class ServerLogStore {
+public class SystemLogStore {
 
-    public static final String FILE = "server-log.json";
+    public static final String FILE = "system-log.json";
     private static final String META = "meta.json";
     private static final Pattern ID = Pattern.compile("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
     static final long FORWARD_MS = 24L * 3600 * 1000; // > TraceCollector.GIVE_UP_MS
-    private static final Pattern NODE_FILE = Pattern.compile("^server-log\\.[A-Za-z0-9.-]+\\.jsonl$");
+    private static final Pattern NODE_FILE = Pattern.compile("^system-log\\.[A-Za-z0-9.-]+\\.jsonl$");
 
     private final Path root;
 
-    public ServerLogStore(Path root) {
+    public SystemLogStore(Path root) {
         this.root = root;
     }
 
@@ -41,11 +41,18 @@ public class ServerLogStore {
 
     /** Starts a capture. Returns false when the id already belongs to another user. Starting it again is fine. */
     public boolean start(String id, String owner, long maxBytes, long keepMs) throws IOException {
-        return start(id, owner, maxBytes, keepMs, false, "");
+        return start(id, owner, maxBytes, keepMs, false, "", false);
     }
 
     /** traces: also copy the Glowroot traces of slow and failed requests, from glowrootUrl ("" = the local agent). */
-    public boolean start(String id, String owner, long maxBytes, long keepMs, boolean traces, String glowrootUrl) throws IOException {
+    public boolean start(String id, String owner, long maxBytes, long keepMs, boolean traces, String glowrootUrl, boolean gauges)
+            throws IOException {
+        return start(id, owner, maxBytes, keepMs, traces, glowrootUrl, gauges, false);
+    }
+
+    /** glowrootData: also cut the recording out of each node's Glowroot data after the stop (GlowrootPackager). */
+    public boolean start(String id, String owner, long maxBytes, long keepMs, boolean traces, String glowrootUrl, boolean gauges,
+            boolean glowrootData) throws IOException {
         JSONObject meta = readMeta(id);
         if (meta != null) {
             return owner.equals(meta.optString("owner"));
@@ -60,7 +67,9 @@ public class ServerLogStore {
                     .put("expiresAt", now + keepMs)
                     .put("maxBytes", maxBytes)
                     .put("traces", traces)
-                    .put("glowrootUrl", glowrootUrl == null ? "" : glowrootUrl));
+                    .put("glowrootUrl", glowrootUrl == null ? "" : glowrootUrl)
+                    .put("gauges", gauges)
+                    .put("glowrootData", glowrootData));
         } catch (JSONException e) {
             throw new IOException(e);
         }
@@ -104,7 +113,7 @@ public class ServerLogStore {
 
     /** The file one node appends to. node must match [A-Za-z0-9.-]+. */
     Path nodeFile(String id, String node) {
-        return root.resolve(id).resolve("server-log." + node + ".jsonl");
+        return root.resolve(id).resolve("system-log." + node + ".jsonl");
     }
 
     /**
@@ -174,6 +183,11 @@ public class ServerLogStore {
             throw new IOException(e);
         }
         TraceStore.moveAll(dir, target.getParent());
+        GaugeStore.moveAll(dir, target.getParent());
+        GlowrootData.moveAll(dir, target.getParent());
+        if (Files.isRegularFile(dir.resolve(ServerInfo.FILE))) {
+            Files.move(dir.resolve(ServerInfo.FILE), target.resolveSibling(ServerInfo.FILE), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
         try (DirectoryStream<Path> files = Files.newDirectoryStream(dir)) {
             for (Path f : files) {
                 if (NODE_FILE.matcher(f.getFileName().toString()).matches()) {

@@ -49,7 +49,7 @@ final class TraceCollector {
     private static final int MAX_PER_CAPTURE = 100;          // traces per capture on one node
     private static final long RETRY_SCAN_S = 20;
     static final String RETRY_PREFIX = "Retry requested";
-    private static final String NODE = ServerLogCapture.nodeName();
+    private static final String NODE = SystemLogCapture.nodeName();
     private static final Pattern NODE_NAME = Pattern.compile("^[A-Za-z0-9.-]+$");
 
     private static final Map<Running, Boolean> RUNNING = new ConcurrentHashMap<>();
@@ -85,7 +85,7 @@ final class TraceCollector {
     }
 
     /** A tagged request has started. Returns what to pass to {@link #end}, or null when traces are off. */
-    static Running begin(ServerLogCapture.Capture capture, String method, String url, long start) {
+    static Running begin(SystemLogCapture.Capture capture, String method, String url, long start) {
         if (jobs == null || !capture.traces) {
             return null;
         }
@@ -436,6 +436,10 @@ final class TraceCollector {
             if (r.recordingId == null) {
                 moveIfUploaded(r.captureId, dir);
             }
+            String rec = r.recordingId != null ? r.recordingId : uploadedAs(r.captureId);
+            if (rec != null) {
+                ServerData.refreshTraces(BlackBoxPlugin.store(), rec); // the recordings list's counts
+            }
         } catch (IOException ex) {
             LogUtil.warn(TraceCollector.class.getName(), "Could not save a trace of capture " + r.captureId + ": " + ex.getMessage());
         }
@@ -449,9 +453,14 @@ final class TraceCollector {
         return dir != null && Files.isDirectory(dir) ? dir : null;
     }
 
+    /** Where a capture's files (traces, gauges) go now: its pending folder, or the recording's after the upload. */
+    static Path captureDir(String captureId) {
+        return dir(captureId);
+    }
+
     /** Where the capture's traces go now: its pending folder, or the recording's folder after the upload. */
     private static Path dir(String captureId) {
-        ServerLogStore store = ServerLogCapture.store();
+        SystemLogStore store = SystemLogCapture.store();
         JSONObject meta = store.readMeta(captureId);
         if (meta == null) {
             return null;
@@ -463,7 +472,7 @@ final class TraceCollector {
 
     /** Written to the pending folder just as the upload moved it: move what was left behind. */
     private static void moveIfUploaded(String captureId, Path written) throws IOException {
-        ServerLogStore store = ServerLogCapture.store();
+        SystemLogStore store = SystemLogCapture.store();
         if (!written.equals(store.dir(captureId))) {
             return;
         }
@@ -473,6 +482,13 @@ final class TraceCollector {
         if (target != null && Files.isDirectory(target)) {
             TraceStore.moveAll(written, target);
         }
+    }
+
+    /** The recording a capture was uploaded as, or null before the upload. */
+    private static String uploadedAs(String captureId) {
+        JSONObject meta = SystemLogCapture.store().readMeta(captureId);
+        String rec = meta != null ? meta.optString("recording") : "";
+        return rec.isEmpty() ? null : rec;
     }
 
     private static Path recordingDir(String recId) {
