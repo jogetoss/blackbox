@@ -1,8 +1,7 @@
 {
   "manifest_version": 3,
   "name": "BlackBox",
-  "version": "0.10.0.1",
-  "version_name": "0.10.0-beta.1",
+  "version": "1.0.0",
   "description": "Records a window, screen or tab as video, plus the tab's console logs and network activity, and uploads it to a server.",
   "minimum_chrome_version": "116",
   "permissions": [
