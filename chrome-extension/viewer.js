@@ -5,7 +5,7 @@
 const $ = (id) => document.getElementById(id);
 const video = $('video');
 
-let current = { video: null, report: null, serverLog: null }; // what the user has loaded so far
+let current = { video: null, report: null, systemLog: null }; // what the user has loaded so far
 let report = null;
 let durationMs = 0;
 let hasVideo = false;
@@ -17,14 +17,14 @@ let pastCount = 0;         // rows[0 .. pastCount-1] have t <= playhead
 let selectedEl = null;
 let videoUrl = null;
 let issues = [];           // sorted t of console errors, failed requests and server errors
-let serverItems = [];      // server log entries with t (server replay page only, see prepareServerLog)
+let serverItems = [];      // system log entries with t (server replay page only, see prepareSystemLog)
 let serverOffset = 0;      // ms the server clock is ahead of the browser's (0 when too small to matter)
 let traceItems = [];       // Glowroot traces with t (server replay page only, see prepareTraces)
 let traceLink = null;      // (trace) => URL of its full trace page, or null (see blackboxOpen)
 let traceRetry = null;     // async (keys) => asks the server to look for failed traces again, or null
 const GLOWROOT_KEEP_MS = 14 * 24 * 3600 * 1000; // Glowroot's default trace retention
 
-// Filter list per tab (none on the Server tab). Console levels are picked with checkboxes (LEVEL_BOXES).
+// Filter list per tab (none on the System logs tab). Console levels are picked with checkboxes (LEVEL_BOXES).
 const FILTERS = {
   console: [
     ['all', 'All sources'],
@@ -94,15 +94,19 @@ document.addEventListener('drop', (e) => {
 });
 
 // Lets a host page (e.g. a server that shows uploaded recordings) open a recording: video = URL or Blob (or null),
-// report = parsed session.json, extra.serverLog = parsed server-log.json (shows the Server tab),
+// report = parsed session.json, extra.systemLog = parsed system-log.json (shows the System logs tab),
 // extra.title = the title in the header (default: the recorded tab's title),
 // extra.info = { label: value } shown first in the Info tab (e.g. who uploaded it),
 // extra.traces = Glowroot traces of the recorded requests (shows the Traces tab; see blackboxSetTraces),
 // extra.traceUrl = (trace) => URL of a saved trace's full page, or null when the page is not available,
-// extra.retryTraces = async (keys) => asks the server to look again for failed traces ([] = all failed ones).
+// extra.retryTraces = async (keys) => asks the server to look again for failed traces ([] = all failed ones),
+// extra.gauges = { nodes: { name: [samples] } }: the server load during the recording (shows the Server load strip),
+// extra.serverInfo = { license, system, blackbox }: System Info at recording start (shown in the Info tab).
 window.blackboxOpen = (videoSrc, sessionReport, extra) => {
   current = {
-    video: videoSrc || null, report: sessionReport, serverLog: extra?.serverLog || null, traces: extra?.traces || null,
+    video: videoSrc || null, report: sessionReport, systemLog: extra?.systemLog || null, traces: extra?.traces || null,
+    gauges: extra?.gauges || null,
+    serverInfo: extra?.serverInfo || null,
     title: extra?.title || '', info: extra?.info || {},
   };
   traceLink = extra?.traceUrl || null;
@@ -144,7 +148,7 @@ window.blackboxClose = () => {
   video.load();
   if (videoUrl) URL.revokeObjectURL(videoUrl);
   videoUrl = null;
-  current = { video: null, report: null, serverLog: null };
+  current = { video: null, report: null, systemLog: null };
   report = null;
   $('recTitle').textContent = 'BlackBox replay';
   $('recTitle').title = '';
@@ -164,10 +168,10 @@ async function loadFiles(files) {
   const zip = files.find((f) => name(f).endsWith('.zip'));
   if (zip) {
     // A recording ZIP (Download ZIP on the server) is a whole recording: it replaces what is open.
-    // Its server-log.json is not shown here; server logs are shown on the server's replay page.
+    // Its system-log.json is not shown here; system logs are shown on the server's replay page.
     const parts = await readZip(zip);
     if (!parts.has('session.json')) throw new Error(`${zip.name} has no session.json: it is not a BlackBox recording ZIP.`);
-    current = { video: null, report: null, serverLog: null };
+    current = { video: null, report: null, systemLog: null };
     files = [new File([parts.get('session.json')], 'session.json', { type: 'application/json' })];
     if (parts.has('recording.webm')) files.push(new File([parts.get('recording.webm')], 'recording.webm', { type: 'video/webm' }));
   }
@@ -180,7 +184,7 @@ async function loadFiles(files) {
   if (webm) current.video = webm;
   if (json) {
     current.report = JSON.parse(await json.text());
-    current.serverLog = null;
+    current.systemLog = null;
   }
   if (!current.report) {
     showError('Video loaded. Now add session.json from the same folder.');
@@ -225,14 +229,14 @@ function openRecording() {
 
   $('consoleCount').textContent = r.console.length;
   $('networkCount').textContent = r.network.length;
-  serverItems = prepareServerLog(current.serverLog, r);
+  serverItems = prepareSystemLog(current.systemLog, r);
   if ($('serverTab')) {
-    $('serverTab').hidden = !current.serverLog;
+    $('serverTab').hidden = !current.systemLog;
     $('serverCount').textContent = serverItems.filter((e) => e.kind === 'log').length;
   }
   traceItems = prepareTraces(current.traces, r);
   updateTracesTab();
-  if (tab === 'server' && !current.serverLog) tab = 'console';
+  if (tab === 'server' && !current.systemLog) tab = 'console';
   if (tab === 'traces' && !current.traces) tab = 'console';
   issues = [
     ...r.console.filter((e) => e.level === 'error').map((e) => e.t),
@@ -245,6 +249,7 @@ function openRecording() {
   showNetRange(null);
   renderMarkers();
   drawOverview();
+  openLoad();
   renderInfo();
   setTab(tab);
   startMs = Math.min(timeFromUrl(), durationMs);
@@ -326,6 +331,7 @@ function onTime() {
   const now = nowMs();
   $('playhead').style.left = pct(now);
   ov.playhead.style.left = pct(now);
+  load.playhead.style.left = pct(now);
   $('clock').textContent = `${fmt(now)} / ${fmt(durationMs)}`;
 
   const n = upperBound(rows, now);
@@ -367,7 +373,7 @@ $('prevIssue').onclick = () => {
 };
 
 document.addEventListener('keydown', (e) => {
-  if (e.target.closest('input, select, textarea, video') || !hasVideo || !report) return;
+  if (e.target.closest('input, select, textarea, video, .drawer') || !hasVideo || !report) return;
   if (e.key === ' ') { e.preventDefault(); video.paused ? video.play() : video.pause(); }
   if (e.key === 'ArrowLeft') seek(nowMs() - 5000);
   if (e.key === 'ArrowRight') seek(nowMs() + 5000);
@@ -545,12 +551,125 @@ function waterfall(n) {
   return box;
 }
 
-// ---------- server log ----------
+// ---------- server load ----------
+
+// Under the Issues timeline, same time axis: one node's load sampled every second by the plugin (GaugeSampler).
+// Lines are % of their maximum (CPU, heap, busy request threads, DB connections); GC time is drawn as bars.
+const LOAD_SERIES = [
+  ['cpu', 'CPU', '--g-cpu', (s) => s.cpu, (s) => `${Math.round(s.cpu * 100)}%`],
+  ['heap', 'Heap', '--g-heap', (s) => s.heapMax && s.heapUsed / s.heapMax, (s) => `${gb(s.heapUsed)} / ${gb(s.heapMax)} GB`],
+  ['threads', 'Busy threads', '--g-threads', (s) => s.threadsMax && s.threadsBusy / s.threadsMax, (s) => `${s.threadsBusy} / ${s.threadsMax}`],
+  ['db', 'DB connections', '--g-db', (s) => s.dbMax && s.dbActive / s.dbMax, (s) => `${s.dbActive} / ${s.dbMax}${s.dbWaiting ? `, ${s.dbWaiting} waiting` : ''}`],
+];
+let loadSamples = [];      // the shown node's samples, with t
+const load = buildLoad();
+
+function gb(bytes) {
+  return (bytes / 1073741824).toFixed(bytes < 1073741824 ? 2 : 1);
+}
+
+function buildLoad() {
+  const box = el('div', 'load');
+  box.hidden = true;
+  const head = el('div', 'ov-head');
+  const node = el('select', 'load-node');
+  node.title = 'Server (cluster node)';
+  node.hidden = true;
+  node.onchange = () => showLoadNode(node.value);
+  const readout = el('span', 'load-readout');
+  head.append(el('span', null, 'Server load'),
+    ...LOAD_SERIES.map(([k, label]) => { const s = el('span'); s.append(el('i', `dot g-${k}`), label); return s; }),
+    (() => { const s = el('span'); s.append(el('i', 'dot g-gc'), 'GC'); return s; })(), node, readout);
+  const strip = el('div', 'ov-strip load-strip');
+  strip.title = 'Server load (% of each maximum; GC time as bars). Click to seek.';
+  const canvas = el('canvas');
+  const playhead = el('div', 'playhead');
+  strip.append(canvas, playhead);
+  box.append(head, strip);
+  $('timeline').after(box);
+  strip.addEventListener('click', (e) => { if (report) seek(overviewMsIn(strip, e.clientX)); });
+  strip.addEventListener('mousemove', (e) => showReadout(overviewMsIn(strip, e.clientX)));
+  strip.addEventListener('mouseleave', () => showReadout(null));
+  new ResizeObserver(() => drawLoad()).observe(strip);
+  return { box, strip, canvas, playhead, node, readout };
+}
+
+function overviewMsIn(strip, clientX) {
+  const box = strip.getBoundingClientRect();
+  return Math.max(0, Math.min(1, (clientX - box.left) / box.width)) * durationMs;
+}
+
+function openLoad() {
+  const nodes = Object.keys(current.gauges?.nodes || {});
+  load.box.hidden = !nodes.length;
+  load.node.replaceChildren(...nodes.map((n) => { const o = el('option', null, n); o.value = n; return o; }));
+  load.node.hidden = nodes.length < 2;
+  showLoadNode(nodes[0]);
+}
+
+function showLoadNode(name) {
+  const start = Date.parse(report.recording?.startedAt);
+  loadSamples = (current.gauges?.nodes?.[name] || []).map((s) => ({ ...s, t: start ? s.ts - start - serverOffset : 0 }));
+  drawLoad();
+  showReadout(null);
+}
+
+function drawLoad() {
+  const c = load.canvas;
+  const w = load.strip.clientWidth, h = load.strip.clientHeight;
+  if (!w || !h) return;
+  const scale = (window.devicePixelRatio || 1) * (parseFloat(document.documentElement.style.zoom) || 1);
+  c.width = Math.round(w * scale);
+  c.height = Math.round(h * scale);
+  const g = c.getContext('2d');
+  g.setTransform(scale, 0, 0, scale, 0, 0);
+  g.clearRect(0, 0, w, h);
+  if (!report || !durationMs || !loadSamples.length) return;
+  const css = getComputedStyle(document.documentElement);
+  const x = (ms) => (ms / durationMs) * w;
+  const y = (f) => h - 2 - Math.max(0, Math.min(1, f)) * (h - 4);
+  // GC: bars of the share of each second spent in GC
+  g.fillStyle = css.getPropertyValue('--g-gc').trim();
+  g.globalAlpha = 0.6;
+  const barW = Math.max(2, x(1000) - 1);
+  for (const s of loadSamples) if (s.gcMs) g.fillRect(x(s.t) - barW, y(s.gcMs / 1000), barW, h - 2 - y(s.gcMs / 1000));
+  g.globalAlpha = 1;
+  g.lineWidth = 1.5;
+  for (const [, , color, value] of LOAD_SERIES) {
+    g.strokeStyle = css.getPropertyValue(color).trim();
+    g.beginPath();
+    let drawing = false;
+    for (const s of loadSamples) {
+      const v = value(s);
+      if (v == null || Number.isNaN(v)) { drawing = false; continue; }
+      if (drawing) g.lineTo(x(s.t), y(v)); else g.moveTo(x(s.t), y(v));
+      drawing = true;
+    }
+    g.stroke();
+  }
+}
+
+new MutationObserver(() => drawLoad()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'style'] });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => drawLoad());
+
+// The values at the mouse (or the playhead when the mouse leaves)
+function showReadout(ms) {
+  if (!loadSamples.length) { load.readout.textContent = ''; return; }
+  const at = ms ?? nowMs();
+  let best = loadSamples[0];
+  for (const s of loadSamples) if (Math.abs(s.t - at) < Math.abs(best.t - at)) best = s;
+  const parts = [fmt(Math.max(0, best.t))];
+  for (const [, label, , value, text] of LOAD_SERIES) if (value(best) != null && !Number.isNaN(value(best))) parts.push(`${label} ${text(best)}`);
+  if (best.gcMs != null) parts.push(`GC ${best.gcMs} ms`);
+  load.readout.textContent = parts.join(' · ');
+}
+
+// ---------- system log ----------
 
 // Entries have ts = server clock (epoch ms). t = ts - recording start, minus the server clock's offset, measured
 // from the X-BlackBox-Time header the plugin adds to the tagged responses (server time when the request arrived).
 // Small offsets are mostly network delay, so only an offset over 250 ms is corrected.
-function prepareServerLog(log, r) {
+function prepareSystemLog(log, r) {
   serverOffset = 0;
   const start = Date.parse(r.recording?.startedAt);
   if (!log || !start) return [];
@@ -689,10 +808,10 @@ $('detailClose').onclick = () => closeDetail();
 function setTab(name) {
   tab = name;
   document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
-  const isInfo = name === 'info';
+  const isInfo = name === 'info'; // a page of text: no toolbar or list
   $('toolbar').hidden = isInfo;
   $('list').hidden = isInfo;
-  $('info').hidden = !isInfo;
+  $('info').hidden = name !== 'info';
   if (isInfo) tabNote.hidden = true;
   ov.box.hidden = name !== 'network'; // shown: the ResizeObserver draws it
   if (!isInfo) {
@@ -861,7 +980,7 @@ function traceRow(e) {
 
 // ---------- Glowroot traces ----------
 
-// Trace entries have ts = server clock, like the server log: same start and clock offset (prepareServerLog runs first)
+// Trace entries have ts = server clock, like the system log: same start and clock offset (prepareSystemLog runs first)
 function prepareTraces(list, r) {
   const start = Date.parse(r.recording?.startedAt);
   return (list || []).map((e) => ({ ...e, kind: 'trace', t: start ? e.ts - start - serverOffset : 0 }))
@@ -1066,7 +1185,7 @@ function showDetail(item) {
     section(body, 'Response body', responseBody(item));
     if (serverItems.length) {
       const req = serverRequestFor(item);
-      section(body, 'Server log', req ? serverList([req, ...requestLines(req)]) : el('div', 'muted', 'No server entry for this request.'));
+      section(body, 'System logs', req ? serverList([req, ...requestLines(req)]) : el('div', 'muted', 'No server entry for this request.'));
     }
     const trace = traceItems.length ? traceFor(item) : null;
     if (trace) {
@@ -1124,23 +1243,146 @@ function renderInfo() {
       'Requests': s.requests,
       'Failed requests': s.failedRequests,
       'Navigations': (report.navigations || []).length,
-      'Server log': serverLogInfo(rec.serverLog),
+      'System logs': systemLogInfo(rec.systemLog),
       'Server clock offset': serverOffset ? `${serverOffset} ms (corrected)` : undefined,
       'User agent': rec.userAgent,
       'Recorded with': report.tool,
     }),
   );
+  // Server snapshot at recording start (plugin page): grouped like Glowroot's Environment page, then everything
+  // Settings > System Info shows. JVM arguments keep one per line.
+  const si = current.serverInfo;
+  if (si) {
+    const when = si.takenAt ? ` (snapshot at ${new Date(si.takenAt).toLocaleString()})` : '';
+    const body = $('info');
+    const groups = [['host', `Host${when}`], ['process', 'Process'], ['java', 'Java'], ['joget', 'Joget'], ['database', 'Database'],
+      ['connectionPool', 'Connection pool'], ['license', 'License'], ['systemProperties', 'System properties']];
+    for (const [key, title] of groups) {
+      if (!si[key] || !Object.keys(si[key]).length) continue;
+      const list = kv(infoOrder(key, si[key]));
+      list.classList.add('multiline');
+      section(body, title, list);
+    }
+  }
 }
 
-function serverLogInfo(s) {
-  const log = current.serverLog;
+// The server's JSON keeps no key order: labels first in this order, then file and pool keys A-Z.
+const INFO_LABELS = {
+  database: ['Profile', 'JDBC driver', 'JDBC URL', 'User'],
+  connectionPool: ['Ignored file keys', 'Pool size', 'Active connections', 'Idle connections', 'Waiting threads'],
+};
+
+function infoOrder(group, obj) {
+  const labels = INFO_LABELS[group];
+  if (!labels) return obj;
+  const rank = (k) => (labels.includes(k) ? labels.indexOf(k) : labels.length);
+  const keys = Object.keys(obj).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+  return Object.fromEntries(keys.map((k) => [k, obj[k]]));
+}
+
+// ---------- features drawer ----------
+
+// Opened by the header's Features button; it covers the panel, not the video. ✕, Esc, the button again or a click
+// outside the drawer close it.
+$('featuresBtn').onclick = () => ($('featuresDrawer').hidden ? openFeatures() : closeFeatures());
+$('featuresClose').onclick = () => closeFeatures();
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !$('featuresDrawer').hidden) closeFeatures();
+});
+
+function openFeatures() {
+  renderFeatures();
+  $('featuresDrawer').hidden = false;
+  $('featuresBtn').classList.add('active');
+  $('featuresClose').focus();
+}
+
+document.addEventListener('pointerdown', (e) => {
+  if (!$('featuresDrawer').hidden && !e.target.closest('#featuresDrawer, #featuresBtn')) closeFeatures(false);
+});
+
+// refocus: false after a click elsewhere, so focus stays where the user clicked
+function closeFeatures(refocus = true) {
+  $('featuresDrawer').hidden = true;
+  $('featuresBtn').classList.remove('active');
+  if (refocus) $('featuresBtn').focus();
+}
+
+// The replay pages that use this viewer. The page that loads a recording sets window.blackboxPage: replay.js
+// 'extension', the plugin's view.js 'server', its downloaded file (export.js) 'file'; dist/blackbox-viewer.html sets
+// nothing: 'viewer'.
+const PAGES = {
+  extension: 'Extension',
+  server: 'Joget server (plugin)',
+  file: 'Downloaded HTML',
+  viewer: 'Standalone viewer',
+};
+const ALL = Object.keys(PAGES);
+
+// [title, what it does, the pages that have it, notes for some pages]
+const FEATURES = [
+  ['Video replay', 'Plays the recorded window, screen or tab. Space plays and pauses, ← / → jump 5 seconds. The clock under the video shows where you are.', ALL],
+  ['Console tab', 'Console logs, uncaught exceptions, browser messages and page navigations from the recorded tab, in time order. Tick levels to show, pick a source, or type in Filter.', ALL],
+  ['Network tab', 'Every request of the recorded tab with method, status, type and time. Filter by kind (Fetch / XHR, documents, failed, other). Click a row for headers, request and response bodies (JSON pretty-printed) and Copy as cURL.', ALL,
+    { server: 'A request\'s details also show its system log lines and its Glowroot trace, when they were captured.', file: 'A request\'s details also show its system log lines, when they were included.' }],
+  ['Lists follow the video', 'Rows before the playhead are normal, later rows are faded (Hide future hides them). Follow keeps the latest row in view. Click a row to jump the video there.', ALL],
+  ['Issues timeline', 'The strip under the video marks console errors (red), failed requests (orange) and navigations (blue). Click it to seek. ◀ Prev issue / Next issue ▶ jump between the problems.', ALL,
+    { server: 'Server errors from the system logs are marked too (purple).', file: 'Server errors are marked too (purple) when the system logs are in the file.' }],
+  ['Requests strip', 'At the top of the Network tab: one bar per request, from start to end, coloured by kind. Drag across it to list only the requests in that time range; double-click or ✕ shows all again.', ALL],
+  ['System logs tab', 'The Joget log lines written while serving the recorded requests, lined up with the video and filtered by level. Only for users allowed to view system logs, and only when the plugin captured them.', ['server', 'file'],
+    { file: 'Included only when the person who downloaded it was allowed to view system logs.' }],
+  ['Traces tab', 'Glowroot traces of slow and failed requests: time, CPU, SQL count and time, slowest queries and the error.', ['server', 'file'],
+    { server: 'Open full trace shows Glowroot\'s page. Retry looks again for failed ones. The tab updates by itself while traces are still being collected.', file: 'Summaries only; the full trace pages are in the ZIP download.' }],
+  ['Server load strip', 'Under the timeline: CPU, heap, busy request threads and database connections (as % of each maximum) and GC time, sampled every second on the server. Hover for values, click to seek.', ['server', 'file']],
+  ['Info tab', 'The recording: tab title and URL, start, stop, length, stop reason, counts and the browser.', ALL,
+    { extension: 'Also says whether system logs were captured; they show on the server after the upload.', server: 'Also a snapshot of the server at recording start: host, process, Java, Joget, database, connection pool, license and system properties.', file: 'Also the server snapshot at recording start, when it was included.' }],
+  ['Where this copy is', 'The first label in the status bar says where the open copy lives (In this browser, In folder, Opened from files, On <server>, Downloaded file), so Delete is never mistaken for deleting another copy.', ALL],
+  ['Notes', 'The notes typed at upload (steps, what went wrong), under the header.', ['server', 'file']],
+  ['Upload', 'Sends the recording to the Upload URL\'s server, using your login there. After a recording stops, it is uploaded by itself and the server\'s page opens when you are logged in (Settings: Open recordings on the server when you are logged in). When that automatic upload fails, the button shows ⚠ Upload: hover for the reason; click to check again and, if it still fails, see the fix (change the Upload URL, log in, allow access) in place of the form.', ['extension']],
+  ['Move to folder', 'Moves recording.webm and session.json to Downloads/blackbox/ to free browser storage. Link that folder on the Recordings page to keep it listed.', ['extension']],
+  ['Download ZIP', 'One ZIP of the recording, to import on a BlackBox server or in another browser.', ['extension', 'server'],
+    { server: 'Includes the system logs, traces and Glowroot data for users allowed to view them; while the Glowroot data is still being built (about a minute after the recording stopped) it waits.' }],
+  ['Download Glowroot data', 'This recording cut out of each server node\'s Glowroot data, in Glowroot\'s own format: the traces of the recorded requests, plus the aggregates and gauges of all traffic during the recording. Open it in a standalone Glowroot of the same version (README.txt inside). Built about a minute after the recording stops, when the plugin setting "Copy Glowroot data for the recording" is on; only for users allowed to view system logs.', ['server']],
+  ['Download HTML', 'One .html file that replays the recording in any browser, with no Joget, plugin or extension. Share it only with people who may see what is inside.', ['server']],
+  ['Delete', 'Deletes this copy.', ['extension', 'server'],
+    { extension: 'Removes only the copy in this browser or folder, never one on a server.', server: 'Removes it from the server for everyone; shown only to users allowed to delete it.' }],
+  ['Open files / drag and drop', 'Replays recording.webm + session.json, or a recording ZIP, from your disk.', ['extension', 'viewer']],
+  ['◀ Older / Newer ▶', 'Opens the next recording in the list, with its position (e.g. 5 / 6).', ['extension', 'server'],
+    { extension: 'Recordings in browser storage and the linked folder.', server: 'The recordings you can see.' }],
+  ['← Recordings', 'Back to the recordings list.', ['extension', 'server']],
+  ['Link to a moment', 'The address carries the playhead time (?t=5.8) and follows it. Copy the address to share that moment; opening it starts there.', ['extension', 'server', 'file']],
+  ['Resize', 'Drag the line between the video and the panel, or above a row\'s details. Double-click a line to reset it. Remembered in this browser.', ALL],
+  ['Text size', 'The Aa picker scales the whole page. Remembered in this browser.', ALL,
+    { extension: 'The same setting as Text size in the extension\'s Settings.' }],
+];
+
+function renderFeatures() {
+  const here = PAGES[window.blackboxPage] ? window.blackboxPage : 'viewer';
+  const body = $('features');
+  const intro = el('p', 'muted');
+  intro.append('You are on: ', el('strong', null, PAGES[here]), '. Features this page does not have are marked.');
+  body.replaceChildren(intro);
+  for (const [title, text, where, notes] of FEATURES) {
+    const h = el('h3', null, title);
+    if (!where.includes(here)) h.append(' ', el('span', 'badge', 'Not on this page'));
+    const line = el('p', 'feature-where', 'Where: ');
+    for (const p of where) line.append(el('span', p === here ? 'badge yes' : 'badge', PAGES[p]));
+    body.append(h, el('p', null, text), line);
+    if (notes?.[here] && where.includes(here)) body.append(el('p', 'feature-note', 'On this page: ' + notes[here]));
+  }
+}
+
+function systemLogInfo(s) {
+  const log = current.systemLog;
   if (log) {
     const n = serverItems.filter((e) => e.kind === 'log').length;
     return `${n} log lines, ${serverItems.length - n} requests${log.truncated ? ' (cut off at the size limit)' : ''}`;
   }
   if (!s) return undefined;
   if (s.status === 'on') return `Captured on ${s.server}; shown on the server's replay page after upload`;
-  return `Not captured${s.message ? ': ' + s.message : ''}`;
+  // Recordings made before the extension said "Could not reach" carry fetch()'s own "Failed to fetch"
+  const message = s.message === 'Failed to fetch' && s.server ? `Could not reach ${s.server}` : s.message;
+  return `Not captured${message ? ': ' + message : ''}`;
 }
 
 // ---------- helpers ----------

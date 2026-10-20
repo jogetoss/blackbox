@@ -13,6 +13,12 @@
   --nav: #1a73e8;
   --failed: #e8710a;
   --api: #188038;
+  /* Server load lines: Okabe-Ito colours, distinct for colour-blind viewers too */
+  --g-cpu: #0072b2;
+  --g-heap: #cc79a7;
+  --g-threads: #009e73;
+  --g-db: #e69f00;
+  --g-gc: #80868b;
   --server: #9334e6;
   --current: #e8f0fe;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -36,6 +42,11 @@
     --nav: #8ab4f8;
     --failed: #fcad70;
     --api: #81c995;
+    --g-cpu: #56b4e9;
+    --g-heap: #e3a6cb;
+    --g-threads: #3dd6a8;
+    --g-db: #f5c242;
+    --g-gc: #9aa0a6;
     --server: #c58af9;
     --current: #283a57;
   }
@@ -56,6 +67,11 @@
   --nav: #8ab4f8;
   --failed: #fcad70;
   --api: #81c995;
+  --g-cpu: #56b4e9;
+  --g-heap: #e3a6cb;
+  --g-threads: #3dd6a8;
+  --g-db: #f5c242;
+  --g-gc: #9aa0a6;
   --server: #c58af9;
   --current: #283a57;
 }
@@ -136,6 +152,14 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 6p
   position: absolute; top: 0; bottom: 0; pointer-events: none;
   background: color-mix(in srgb, var(--accent) 18%, transparent); border: 1px solid var(--accent); border-width: 0 1px;
 }
+/* Server load strip under the timeline (viewer.js) */
+.load { display: flex; flex-direction: column; gap: 3px; }
+.load-strip { height: 48px; cursor: pointer; }
+.load-node { padding: 0 4px; font-size: 12px; }
+.load-readout { margin-left: auto; font-family: var(--mono); color: var(--fg); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.dot.g-cpu { background: var(--g-cpu); } .dot.g-heap { background: var(--g-heap); } .dot.g-threads { background: var(--g-threads); }
+.dot.g-db { background: var(--g-db); } .dot.g-gc { background: var(--g-gc); border-radius: 1px; }
+
 /* Waterfall column of a network row */
 .row .wf { position: relative; align-self: center; height: 8px; background: var(--bg-2); border-radius: 2px; }
 .wf-bar { position: absolute; top: 0; bottom: 0; border-radius: 2px; background: var(--fg-2); }
@@ -190,9 +214,14 @@ body.resizing-split-y { cursor: row-resize; user-select: none; }
 .right { text-align: right; }
 
 .info { flex: 1; overflow: auto; padding: 12px 16px; }
+.features p { margin: 2px 0 6px; max-width: 72ch; }
+.features .feature-where { color: var(--fg-2); font-size: 12px; }
+.features .feature-note { color: var(--fg-2); }
+.info h3, .features h3 { font-size: 12px; margin: 16px 0 4px; color: var(--fg-2); text-transform: uppercase; letter-spacing: .04em; }
 .kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 16px; }
 .kv dt { color: var(--fg-2); }
 .kv dd { margin: 0; word-break: break-all; font-family: var(--mono); font-size: 12px; }
+.kv.multiline dd { white-space: pre-wrap; } /* JVM arguments: one per line */
 
 .detail { position: relative; flex: 0 0 var(--detail-h, 45%); min-height: 0; display: flex; flex-direction: column; border-top: 2px solid var(--line); }
 .detail-head { display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: var(--bg-2); }
@@ -221,6 +250,19 @@ button:disabled { opacity: .5; cursor: default; }
 .library td.acts button { margin-left: 6px; }
 .badge { display: inline-block; padding: 0 7px; border-radius: 10px; font-size: 12px; background: var(--bg-3); color: var(--fg-2); margin-right: 4px; }
 .badge.yes { background: var(--current); color: var(--accent); }
+.badge.err { background: var(--error-bg); color: var(--error); }
+.badge.warn { background: var(--warn-bg); color: var(--warn); }
+/* Recordings lists (extension and server): select column, batch bar, title link, small second lines */
+.library th.sel, .library td.sel { width: 28px; padding-right: 0; }
+.library-bar input[type=search] { flex: 1; min-width: 160px; max-width: 360px; }
+.library-bar .batch { display: flex; gap: 8px; align-items: center; margin-left: auto; flex-wrap: wrap; }
+.library a.rec-title { color: var(--accent); font-weight: 600; text-decoration: none; }
+.library a.rec-title:hover { text-decoration: underline; }
+.library .small { font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+.library .nowrap { white-space: nowrap; }
+.library td { vertical-align: top; }
+header > .muted { white-space: nowrap; }
+@media (max-width: 760px) { .library .hide-sm { display: none; } }
 .upload-box { display: grid; gap: 4px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--bg-2); max-width: 720px; }
 .upload-box label { font-weight: 600; margin-top: 4px; }
 .upload-box input, .upload-box textarea { font: inherit; padding: 6px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; }
@@ -239,8 +281,36 @@ header.replay-head { gap: 8px 24px; }
 .rec-nav { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .rec-nav[hidden] { display: none !important; }
 .button.disabled { opacity: .45; pointer-events: none; }
+.button.busy { opacity: .45; cursor: not-allowed; } /* waiting for something; the title says what */
 .where { font-weight: 600; color: var(--fg); background: var(--bg-3); border-radius: 10px; padding: 1px 9px; margin-right: 4px; cursor: help; }
 .notes { white-space: pre-wrap; padding: 4px 16px 8px; margin: 0; color: var(--fg-2); }
 .rec-status[hidden] { display: none !important; }
 .rec-status a, .upload-box a { color: var(--accent); }
 .muted { color: var(--fg-2); }
+
+/* Features drawer: slides over the panel on the right, the video stays visible */
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 20; width: min(440px, 100vw);
+  display: flex; flex-direction: column; background: var(--bg); border-left: 1px solid var(--line);
+  box-shadow: -4px 0 16px rgba(0, 0, 0, .18);
+}
+.drawer[hidden] { display: none; }
+.drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.drawer-body { flex: 1; overflow: auto; padding: 4px 16px 16px; }
+#featuresBtn.active { background: var(--current); color: var(--accent); }
+
+/* Upload button after a failed automatic upload; the reason is in its tooltip */
+button.warn { background: var(--warn-bg); color: var(--warn); border-color: var(--warn); }
+
+/* Short confirmations (replay.js toast) */
+.toast {
+  position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 30; max-width: calc(100vw - 32px);
+  padding: 8px 14px; border-radius: 6px; background: var(--fg); color: var(--bg); font-size: 13px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .25);
+}
+.toast[hidden] { display: none; }
+
+/* Upload URL field in the fix box: full width of the box, like the upload form's fields */
+.fix-url { display: grid; gap: 4px; }
+.fix-url[hidden] { display: none; }
+.fix-url input { width: 100%; box-sizing: border-box; font-family: var(--mono); }
