@@ -26,9 +26,20 @@
       <label class="button" title="Add a recording ZIP (Download ZIP on a BlackBox server) to the extension">Import ZIP…
         <input type="file" id="importZip" accept=".zip,application/zip" hidden></label>
       <span id="folderInfo" class="muted"></span>
+      <span class="batch">
+        <span id="selCount" class="muted">Tick recordings to act on several at once</span>
+        <button id="batchUpload" disabled>Upload selected</button>
+        <button id="batchZip" disabled title="One ZIP per recording, to import on a BlackBox server or in another browser">Download ZIP</button>
+        <button id="batchDelete" disabled>Delete selected</button>
+      </span>
     </div>
     <table>
-      <thead><tr><th>Recorded</th><th>Page</th><th>Length</th><th>Status</th><th></th></tr></thead>
+      <thead><tr>
+        <th class="sel"><input type="checkbox" id="selAll" title="Select all shown"></th>
+        <th>Recorded</th><th>Page</th><th>Length</th>
+        <th title="Console errors, failed requests and slow requests (the server's slow threshold, or 2 s)">Browser issues</th>
+        <th>Status</th>
+      </tr></thead>
       <tbody id="libraryRows"></tbody>
     </table>
     <button id="showMore" class="show-more" hidden>Show more</button>

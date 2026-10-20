@@ -1,4 +1,5 @@
-// Recordings page: the list with per-row Open (goes to the Replay page), Upload, Move to folder, Download ZIP and Delete.
+// Recordings page: the list (the title opens the Replay page), Browser issues, and batch Upload / Download ZIP / Delete
+// for the ticked rows. Move to folder and the other single-recording actions are on the Replay page.
 (function () {
   const $ = (id) => document.getElementById(id);
   const { state } = Store;
@@ -39,8 +40,29 @@
     $('error').hidden = !e;
   }
 
+  // Rows: the title opens the recording (Replay page, or the server copy for upload history); single-recording
+  // actions are on the Replay page. Ticked rows get the batch actions above the table.
+  let rows = [];
+  const selected = new Set(); // row keys "kind:id"
+  const key = (r) => r.kind + ':' + r.id;
+
+  $('selAll').onchange = () => {
+    for (const r of rows.slice(0, shown)) if ($('selAll').checked) selected.add(key(r)); else selected.delete(key(r));
+    run(render);
+  };
+  $('batchUpload').onclick = () => run(() => Actions.uploadMany(picked().filter(canUpload)));
+  $('batchZip').onclick = () => run(downloadSelected);
+  $('batchDelete').onclick = () => run(deleteSelected);
+
+  const canUpload = (r) => r.kind !== 'history' && !r.uploaded;
+  const canZip = (r) => r.kind !== 'history';
+  const canDelete = (r) => r.kind === 'history' || Actions.canDelete(r);
+  const picked = () => rows.filter((r) => selected.has(key(r)));
+
   async function render() {
-    const rows = await Store.allRows();
+    rows = await Store.allRows();
+    const keys = new Set(rows.map(key));
+    for (const k of [...selected]) if (!keys.has(k)) selected.delete(k);
     const kept = rows.filter((r) => r.kind === 'saved').length;
     $('libraryEmpty').hidden = rows.length > 0;
     $('libraryRows').closest('table').hidden = rows.length === 0;
@@ -49,78 +71,45 @@
     for (const r of rows.slice(0, shown)) {
       const tr = document.createElement('tr');
       const up = Actions.uploadRow();
-      if (up && up.kind === r.kind && up.id === r.id) tr.className = 'current';
+      if ((up && up.kind === r.kind && up.id === r.id) || selected.has(key(r))) tr.className = 'current';
+
+      const sel = td('');
+      sel.className = 'sel';
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = selected.has(key(r));
+      box.onchange = () => { if (box.checked) selected.add(key(r)); else selected.delete(key(r)); run(render); };
+      sel.append(box);
+      tr.append(sel);
+
       tr.append(td(r.startedAt ? new Date(r.startedAt).toLocaleString() : r.id));
-      const page = td(r.tab?.title || r.tab?.url || '');
+      const page = td('');
       page.className = 'page';
       page.title = r.tab?.url || '';
+      const link = document.createElement('a');
+      link.className = 'rec-title';
+      link.textContent = r.tab?.title || r.tab?.url || r.id;
+      if (r.kind === 'history') {
+        // Uploaded, local copy gone: opens it on the server
+        if (r.uploaded?.url) { link.href = r.uploaded.url; link.target = '_blank'; link.title = 'Opens the uploaded recording on the server'; }
+      } else {
+        link.href = Store.replayUrl(r);
+      }
+      page.append(link);
       tr.append(page);
       tr.append(td(Store.duration(r.durationMs)));
+      tr.append(issuesCell(r));
       const status = td('');
       status.append(...Store.badges(r));
       tr.append(status);
-
-      const acts = td('');
-      acts.className = 'acts';
-      if (r.kind === 'history') {
-        // Uploaded, local copy gone: Open shows it on the server, Delete only removes the row
-        if (r.uploaded?.url) {
-          const open = button('Open', () => window.open(r.uploaded.url, '_blank'));
-          open.title = 'Opens the uploaded recording on the server';
-          acts.append(open);
-        }
-        acts.append(button('Delete', () => run(async () => {
-          if (!confirm('Remove this row from the list? The recording stays on the server.')) return;
-          await idbHistoryDelete(r.id);
-          await render();
-        })));
-        tr.append(acts);
-        body.append(tr);
-        continue;
-      }
-      acts.append(button('Open', () => { location.href = Store.replayUrl(r); }));
-      if (!r.uploaded) acts.append(button('Upload', () => Actions.showUpload(r)));
-      if (r.kind === 'saved') {
-        const moveBtn = button('Move to folder', () => run(async () => {
-          moveBtn.disabled = true;
-          try {
-            const { name, onDisk } = await Actions.moveToFolder(r);
-            message(`Moved to Downloads/blackbox/${name}` + (onDisk ? '.' : '; it is no longer in the extension.'));
-            await render();
-          } catch (e) {
-            moveBtn.disabled = false;
-            throw e;
-          }
-        }));
-        moveBtn.title = 'Move recording.webm + session.json to Downloads/blackbox/ and free its space in the extension. Link that folder to keep it in this list.';
-        acts.append(moveBtn);
-      }
-      const zipBtn = button('Download ZIP', () => run(async () => {
-        zipBtn.disabled = true;
-        try {
-          message(`Saved Downloads/${await Actions.downloadZip(r)}.`);
-        } finally {
-          zipBtn.disabled = false;
-        }
-      }));
-      zipBtn.title = 'Download as one ZIP, to import on a BlackBox server or in another browser. It stays here too.';
-      acts.append(zipBtn);
-      // On disk, Delete only appears once uploaded: it removes the exported files from the folder
-      if (Actions.canDelete(r)) {
-        acts.append(button('Delete', () => run(async () => {
-          const done = await Actions.deleteRow(r);
-          if (done) {
-            if (r.kind === 'disk') message(done);
-            await render();
-          }
-        })));
-      }
-      tr.append(acts);
       body.append(tr);
     }
 
     $('showMore').hidden = rows.length <= shown;
     $('showMore').textContent = `Show more (${rows.length - shown} more)`;
+    const page = rows.slice(0, shown);
+    $('selAll').checked = page.length > 0 && page.every((r) => selected.has(key(r)));
+    renderBatch();
 
     const f = state.folder;
     $('linkFolder').textContent = f ? 'Change folder…' : 'Link folder…';
@@ -132,15 +121,80 @@
       + (rows.some((r) => r.kind === 'history') ? ` · ${rows.filter((r) => r.kind === 'history').length} in upload history` : '');
   }
 
+  // Console errors, failed requests and slow requests of the recording (none for upload history)
+  function issuesCell(r) {
+    const c = td('');
+    c.className = 'nowrap';
+    const s = r.issues;
+    if (!s) {
+      c.append(r.kind === 'history' ? '' : '–');
+      return c;
+    }
+    c.append(badge(`${s.errors || 0} errors`, s.errors ? 'err' : ''), ' ', badge(`${s.failedRequests || 0} failed`, s.failedRequests ? 'warn' : ''));
+    if (s.slowRequests != null) {
+      const limit = s.slowThresholdMs >= 1000 ? `${s.slowThresholdMs / 1000} s` : `${s.slowThresholdMs} ms`;
+      c.append(' ', badge(`${s.slowRequests} slow`, s.slowRequests ? 'warn' : '', `Requests of ${limit} or more (the server's slow threshold, or 2 s)`));
+    }
+    return c;
+  }
+
+  function renderBatch() {
+    const sel = picked();
+    const n = (f) => sel.filter(f).length;
+    $('selCount').textContent = sel.length ? `${sel.length} selected` : 'Tick recordings to act on several at once';
+    label('batchUpload', 'Upload selected', n(canUpload), 'Already uploaded, or no local copy');
+    label('batchZip', 'Download ZIP', n(canZip), 'Upload history has no local copy');
+    label('batchDelete', 'Delete selected', n(canDelete), 'Recordings on disk can be deleted once uploaded');
+    function label(id, text, count, why) {
+      $(id).disabled = !count;
+      $(id).textContent = count ? `${text} (${count})` : text;
+      $(id).title = sel.length > count ? `${sel.length - count} of the selected can't: ${why.toLowerCase()}` : '';
+    }
+  }
+
+  async function downloadSelected() {
+    const names = [];
+    for (const r of picked().filter(canZip)) names.push(await Actions.downloadZip(r));
+    message(`Saved ${names.map((x) => 'Downloads/' + x).join(', ')}.`);
+  }
+
+  async function deleteSelected() {
+    const del = picked().filter(canDelete);
+    if (!del.length) return;
+    // Files on disk: Chrome asks for edit permission only while this click still counts, so before the confirm
+    if (del.some((r) => r.kind === 'disk') && (await state.folder.requestPermission({ mode: 'readwrite' })) !== 'granted') {
+      throw new Error(`BlackBox needs permission to edit "${state.folder.name}" to delete files.`);
+    }
+    const notSaved = del.filter((r) => r.kind === 'saved' && !r.uploaded && !r.onDisk).length;
+    if (!confirm(`Delete ${del.length} recording${del.length > 1 ? 's' : ''}?`
+      + (notSaved ? ` ${notSaved} of them ${notSaved > 1 ? 'were' : 'was'} not uploaded or exported.` : '')
+      + ' Copies on a server are kept.')) return;
+    for (const r of del) {
+      if (r.kind === 'history') await idbHistoryDelete(r.id);
+      else await Actions.deleteRow(r, true);
+      selected.delete(key(r));
+    }
+    message(`Deleted ${del.length} recording${del.length > 1 ? 's' : ''}.`);
+    await render();
+  }
+
+  function badge(text, cls, title) {
+    const b = document.createElement('span');
+    b.className = 'badge' + (cls ? ' ' + cls : '');
+    b.textContent = text;
+    if (title) b.title = title;
+    return b;
+  }
+
   // A recording ZIP (Download ZIP on a BlackBox server) becomes a recording in browser storage, like a new one:
-  // it can be replayed, uploaded (to this or another server) or exported. Its server log is not kept.
+  // it can be replayed, uploaded (to this or another server) or exported. Its system log is not kept.
   async function importZip(file) {
     const parts = await readZip(file);
     if (!parts.has('session.json')) throw new Error(`${file.name} has no session.json: it is not a BlackBox recording ZIP.`);
     const report = JSON.parse(await parts.get('session.json').text());
     if (!Array.isArray(report.console) || !Array.isArray(report.network)) throw new Error('This is not a BlackBox session.json.');
     // The capture id belongs to the server it was recorded on: an upload elsewhere must not try to attach it
-    if (report.recording?.serverLog) delete report.recording.serverLog.id;
+    if (report.recording?.systemLog) delete report.recording.systemLog.id;
     const started = Date.parse(report.recording?.startedAt);
     const id = started ? recordingId(started) : file.name.replace(/\.zip$/i, '');
     if (await idbGet(id)) throw new Error('This recording is already in the extension.');
@@ -161,12 +215,5 @@
     const c = document.createElement('td');
     c.textContent = text;
     return c;
-  }
-
-  function button(text, onClick) {
-    const b = document.createElement('button');
-    b.textContent = text;
-    b.onclick = onClick;
-    return b;
   }
 })();

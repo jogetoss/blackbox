@@ -3,6 +3,8 @@
 
 // meta: { startedAt (ms), settings: { displaySurface }, tab: { url, title } }
 function buildReport(meta, consoleEntries, navigations, network, stoppedAt, reason) {
+  // "Slow" = Glowroot's slow threshold, sent by the plugin at recording start; 2 s without a server
+  const slowMs = meta.systemLog?.slowMs || 2000;
   return {
     tool: 'blackbox ' + (chrome.runtime.getManifest().version_name || chrome.runtime.getManifest().version),
     note: 't = milliseconds since recording start = position in recording.webm',
@@ -14,13 +16,15 @@ function buildReport(meta, consoleEntries, navigations, network, stoppedAt, reas
       capturedSurface: meta.settings?.displaySurface, // "window", "monitor" or "browser" (tab)
       tab: meta.tab,
       userAgent: meta.userAgent || navigator.userAgent,
-      serverLog: meta.serverLog ? { status: meta.serverLog.status, id: meta.serverLog.id, server: meta.serverLog.server, message: meta.serverLog.message } : undefined,
+      systemLog: meta.systemLog ? { status: meta.systemLog.status, id: meta.systemLog.id, server: meta.systemLog.server, message: meta.systemLog.message } : undefined,
     },
     summary: {
       console: consoleEntries.length,
       errors: consoleEntries.filter((e) => e.level === 'error').length,
       requests: network.length,
       failedRequests: network.filter((n) => n.failed || n.status >= 400).length,
+      slowRequests: network.filter((n) => n.durationMs >= slowMs).length,
+      slowThresholdMs: slowMs,
     },
     navigations,
     console: consoleEntries,

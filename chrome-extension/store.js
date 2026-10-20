@@ -11,7 +11,7 @@ const Store = (() => {
   // { kind: 'saved' | 'disk' | 'history', id, startedAt, durationMs, tab, uploaded, onDisk }, newest first.
   // 'history' = uploaded, local copy gone.
   async function allRows() {
-    const saved = (await idbList()).map((r) => ({ kind: 'saved', id: r.id, ...summary(r.report), uploaded: r.uploaded, recovered: !!r.recovered, imported: !!r.imported, onDisk: false }));
+    const saved = (await idbList()).map((r) => ({ kind: 'saved', id: r.id, ...summary(r.report), uploaded: r.uploaded, uploadProblem: r.uploadProblem, recovered: !!r.recovered, imported: !!r.imported, onDisk: false }));
     const savedIds = new Set(saved.map((r) => r.id));
     for (const r of saved) if (state.diskItems.some((d) => d.id === r.id)) r.onDisk = true;
     const disk = [];
@@ -24,9 +24,10 @@ const Store = (() => {
     return [...saved, ...disk, ...history].sort((a, b) => ((a.startedAt || a.id) < (b.startedAt || b.id) ? 1 : -1));
   }
 
+  // issues: the Browser issues column (errors, failedRequests, slowRequests, slowThresholdMs; older recordings lack slow)
   function summary(report) {
     const rec = report?.recording || {};
-    return { startedAt: rec.startedAt, durationMs: rec.durationMs, tab: rec.tab || {} };
+    return { startedAt: rec.startedAt, durationMs: rec.durationMs, tab: rec.tab || {}, issues: report?.summary || null };
   }
 
   // { video: Blob|File|null, report } of one recording
@@ -127,7 +128,13 @@ const Store = (() => {
     const tabAt = head.indexOf('"tab"');
     const tab = tabAt >= 0 ? head.slice(tabAt) : '';
     const ms = head.match(/"durationMs"\s*:\s*(\d+)/);
+    // "summary" follows the "recording" block, so it is in the first 16 KB too
+    const sumAt = head.indexOf('"summary"');
+    const sum = sumAt >= 0 ? head.slice(sumAt, sumAt + 400) : '';
+    const num = (key) => { const m = sum.match(new RegExp('"' + key + '"\\s*:\\s*(\\d+)')); return m ? Number(m[1]) : undefined; };
+    const issues = sum ? { errors: num('errors'), failedRequests: num('failedRequests'), slowRequests: num('slowRequests'), slowThresholdMs: num('slowThresholdMs') } : null;
     return {
+      issues,
       startedAt: unquote(head.match(new RegExp('"startedAt"\\s*:\\s*' + STR))),
       durationMs: ms ? Number(ms[1]) : undefined,
       tab: { url: unquote(tab.match(new RegExp('"url"\\s*:\\s*' + STR))), title: unquote(tab.match(new RegExp('"title"\\s*:\\s*' + STR))) },

@@ -13,6 +13,7 @@
     .start button { background: var(--accent); }
     #stop { background: var(--danger); }
     #status { margin-top: 8px; color: var(--muted); min-height: 1em; }
+    #systemLog { margin-top: 8px; color: var(--warn); overflow-wrap: anywhere; }
     #error { margin-top: 8px; color: var(--danger); white-space: pre-wrap; }
     #viewer, #settings { display: block; margin-top: 10px; }
     [hidden] { display: none !important; }
@@ -27,6 +28,7 @@
   </div>
   <button id="stop" hidden>Stop &amp; save</button>
   <div id="status"></div>
+  <div id="systemLog" hidden></div>
   <a href="#" id="viewer">Recordings</a>
   <a href="#" id="settings">Settings</a>
   <div id="error"></div>

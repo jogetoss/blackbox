@@ -75,10 +75,20 @@ const Server = {
         reject(err);
       };
       xhr.onerror = () => {
-        const err = new Error('Could not reach ' + endpoint + '.');
+        const err = new Error('Could not reach ' + new URL(endpoint).origin + '.');
         err.status = 0;
         reject(err);
       };
+      // GETs are small (me): a server that never answers would otherwise hang until the browser gives up.
+      // Uploads (POST) can take minutes, so they have no limit.
+      if (method === 'GET') {
+        xhr.timeout = 15000;
+        xhr.ontimeout = () => {
+          const err = new Error('Could not reach ' + new URL(endpoint).origin + ' (no answer in 15 s).');
+          err.status = 0;
+          reject(err);
+        };
+      }
       xhr.send(body ?? null);
     });
   },

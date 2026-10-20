@@ -2,19 +2,19 @@
 :root {
   color-scheme: light dark;
   --bg: #ffffff; --fg: #1f2328; --muted: #5f6368; --line: #dadce0; --field: #ffffff;
-  --accent: #1a73e8; --on-accent: #ffffff; --danger: #d93025; --ok: #188038;
+  --accent: #1a73e8; --on-accent: #ffffff; --danger: #d93025; --ok: #188038; --warn: #b06000;
 }
 :root[data-theme="light"] { color-scheme: light; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #1f1f1f; --fg: #e8eaed; --muted: #9aa0a6; --line: #3c4043; --field: #282a2d;
-    --accent: #8ab4f8; --on-accent: #1f1f1f; --danger: #f28b82; --ok: #81c995;
+    --accent: #8ab4f8; --on-accent: #1f1f1f; --danger: #f28b82; --ok: #81c995; --warn: #fdd663;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #1f1f1f; --fg: #e8eaed; --muted: #9aa0a6; --line: #3c4043; --field: #282a2d;
-  --accent: #8ab4f8; --on-accent: #1f1f1f; --danger: #f28b82; --ok: #81c995;
+  --accent: #8ab4f8; --on-accent: #1f1f1f; --danger: #f28b82; --ok: #81c995; --warn: #fdd663;
 }
 body { background: var(--bg); color: var(--fg); }
 a { color: var(--accent); }

@@ -43,20 +43,21 @@ const Actions = (() => {
     return form.row;
   }
 
-  // Uploads without waiting for Send (the "Upload automatically" setting): the form shows the progress, and stays
+  // Uploads without waiting for Send (after a recording stops, when logged in): the form shows the progress, and stays
   // open with the reason if it fails. No click, so it can't ask for host access: Save in Settings gives it.
+  // Resolves true once uploaded.
   async function uploadNow(row) {
     showUpload(row);
     if (!settings.uploadUrl) settings = await Server.getSettings();
     if (!settings.uploadUrl) {
-      status('Not uploaded automatically: set the Upload URL first: ', 'Settings', () => chrome.runtime.openOptionsPage());
-      return;
+      status('Not uploaded: set the Upload URL first: ', 'Settings', () => chrome.runtime.openOptionsPage());
+      return false;
     }
     if (!(await Server.hasPermission(settings.uploadUrl))) {
-      status('Not uploaded automatically: BlackBox has no access to ' + new URL(settings.uploadUrl).origin + '. Click Send to allow it.');
-      return;
+      status('Not uploaded: BlackBox has no access to ' + new URL(settings.uploadUrl).origin + '. Click Send to allow it.');
+      return false;
     }
-    await upload(settings.uploadUrl, settings, row);
+    return upload(settings.uploadUrl, settings, row);
   }
 
   function send() {
@@ -78,6 +79,31 @@ const Actions = (() => {
     }).catch((e) => status(e.message));
   }
 
+  // Uploads rows one after another with their page title and no notes (the Recordings page's Upload selected).
+  // Asks for access to the server once, inside the click; stops at the first failure, which the form shows.
+  function uploadMany(rows) {
+    if (!rows.length) return Promise.resolve();
+    if (!settings.uploadUrl) {
+      showUpload(rows[0]);
+      status('Set the Upload URL first: ', 'Settings', () => chrome.runtime.openOptionsPage());
+      return Promise.resolve();
+    }
+    const base = settings.uploadUrl;
+    const used = settings;
+    return Server.requestPermission(base).then(async (granted) => {
+      if (!granted) {
+        showUpload(rows[0]);
+        status('BlackBox needs access to ' + new URL(base).origin + ' to upload.');
+        return;
+      }
+      for (let i = 0; i < rows.length; i++) {
+        showUpload(rows[i]);
+        if (rows.length > 1) $('upHeading').textContent = `Upload ${i + 1} of ${rows.length}: ` + ($('upTitle').value || 'recording');
+        if (!(await upload(base, used, rows[i]))) return;
+      }
+    });
+  }
+
   async function upload(base, used, row) {
     const key = row.kind + ':' + row.id;
     $('upSend').disabled = true;
@@ -93,7 +119,7 @@ const Actions = (() => {
       } catch (e) {
         if (e.status === 401) {
           status(Server.notLoggedIn(base));
-          return;
+          return false;
         }
         throw e;
       }
@@ -112,14 +138,16 @@ const Actions = (() => {
       }
       delete created[key];
       const uploaded = { id, url, at: new Date().toISOString() };
-      if (row.kind === 'saved') await idbUpdate(row.id, { uploaded });
+      if (row.kind === 'saved') await idbUpdate(row.id, { uploaded, uploadProblem: undefined });
       else await idbMetaPut('uploaded:' + row.id, uploaded);
       const title = $('upTitle').value || row.id;
       closeUpload();
       status('');
       await form.onUploaded(row, title);
+      return true;
     } catch (e) {
       status(e.message);
+      return false;
     } finally {
       $('upSend').disabled = false;
       $('upProgress').hidden = true;
@@ -129,14 +157,30 @@ const Actions = (() => {
   // Shows text in the upload box, optionally followed by a link that runs onClick
   function status(text, linkText, onClick) {
     const s = $('upStatus');
-    s.textContent = text;
-    if (linkText) {
-      const a = document.createElement('a');
-      a.href = '#';
-      a.textContent = linkText;
-      a.onclick = (e) => { e.preventDefault(); onClick(); };
-      s.append(a);
+    s.replaceChildren(...linkify(text));
+    if (linkText) s.append(link(linkText, onClick));
+  }
+
+  // A message as text and links: each http(s) address opens in a new tab, "Settings" opens the extension's Settings.
+  // A trailing . , ; : ! ? or ) stays text ("Could not reach https://host:8080.").
+  function linkify(text) {
+    const parts = [];
+    let at = 0;
+    for (const m of text.matchAll(/https?:\/\/\S+?(?=[.,;:!?)]*(?:\s|$))|\bSettings\b/g)) {
+      const t = m[0];
+      parts.push(text.slice(at, m.index), link(t, () => (t === 'Settings' ? chrome.runtime.openOptionsPage() : chrome.tabs.create({ url: t }))));
+      at = m.index + t.length;
     }
+    parts.push(text.slice(at));
+    return parts;
+  }
+
+  function link(text, onClick) {
+    const a = document.createElement('a');
+    a.href = '#';
+    a.textContent = text;
+    a.onclick = (e) => { e.preventDefault(); onClick(); };
+    return a;
   }
 
   // ---------- move to folder ----------
@@ -212,11 +256,12 @@ const Actions = (() => {
     return row.kind === 'saved' || (row.kind === 'disk' && !!row.uploaded);
   }
 
-  // Asks first. Returns a message when something was deleted, otherwise null.
-  async function deleteRow(row) {
-    if (row.kind === 'disk') return deleteDiskRow(row);
+  // Asks first, unless confirmed (the Recordings page asked once for all selected). Returns a message when something
+  // was deleted, otherwise null.
+  async function deleteRow(row, confirmed) {
+    if (row.kind === 'disk') return deleteDiskRow(row, confirmed);
     const warn = row.uploaded || row.onDisk ? '' : ' It was not uploaded or exported.';
-    if (!confirm('Delete this recording from the extension?' + warn)) return null;
+    if (!confirmed && !confirm('Delete this recording from the extension?' + warn)) return null;
     if (row.uploaded && !row.onDisk) await idbAddHistory(row.id, row, row.uploaded); // stays listed as upload history
     await idbDelete(row.id);
     return 'Deleted the recording from the extension.';
@@ -224,7 +269,7 @@ const Actions = (() => {
 
   // Deletes an uploaded recording's files (recording.webm, session.json, then its folder if empty).
   // The folder is linked read-only, so Chrome asks once for permission to edit it.
-  async function deleteDiskRow(row) {
+  async function deleteDiskRow(row, confirmed) {
     const item = Store.state.diskItems.find((d) => d.id === row.id);
     if (!item) return null;
     const folder = Store.state.folder;
@@ -232,7 +277,7 @@ const Actions = (() => {
     if ((await folder.requestPermission({ mode: 'readwrite' })) !== 'granted') {
       throw new Error(`BlackBox needs permission to edit "${folder.name}" to delete files.`);
     }
-    if (!confirm(`Delete the files of this recording from "${folder.name}"? It stays on the server.`)) return null;
+    if (!confirmed && !confirm(`Delete the files of this recording from "${folder.name}"? It stays on the server.`)) return null;
     for (const name of ['recording.webm', 'session.json']) {
       try {
         await item.dir.removeEntry(name);
@@ -251,5 +296,5 @@ const Actions = (() => {
     return `Deleted the files of ${row.id} from "${folder.name}".`;
   }
 
-  return { initUploadForm, showUpload, closeUpload, uploadRow, uploadNow, moveToFolder, downloadZip, canDelete, deleteRow };
+  return { linkify, initUploadForm, showUpload, closeUpload, uploadRow, uploadNow, uploadMany, moveToFolder, downloadZip, canDelete, deleteRow };
 })();

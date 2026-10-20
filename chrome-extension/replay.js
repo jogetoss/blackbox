@@ -1,5 +1,6 @@
 // Extension only: the Replay page. Plays the recording named in the address (?id= in browser storage,
 // ?disk= in the linked folder) with viewer.js, and shows its status. The list is on the Recordings page.
+window.blackboxPage = 'extension'; // for the Features list
 (function () {
   const $ = (id) => document.getElementById(id);
   const params = new URLSearchParams(location.search);
@@ -18,6 +19,7 @@
     window.blackboxTimeInUrl = false; // the address no longer names a recording
     fromFiles = true;
     Actions.closeUpload();
+    $('fixBox').hidden = true;
   });
 
   window.blackboxTimeInUrl = !!kind; // viewer.html?id=…&t=… opens at that moment
@@ -40,19 +42,157 @@
     const rec = await Store.load(kind, id);
     window.blackboxOpen(rec.video, rec.report);
     await renderStatus();
-    if (params.get('upload') === 'auto') {
+    if (params.get('upload') === 'server') {
       // Once only: a reload must not upload again
       const now = new URLSearchParams(location.search); // may already hold ?t=
       now.delete('upload');
       history.replaceState(null, '', '?' + now);
       const row = (await Store.allRows()).find((r) => r.kind === kind && r.id === id);
-      if (row && !row.uploaded) await Actions.uploadNow(row);
+      if (row && !row.uploaded) await openOnServer(row);
     }
+  }
+
+  // Just after a recording stops: logged in to the Upload URL's server and allowed to upload -> upload it and open
+  // the server's replay page in this tab. Otherwise it replays here, and the Upload button says why: the reason is
+  // saved with the recording (uploadProblem), so "⚠ Upload" is still there after a reload.
+  async function openOnServer(row) {
+    const { uploadUrl } = await Server.getSettings();
+    if (!uploadUrl) return; // no server set up: the extension on its own
+    const problem = await serverProblem(uploadUrl);
+    if (problem) return setProblem(row, problem);
+    if (!(await Actions.uploadNow(row))) {
+      // The form stays open with the reason; keep it for the button once the form is closed
+      return setProblem(row, { kind: 'other', text: $('upStatus').textContent });
+    }
+    const done = (await Store.allRows()).find((r) => r.kind === kind && r.id === id);
+    if (done?.uploaded?.url) location.replace(done.uploaded.url); // the extension's copy stays in Recordings
+  }
+
+  // Why uploading to the Upload URL's server can't work now (null = it can), as { kind, text, origin }.
+  // kind picks what the fix box offers: 'url' (no URL, no answer, no BlackBox endpoint), 'login', 'access'
+  // (no host permission), 'denied' (logged in but not allowed), 'other'. Server.me gives up after 15 s.
+  async function serverProblem(uploadUrl) {
+    if (!uploadUrl) return { kind: 'url', text: 'There is no Upload URL in Settings.' };
+    const origin = new URL(uploadUrl).origin;
+    if (!(await Server.hasPermission(uploadUrl))) return { kind: 'access', text: `BlackBox has no access to ${origin}.`, origin };
+    let me;
+    try {
+      me = await Server.me(uploadUrl);
+    } catch (e) {
+      if (e.status === 401) return { kind: 'login', text: `Not logged in to ${origin}.`, origin };
+      const urlProblem = e.status === 0 || e.status === 404 || e.message.startsWith('No BlackBox upload endpoint');
+      return { kind: urlProblem ? 'url' : 'other', text: e.message, origin };
+    }
+    if (me.canUpload) return null;
+    return { kind: 'denied', text: `You (${me.user.name}) are not allowed to upload to ${origin}. Ask an admin of that server.`, origin };
+  }
+
+  // Saves the problem shown on "⚠ Upload" (null = a plain Upload button again)
+  async function setProblem(row, problem) {
+    if (row.kind === 'saved') await idbUpdate(row.id, { uploadProblem: problem || undefined });
+    return renderStatus();
+  }
+
+  // Recordings from before kinds were saved carry only the text
+  function asProblem(p) {
+    return typeof p === 'string' ? { kind: 'other', text: p } : p;
+  }
+
+  // The Upload URL changed in Settings while "⚠ Upload" shows: check the new server, so the warning is about it,
+  // or goes away when uploading there can work. No reload needed: Actions already uses the new URL.
+  // The fix box does its own check after its Save.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !changes.uploadUrl || !$('fixBox').hidden) return;
+    run(async () => {
+      const row = (await Store.allRows()).find((r) => r.kind === kind && r.id === id);
+      if (!row?.uploadProblem || row.uploaded) return;
+      await setProblem(row, await serverProblem(changes.uploadUrl.newValue || ''));
+    });
+  });
+
+  // ---------- fix box: Upload clicked ----------
+
+  // Checks the server again: fixed -> the normal upload form; still a problem -> the reason and the action that
+  // fixes it, in place of the form (no title or notes typed for an upload that can't work)
+  async function openFix(row) {
+    showFix('Checking the server…', []);
+    const { uploadUrl } = await Server.getSettings();
+    const problem = await serverProblem(uploadUrl);
+    await setProblem(row, problem);
+    if (!problem) {
+      closeFix();
+      Actions.showUpload(row);
+      return;
+    }
+    const again = button('Try again', () => run(() => openFix(row)));
+    const close = button('Close', () => closeFix());
+    const actions = {
+      // Saves like Settings does: normalized, host permission asked for inside this click, then stored
+      url: () => {
+        const save = button('Save and check', () => run(async () => {
+          let next;
+          try {
+            next = Server.normalize($('fixUrlInput').value);
+          } catch (e) {
+            $('fixText').replaceChildren(...Actions.linkify(e.message));
+            return;
+          }
+          if (!(await Server.requestPermission(next))) {
+            $('fixText').replaceChildren(...Actions.linkify(`BlackBox needs access to ${new URL(next).origin} to upload there.`));
+            return;
+          }
+          await chrome.storage.local.set({ uploadUrl: next });
+          await openFix(row);
+        }));
+        save.className = 'primary';
+        // The reason links Settings itself when it names it ("There is no Upload URL in Settings.")
+        const settings = problem.text.includes('Settings') ? [] : [link('Settings', () => chrome.runtime.openOptionsPage())];
+        return [save, ...settings, close];
+      },
+      login: () => [again, close], // the server's address in the reason is a link: log in there
+      access: () => {
+        const allow = button('Allow access', () => run(async () => {
+          if (await Server.requestPermission(uploadUrl)) await openFix(row);
+        }));
+        allow.className = 'primary';
+        return [allow, close];
+      },
+      denied: () => [close],
+      other: () => [again, close],
+    };
+    showFix(problem.text, (actions[problem.kind] || actions.other)());
+    $('fixUrl').hidden = problem.kind !== 'url';
+    if (problem.kind === 'url') {
+      $('fixUrlInput').value = uploadUrl || '';
+      $('fixUrlInput').focus();
+    }
+  }
+
+  function showFix(text, actions) {
+    Actions.closeUpload();
+    $('fixText').replaceChildren(...Actions.linkify(text)); // addresses and "Settings" as links
+    $('fixUrl').hidden = true;
+    $('fixActions').replaceChildren(...actions);
+    $('fixBox').hidden = false;
+    renderStatus().catch(window.blackboxShowError); // Upload is disabled while the box is open
+  }
+
+  function closeFix() {
+    $('fixBox').hidden = true;
+    renderStatus().catch(window.blackboxShowError);
+  }
+
+  function link(text, onClick) {
+    const a = document.createElement('a');
+    a.href = '#';
+    a.textContent = text;
+    a.onclick = (e) => { e.preventDefault(); onClick(); };
+    return a;
   }
 
   // Status bar: Upload (or the Uploaded badge, a link to the server copy), the other badges, Move to folder, Download ZIP and Delete
   let renderSeq = 0;
-  async function renderStatus(note) {
+  async function renderStatus() {
     const box = $('recStatus');
     const seq = ++renderSeq;
     const row = (await Store.allRows()).find((r) => r.kind === kind && r.id === id);
@@ -60,8 +200,7 @@
     box.textContent = '';
     if (!row) {
       if (fromFiles) box.append(where('Opened from files', 'Read from the files you picked. Nothing is kept in the extension.'));
-      if (note) box.append(note);
-      box.hidden = !fromFiles && !note;
+      box.hidden = !fromFiles;
       window.blackboxSetNeighbours({ total: 0 }); // not one of the listed recordings
       return;
     }
@@ -74,8 +213,15 @@
       if (row.uploaded.url) uploadBadge.title = 'Open the uploaded recording on the server';
       box.append(uploadBadge);
     } else {
-      const up = button('Upload', () => Actions.showUpload(row));
-      up.disabled = Actions.uploadRow() !== null; // the form is open
+      // "⚠ Upload" after a failed automatic upload: the reason in its tooltip. Either way a click checks the server
+      // first (openFix): the form only when uploading can work, otherwise the reason in the fix box.
+      const problem = asProblem(row.uploadProblem);
+      const up = button(problem ? '⚠ Upload' : 'Upload', () => run(() => openFix(row)));
+      up.disabled = Actions.uploadRow() !== null || !$('fixBox').hidden; // the form or the fix box is open
+      if (problem) {
+        up.classList.add('warn');
+        up.title = 'Not uploaded: ' + problem.text;
+      }
       box.append(up);
     }
     box.append(...others);
@@ -91,7 +237,8 @@
             const t = new URLSearchParams(location.search).get('t'); // keep the moment
             history.replaceState(null, '', Store.replayUrl({ kind, id }) + (t ? '&t=' + t : ''));
           }
-          await renderStatus(text);
+          await renderStatus();
+          toast(text);
         } catch (e) {
           moveBtn.disabled = false;
           throw e;
@@ -104,7 +251,7 @@
       zipBtn.disabled = true;
       try {
         const path = await Actions.downloadZip(row);
-        await renderStatus(`Saved Downloads/${path}.`);
+        toast(`Saved Downloads/${path}.`);
       } finally {
         zipBtn.disabled = false;
       }
@@ -116,7 +263,6 @@
         if (await Actions.deleteRow(row)) location.href = 'recordings.html';
       })));
     }
-    if (note) box.append(note);
     box.hidden = false;
     await neighbours();
   }
@@ -141,6 +287,23 @@
     s.textContent = text;
     s.title = title;
     return s;
+  }
+
+  // A short confirmation that fades out, so the header stays free of sentences
+  let toastTimer;
+  function toast(text) {
+    let t = $('toast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'toast';
+      t.className = 'toast';
+      t.setAttribute('role', 'status');
+      document.body.append(t);
+    }
+    t.textContent = text;
+    t.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.hidden = true; }, 5000);
   }
 
   function button(text, onClick) {

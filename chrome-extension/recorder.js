@@ -92,7 +92,7 @@ async function pickAndStart() {
   const res = await chrome.runtime.sendMessage({ target: 'background', type: 'source-picked', startedAt });
   if (res?.error) throw new Error(res.error);
   meta.tab = { url: res.url, title: res.title };
-  meta.serverLog = res.serverLog; // { status, id?, server?, message? }: the plugin attaches the lines by id on upload
+  meta.systemLog = res.systemLog; // { status, id?, server?, message? }: the plugin attaches the lines by id on upload
   meta.userAgent = navigator.userAgent;
   recId = recordingId(startedAt);
   await idbPartialPut(recId + ':meta', { ...meta, lastSavedAt: startedAt });
@@ -157,9 +157,10 @@ async function stopAndSave(reason) {
     return { id, downloaded: true };
   }
   await idbPartialClear(id); // saved in full: the crash-safety copy is no longer needed
-  // With "Upload automatically" on, the Replay page uploads it as soon as it opens
-  const { autoUpload } = await chrome.storage.local.get('autoUpload');
-  chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html?' + new URLSearchParams({ id, ...(autoUpload ? { upload: 'auto' } : {}) })) });
+  // With "Open on the server when logged in" on (the default), the Replay page uploads it and opens the server's
+  // replay page when the user is logged in there; otherwise it replays it here
+  const { openOnServer } = await chrome.storage.local.get('openOnServer');
+  chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html?' + new URLSearchParams({ id, ...(openOnServer !== false ? { upload: 'server' } : {}) })) });
   $('status').textContent = 'Saved.';
   setTimeout(() => window.close(), 500);
   return { id };
