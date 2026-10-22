@@ -37,7 +37,7 @@ import org.json.JSONObject;
  */
 public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurablePlugin {
 
-    static final String VERSION = "8.2-SNAPSHOT";
+    static final String VERSION = "8.2.1";
     private static final long DEFAULT_MAX_MB = 500;
     private static final long DEFAULT_SYSTEM_LOG_MB = 20;
     private static final long DEFAULT_KEEP_DAYS = 7;
