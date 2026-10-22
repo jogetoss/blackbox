@@ -7,7 +7,9 @@ const tabId = Number(params.get('tabId'));
 const mode = params.get('mode') || 'window'; // 'tab' | 'window' | 'screen'
 
 let recorder = null;
-let stream = null;
+let stream = null;            // what MediaRecorder records: the video track plus one mixed sound track
+let inputs = [];              // the streams opened for it (picked source, microphone); stopped with it
+let audioCtx = null;          // mixes page sound and microphone
 let chunks = [];
 let meta = null;
 let consoleEntries = [];
@@ -46,35 +48,59 @@ window.addEventListener('beforeunload', (e) => { if (meta) e.preventDefault(); }
 pickAndStart().catch((e) => {
   $('error').textContent = e.message || String(e);
   $('status').textContent = 'Not recording.';
-  stream?.getTracks().forEach((t) => t.stop());
+  stopInputs();
   meta = null;
 });
 
 async function pickAndStart() {
-  // 'tab': the popup already got a stream id from chrome.tabCapture (no picker). Otherwise show Chrome's picker,
-  // limited to windows or screens.
-  const streamId = mode === 'tab' ? params.get('streamId') : await new Promise((resolve) =>
-    chrome.desktopCapture.chooseDesktopMedia([mode === 'screen' ? 'screen' : 'window'], (id) => resolve(id)));
+  // Settings: page sound on unless turned off, microphone off unless turned on
+  const { recordPageAudio, recordMic } = await chrome.storage.local.get(['recordPageAudio', 'recordMic']);
+  const wantPage = recordPageAudio !== false;
+
+  // The popup got a chrome.tabCapture stream id for the tab the logs come from, which always has the tab's sound.
+  const tabStreamId = params.get('streamId');
+  // Window/screen: open the tab's sound before the picker (the id expires within seconds), in case the picker has none
+  let tabSound = null;
+  if (mode !== 'tab' && wantPage && tabStreamId) {
+    tabSound = await navigator.mediaDevices.getUserMedia({ audio: { mandatory: { chromeMediaSource: 'tab', chromeMediaSourceId: tabStreamId } } })
+      .catch((e) => { console.warn('No tab sound:', e); return null; });
+    if (tabSound) { inputs.push(tabSound); playBack(tabSound.getAudioTracks()); }
+  }
+
+  // 'tab': record it directly (no picker). Otherwise show Chrome's picker, limited to windows or screens; with
+  // 'audio' it offers "Share system audio" (screens on Windows and ChromeOS only).
+  const { streamId, canAudio } = mode === 'tab' ? { streamId: tabStreamId, canAudio: true } : await new Promise((resolve) =>
+    chrome.desktopCapture.chooseDesktopMedia([mode === 'screen' ? 'screen' : 'window', ...(wantPage ? ['audio'] : [])],
+      (id, options) => resolve({ streamId: id, canAudio: !!options?.canRequestAudioTrack })));
   if (!streamId) {
     // Picker cancelled: closing the window also clears the state in the service worker.
     window.close();
     return;
   }
 
-  stream = await navigator.mediaDevices.getUserMedia({
-    audio: false,
-    video: {
-      mandatory: {
-        chromeMediaSource: mode === 'tab' ? 'tab' : 'desktop',
-        chromeMediaSourceId: streamId,
-        maxWidth: 2560,
-        maxHeight: 1600,
-        maxFrameRate: 24,
-      },
-    },
+  const source = { chromeMediaSource: mode === 'tab' ? 'tab' : 'desktop', chromeMediaSourceId: streamId };
+  const picked = await navigator.mediaDevices.getUserMedia({
+    audio: wantPage && canAudio ? { mandatory: source } : false,
+    video: { mandatory: { ...source, maxWidth: 2560, maxHeight: 1600, maxFrameRate: 24 } },
   });
+  inputs.push(picked);
+  // System sound already has the tab's sound: drop the tab's copy (the tab is heard normally again)
+  const systemSound = mode !== 'tab' && picked.getAudioTracks().length > 0;
+  if (systemSound && tabSound) { tabSound.getTracks().forEach((t) => t.stop()); tabSound = null; }
+  const pageTracks = mode === 'tab' || systemSound ? picked.getAudioTracks() : tabSound?.getAudioTracks() || [];
+  if (mode === 'tab') playBack(pageTracks);
+  // After the picked source: a tab stream id expires within seconds. A denied microphone doesn't stop the recording.
+  let micError = '', mic = null;
+  if (recordMic) {
+    mic = await navigator.mediaDevices.getUserMedia({ audio: true }).catch((e) => { micError = e.message || e.name; return null; });
+    if (mic) inputs.push(mic);
+  }
+  const audio = mixAudio(pageTracks, mic?.getAudioTracks() || []);
+  stream = new MediaStream([...picked.getVideoTracks(), ...audio]);
 
-  const mimeType = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
+  const mimeType = (audio.length
+    ? ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm']
+    : ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'])
     .find((m) => MediaRecorder.isTypeSupported(m));
   chunks = []; consoleEntries = []; navigations = []; network = []; inFlight.clear();
   recorder = new MediaRecorder(stream, { mimeType });
@@ -89,6 +115,15 @@ async function pickAndStart() {
 
   const settings = stream.getVideoTracks()[0].getSettings();
   meta = { startedAt, settings: { ...settings, displaySurface: settings.displaySurface || (mode === 'tab' ? 'browser' : undefined) } };
+  meta.audio = {
+    page: pageTracks.length > 0,
+    pageSource: pageTracks.length ? (systemSound ? 'system' : 'tab') : undefined, // 'tab': only the logged tab is heard
+    mic: !!mic,
+    message: [
+      wantPage && !pageTracks.length ? 'No page sound: Chrome could not capture the tab' : '',
+      micError ? `No microphone: ${micError}` : '',
+    ].filter(Boolean).join('; ') || undefined,
+  };
   const res = await chrome.runtime.sendMessage({ target: 'background', type: 'source-picked', startedAt });
   if (res?.error) throw new Error(res.error);
   meta.tab = { url: res.url, title: res.title };
@@ -101,7 +136,7 @@ async function pickAndStart() {
   $('stop').hidden = false;
   const tick = () => {
     const s = Math.floor((Date.now() - startedAt) / 1000);
-    $('status').textContent = `Recording… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} (logs from: ${res.title || res.url})`;
+    $('status').textContent = `Recording… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} (logs from: ${res.title || res.url}; sound: ${soundLabel(meta.audio)})`;
   };
   tick();
   timer = setInterval(tick, 1000);
@@ -128,6 +163,37 @@ async function savePart() {
   await idbPartialPut(recId + ':meta', { ...meta, lastSavedAt: Date.now() });
 }
 
+// Mixes the page sound and the microphone into one track (MediaRecorder records only the first sound track).
+function mixAudio(pageTracks, micTracks) {
+  if (!pageTracks.length && !micTracks.length) return [];
+  audioCtx ??= new AudioContext();
+  const out = audioCtx.createMediaStreamDestination();
+  for (const tracks of [pageTracks, micTracks]) {
+    if (tracks.length) audioCtx.createMediaStreamSource(new MediaStream(tracks)).connect(out);
+  }
+  audioCtx.resume().catch(() => {});
+  return out.stream.getAudioTracks();
+}
+
+// Capturing a tab's sound mutes the tab for the user: play it back so they still hear the page
+function playBack(tracks) {
+  if (!tracks.length) return;
+  audioCtx ??= new AudioContext();
+  audioCtx.createMediaStreamSource(new MediaStream(tracks)).connect(audioCtx.destination);
+  audioCtx.resume().catch(() => {});
+}
+
+function soundLabel(audio) {
+  return [audio?.page ? (audio.pageSource === 'tab' && mode !== 'tab' ? 'tab' : 'page') : '', audio?.mic ? 'microphone' : ''].filter(Boolean).join(' + ') || 'none';
+}
+
+function stopInputs() {
+  stream?.getTracks().forEach((t) => t.stop());
+  inputs.forEach((s) => s.getTracks().forEach((t) => t.stop()));
+  audioCtx?.close().catch(() => {});
+  audioCtx = null;
+}
+
 async function stopAndSave(reason) {
   if (!meta) return null;
   clearInterval(timer);
@@ -138,7 +204,7 @@ async function stopAndSave(reason) {
   if (recorder && recorder.state !== 'inactive') {
     await new Promise((resolve) => { recorder.onstop = resolve; recorder.stop(); });
   }
-  stream?.getTracks().forEach((t) => t.stop());
+  stopInputs();
 
   const report = buildReport(meta, consoleEntries, navigations, network, stoppedAt, reason);
 

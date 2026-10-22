@@ -185,8 +185,8 @@ starts at `recording-start` (or the node's first recorded request) and ends at s
 
 | Part | Job |
 |---|---|
-| `popup.js` | Record this tab / a window / the screen, Stop; gets the tab-capture stream id for "this tab"; system logs warning |
-| `recorder.js` | Shows the `desktopCapture` picker (window/screen) or uses the tab stream, records with `MediaRecorder`, saves progress every 5 s, keeps the recording in IndexedDB |
+| `popup.js` | Record this tab / a window / the screen, Stop; gets the tab-capture stream id (the video for "this tab", the tab's sound for a window or the screen); system logs warning |
+| `recorder.js` | Shows the `desktopCapture` picker (window/screen) or uses the tab stream, mixes page sound and microphone into one track, records with `MediaRecorder`, saves progress every 5 s, keeps the recording in IndexedDB |
 | `background.js` | Attaches the debugger (Network, Runtime, Log, Page), fetches response bodies, forwards events to the recorder; starts/stops system log capture; REC badge |
 | `viewer.js` | Replay UI shared by every replay page: video + synced lists, timeline, request details, Features drawer |
 | `recordings.js` | Recordings page: list with Browser issues; batch Upload, Download ZIP, Delete for ticked rows |
@@ -203,3 +203,15 @@ starts at `recording-start` (or the node's first recorded request) and ends at s
 
 The recorder is a window, not an offscreen document: a `chooseDesktopMedia` stream id can only be opened by the page
 that showed the picker (tested in the BlackBox spike X0-01).
+
+**Sound.** Page sound comes from `chrome.tabCapture` on the started tab in every mode, because the picker shares
+system audio only for a screen on Windows and ChromeOS (Linux and macOS get none, and windows never have sound).
+When the picker does share system audio, it replaces the tab's sound. Details:
+
+- A tab stream id expires within seconds, so for a window or the screen the recorder opens the tab's sound before it
+  shows the picker.
+- Capturing a tab's sound mutes the tab, so the recorder plays it back through an `AudioContext`.
+- `MediaRecorder` records only the first sound track: page sound and microphone are mixed into one track (Opus).
+- The microphone is opened after the picked source, with `getUserMedia({ audio: true })` in the recorder window (the
+  permission belongs to the extension's origin). A refused microphone or missing page sound doesn't stop the
+  recording; the reason goes to `recording.audio.message` in `session.json`.

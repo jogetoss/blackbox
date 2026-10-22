@@ -1780,6 +1780,7 @@ function renderInfo() {
       'Duration': fmt(durationMs),
       'Stop reason': rec.stopReason,
       'Captured surface': rec.capturedSurface,
+      'Sound': soundInfo(rec.audio),
       'Console entries': s.console,
       'Console errors': s.errors,
       'Requests': s.requests,
@@ -1863,7 +1864,7 @@ const ALL = Object.keys(PAGES);
 
 // [title, what it does, the pages that have it, notes for some pages]
 const FEATURES = [
-  ['Video replay', 'Plays the recorded window, screen or tab. Space plays and pauses, ← / → jump 5 seconds. The clock under the video shows where you are.', ALL],
+  ['Video replay', 'Plays the recorded window, screen or tab, with the page\'s sound and the microphone when they were recorded (the Info tab says which). Space plays and pauses, ← / → jump 5 seconds. The clock under the video shows where you are.', ALL],
   ['Console tab', 'Console logs, uncaught exceptions, browser messages and page navigations from the recorded tab, in time order. Tick levels to show, pick a source, or type in Filter.', ALL],
   ['Network tab', 'Every request of the recorded tab with method, status, type and time. Filter by kind (Fetch / XHR, documents, failed, other). Click a row for headers, request and response bodies (JSON pretty-printed) and Copy as cURL.', ALL,
     { server: 'A request\'s details also show its system log lines and its Glowroot trace, when they were captured.', file: 'A request\'s details also show its system log lines, when they were included.' }],
@@ -1912,6 +1913,14 @@ function renderFeatures() {
     body.append(h, el('p', null, text), line);
     if (notes?.[here] && where.includes(here)) body.append(el('p', 'feature-note', 'On this page: ' + notes[here]));
   }
+}
+
+// recording.audio = { page, pageSource?: 'tab' | 'system', mic, message? }; absent before the extension recorded sound
+function soundInfo(a) {
+  if (!a) return 'not recorded (made before BlackBox recorded sound)';
+  const page = a.pageSource === 'system' ? 'system sound' : a.pageSource === 'tab' ? 'sound of the recorded tab' : 'page sound';
+  const parts = [a.page ? page : '', a.mic ? 'microphone' : ''].filter(Boolean);
+  return (parts.join(' + ') || 'none') + (a.message ? ` (${a.message})` : '');
 }
 
 function systemLogInfo(s) {

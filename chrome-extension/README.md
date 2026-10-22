@@ -4,7 +4,8 @@ Chrome extension (Manifest V3). It records a video of a **window, the entire scr
 network activity of the tab you started from. The recording stays inside the extension until you upload it to a server,
 export it, or delete it.
 
-- `recording.webm` — the video (no audio). Pick a Chrome **window** to get the URL bar in it.
+- `recording.webm` — the video, with the page's sound and, if turned on, your microphone. Pick a Chrome **window** to
+  get the URL bar in it.
 - `session.json` — console logs, uncaught exceptions, browser log entries, page navigations and network requests
   (headers, post data, status, timing, text response bodies up to 1 MB). Every entry has `t` = ms since start, which
   matches the position in the video.
@@ -28,6 +29,13 @@ Popup → **Settings**:
 - **Open recordings on the server when you are logged in** (on by default) — when a recording stops and you are
   logged in to the Upload URL's server, it is uploaded and the server's replay page opens. Otherwise it replays in the
   extension and the button shows **⚠ Upload** (hover for the reason).
+- **Record the page's sound** (on by default) — the sound of the tab you start from, also when you record a window or
+  the screen. You still hear the tab while it records.
+- **Record the microphone** (off by default) — to talk through the problem. Chrome asks for the microphone on the
+  first recording; if you blocked it, set **Microphone** to **Allow** at
+  `chrome://settings/content/siteDetails?site=chrome-extension://<extension id>`.
+- Both sounds go into one sound track. `session.json` says what the recording has: `recording.audio` =
+  `{ page, pageSource: "tab" | "system", mic, message }`, where `message` says why a sound is missing.
 - **Text size** and **Theme** — for all extension pages.
 
 ## Record
@@ -36,7 +44,8 @@ Popup → **Settings**:
    window** (pick the Chrome window to get the URL bar) or **Record the screen**. Logs always come from the tab you
    started from.
 2. For a window or the screen, pick it in the small recorder window (not the recorder window itself). Chrome shows a
-   "started debugging this browser" banner; that is expected.
+   "started debugging this browser" banner; that is expected. With **Record the microphone** on, allow the microphone
+   when Chrome asks. The recorder window shows what is recorded, e.g. `sound: page + microphone`.
 3. Stop with the extension icon → **Stop & save**, the recorder window's button, or Chrome's **Stop sharing** bar.
    Cancelling the debugging banner or closing the tab also stops and saves. If the extension can't keep the
    recording (e.g. disk full), it downloads it instead.
@@ -83,4 +92,7 @@ any Chromium-based browser without the extension. Rebuild it after changing the 
 - Large POST bodies (over 64 KB) show `hasPostData: true` without the content.
 - The WebM from `MediaRecorder` has no duration in its header, so some players cannot seek it. The viewer works
   around this; Chrome and VLC play it fine.
+- Page sound comes from the tab you started from (you still hear it while recording), also for a window or the
+  screen: other tabs and apps are not heard. For all sound on a screen, tick **Share system audio** in the picker
+  (Windows and ChromeOS only); it replaces the tab's sound.
 - On GNOME Wayland, Chrome's picker is followed by the system "Share Screen" dialog.

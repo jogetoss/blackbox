@@ -69,8 +69,10 @@ for (const btn of document.querySelectorAll('#start button')) {
     try {
       // Logs always come from this tab. 'tab' records it directly; 'window'/'screen' show the picker.
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      // Tab capture must be asked for here: opening this popup is the user's permission for this tab
-      const streamId = mode === 'tab' ? await chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id }) : undefined;
+      // Tab capture must be asked for here: opening this popup is the user's permission for this tab.
+      // 'window'/'screen' use it only for the tab's sound, so they still start without it.
+      const tabCapture = chrome.tabCapture.getMediaStreamId({ targetTabId: tab.id });
+      const streamId = mode === 'tab' ? await tabCapture : await tabCapture.catch(() => undefined);
       await bg({ type: 'start', tabId: tab.id, mode, streamId });
       window.close();
     } catch (e) {

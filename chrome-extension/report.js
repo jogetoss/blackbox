@@ -14,6 +14,7 @@ function buildReport(meta, consoleEntries, navigations, network, stoppedAt, reas
       durationMs: stoppedAt - meta.startedAt,
       stopReason: reason,
       capturedSurface: meta.settings?.displaySurface, // "window", "monitor" or "browser" (tab)
+      audio: meta.audio, // { page, pageSource?: 'tab' | 'system', mic, message? }: which sound recording.webm has (absent: made before sound support)
       tab: meta.tab,
       userAgent: meta.userAgent || navigator.userAgent,
       systemLog: meta.systemLog ? { status: meta.systemLog.status, id: meta.systemLog.id, server: meta.systemLog.server, message: meta.systemLog.message } : undefined,
