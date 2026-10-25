@@ -320,3 +320,4 @@ button.warn { background: var(--warn-bg); color: var(--warn); border-color: var(
 .info details.process { margin: 8px 0; }
 .info details.process summary { cursor: pointer; font-weight: 600; }
 .info details.process h4 { font-size: 12px; margin: 8px 0 2px; color: var(--fg-2); }
+.row.server.other { opacity: .6; font-style: italic; }

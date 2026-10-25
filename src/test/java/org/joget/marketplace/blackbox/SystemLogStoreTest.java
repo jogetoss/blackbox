@@ -37,6 +37,7 @@ public class SystemLogStoreTest {
                 "{\"ts\":100,\"kind\":\"request\",\"method\":\"GET\",\"url\":\"/jw/web/x\",\"status\":200}");
         lines("node-b",
                 "{\"ts\":200,\"kind\":\"log\",\"level\":\"INFO\",\"message\":\"hi\"}",
+                "{\"ts\":210,\"kind\":\"log\",\"level\":\"ERROR\",\"message\":\"scheduler\",\"other\":true}",
                 "{\"ts\":250,\"kind\":\"log\",\"le", // cut short by a crash
                 "{\"kind\":\"truncated\",\"ts\":260}");
         assertTrue(store.stop(ID, "admin"));
@@ -45,16 +46,17 @@ public class SystemLogStoreTest {
         JSONObject summary = store.attach(ID, "admin", target);
         assertEquals("attached", summary.getString("status"));
         assertEquals(2, summary.getInt("entries"));
+        assertEquals("other threads' lines counted apart", 1, summary.getInt("otherEntries"));
         assertEquals(1, summary.getInt("requests"));
         assertEquals(1, summary.getInt("errors"));
         assertTrue(summary.getBoolean("truncated"));
 
         JSONObject body = new JSONObject(new String(Files.readAllBytes(target), StandardCharsets.UTF_8));
         JSONArray entries = body.getJSONArray("entries");
-        assertEquals(3, entries.length());
+        assertEquals(4, entries.length());
         assertEquals(100, entries.getJSONObject(0).getLong("ts"));
         assertEquals(200, entries.getJSONObject(1).getLong("ts"));
-        assertEquals(300, entries.getJSONObject(2).getLong("ts"));
+        assertEquals(300, entries.getJSONObject(3).getLong("ts"));
         assertEquals("request entries say which node served them", "node-a", entries.getJSONObject(0).getString("node"));
         assertFalse("log lines don't", entries.getJSONObject(1).has("node"));
         assertTrue(body.has("stoppedAt"));

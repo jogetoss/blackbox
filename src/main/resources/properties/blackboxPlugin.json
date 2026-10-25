@@ -133,6 +133,17 @@
             ]
         },
         {
+            "name" : "captureAllServerLogs",
+            "label" : "Also capture all other server log lines during recordings",
+            "description" : "Needs \"Capture system logs during recordings\". Keeps every log line written while a recording runs, not only those of the recorded tab's requests: scheduler jobs, email, background threads and other users' requests (shown greyed, under a filter). Only for recordings started by users allowed by \"Who can view system logs\", since the lines can hold other users' data. Busy servers fill the max size faster.",
+            "type" : "selectbox",
+            "value" : "false",
+            "options" : [
+                {"value" : "false", "label" : "No"},
+                {"value" : "true", "label" : "Yes"}
+            ]
+        },
+        {
             "name" : "glowrootUrl",
             "label" : "Glowroot address",
             "description" : "Empty = the Glowroot agent of this Joget (found from its admin.json, usually http://localhost:4000). Read as Glowroot's anonymous user.",

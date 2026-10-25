@@ -212,9 +212,15 @@ function openRecording() {
   $('consoleCount').textContent = r.console.length;
   $('networkCount').textContent = r.network.length;
   serverItems = prepareSystemLog(current.systemLog, r);
+  // All-server captures add other threads' lines: a filter, the tab's own lines first
+  if (serverItems.some((e) => e.other)) {
+    FILTERS.server = [['tab', 'This tab only'], ['all', 'This tab + other server threads'], ['other', 'Other server threads only']];
+  } else {
+    delete FILTERS.server;
+  }
   if ($('serverTab')) {
     $('serverTab').hidden = !current.systemLog;
-    $('serverCount').textContent = serverItems.filter((e) => e.kind === 'log').length;
+    $('serverCount').textContent = serverItems.filter((e) => e.kind === 'log' && !e.other).length;
   }
   traceItems = prepareTraces(current.traces, r);
   updateTracesTab();
@@ -225,7 +231,7 @@ function openRecording() {
   issues = [
     ...r.console.filter((e) => e.level === 'error').map((e) => e.t),
     ...r.network.filter(isBad).map((e) => e.t),
-    ...serverItems.filter(isServerError).map((e) => e.t),
+    ...serverItems.filter((e) => isServerError(e) && !e.other).map((e) => e.t),
   ].sort((a, b) => a - b);
 
   $('empty').hidden = true;
@@ -861,6 +867,7 @@ function matchesFilter(item, f) {
     return true;
   }
   if (tab === 'server') {
+    if (f === 'other' ? !item.other : f !== 'all' && item.other) return false;
     return item.kind === 'log' && pickedLevels.server.has(String(item.level).toUpperCase());
   }
   if (tab === 'console') {
@@ -921,14 +928,15 @@ function consoleRow(c) {
 }
 
 function serverRow(e) {
-  const row = el('div', `row server lvl-${e.lvl}`);
+  const row = el('div', `row server lvl-${e.lvl}${e.other ? ' other' : ''}`);
   row.append(
     el('span', 't', fmt(e.t)),
     el('span', null, e.kind === 'request' ? 'request' : e.lvl),
     el('span', null, serverText(e)),
-    el('span', 'muted right', e.kind === 'request' ? '' : String(e.logger || '').split('.').pop()),
+    el('span', 'muted right', e.kind === 'request' ? '' : (e.other ? `${e.thread || 'other thread'} · ` : '') + String(e.logger || '').split('.').pop()),
   );
-  row.title = e.kind === 'request' ? `${e.method} ${e.url}` : String(e.message ?? '');
+  if (e.other) row.title = `Another thread (${e.thread || '?'}), not the recorded tab: `;
+  row.title = (row.title || '') + (e.kind === 'request' ? `${e.method} ${e.url}` : String(e.message ?? ''));
   return row;
 }
 
@@ -1491,8 +1499,11 @@ function soundInfo(a) {
 function systemLogInfo(s) {
   const log = current.systemLog;
   if (log) {
-    const n = serverItems.filter((e) => e.kind === 'log').length;
-    return `${n} log lines, ${serverItems.length - n} requests${log.truncated ? ' (cut off at the size limit)' : ''}`;
+    const n = serverItems.filter((e) => e.kind === 'log' && !e.other).length;
+    const other = serverItems.filter((e) => e.other).length;
+    const requests = serverItems.filter((e) => e.kind === 'request').length;
+    return `${n} log lines, ${requests} requests${other ? `, ${other} lines of other server threads` : ''}`
+      + (log.truncated ? ' (cut off at the size limit)' : '');
   }
   if (!s) return undefined;
   if (s.status === 'on') return `Captured on ${s.server}; shown on the server's replay page after upload`;

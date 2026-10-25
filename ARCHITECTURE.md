@@ -73,6 +73,12 @@ The extension keeps recordings in IndexedDB (newest 10), or reads them from a li
 
 Not captured: work a request hands to another thread, and log lines below the root logger's level.
 
+**All server** (`captureAllServerLogs`, stored as `allServer` in the capture's meta, only for recorders with the global
+system-log permission): while such a capture is open on a node, the appender also writes every other thread's events
+to it with `"other": true` (no `req`), including tagged requests of other recordings. Nodes write it once the capture
+is open there (the starting node, and any node that served one of its requests). `summary` counts those lines as
+`otherEntries`, not as entries or errors.
+
 Log4j 2 is not visible to plugin bundles (OSGi exports neither `org.apache.logging.log4j` nor `org.apache.log4j`),
 so `SystemLogCapture` reaches it through Joget's classloader by reflection; the appender is a `java.lang.reflect.Proxy`.
 

@@ -53,6 +53,12 @@ public class SystemLogStore {
     /** glowrootData: also cut the recording out of each node's Glowroot data after the stop (GlowrootPackager). */
     public boolean start(String id, String owner, long maxBytes, long keepMs, boolean traces, String glowrootUrl, boolean gauges,
             boolean glowrootData) throws IOException {
+        return start(id, owner, maxBytes, keepMs, traces, glowrootUrl, gauges, glowrootData, false);
+    }
+
+    /** allServer: also keep the log lines of every other thread on the nodes the recording reaches. */
+    public boolean start(String id, String owner, long maxBytes, long keepMs, boolean traces, String glowrootUrl, boolean gauges,
+            boolean glowrootData, boolean allServer) throws IOException {
         JSONObject meta = readMeta(id);
         if (meta != null) {
             return owner.equals(meta.optString("owner"));
@@ -69,7 +75,8 @@ public class SystemLogStore {
                     .put("traces", traces)
                     .put("glowrootUrl", glowrootUrl == null ? "" : glowrootUrl)
                     .put("gauges", gauges)
-                    .put("glowrootData", glowrootData));
+                    .put("glowrootData", glowrootData)
+                    .put("allServer", allServer));
         } catch (JSONException e) {
             throw new IOException(e);
         }
@@ -207,10 +214,14 @@ public class SystemLogStore {
         return summary;
     }
 
-    /** The summary kept in the recording's meta.json: log lines, request entries, error lines, cut off or not. */
+    /**
+     * The summary kept in the recording's meta.json: the tab's log lines, request entries, error lines, other threads'
+     * lines (all-server capture), cut off or not.
+     */
     static JSONObject summary(JSONArray entries, boolean truncated) throws JSONException {
         int errors = 0;
         int requests = 0;
+        int other = 0;
         for (int i = 0; i < entries.length(); i++) {
             JSONObject e = entries.optJSONObject(i);
             if (e == null) {
@@ -218,13 +229,16 @@ public class SystemLogStore {
             }
             if ("request".equals(e.optString("kind"))) {
                 requests++;
+            } else if (e.optBoolean("other")) {
+                other++; // another thread's line (all-server capture): not this tab's errors
             } else if ("ERROR".equals(e.optString("level")) || "FATAL".equals(e.optString("level"))) {
                 errors++;
             }
         }
         return new JSONObject()
                 .put("status", "attached")
-                .put("entries", entries.length() - requests)
+                .put("entries", entries.length() - requests - other)
+                .put("otherEntries", other)
                 .put("requests", requests)
                 .put("errors", errors)
                 .put("truncated", truncated);

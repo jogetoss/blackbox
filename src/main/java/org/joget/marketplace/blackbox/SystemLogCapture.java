@@ -33,7 +33,9 @@ import org.json.JSONObject;
  * {@link RootAppender} reaches it through Joget's own classloader by reflection, and the appender is a
  * java.lang.reflect.Proxy of log4j's Appender interface.
  *
- * Not captured: work a request hands to other threads, and log levels below the root logger's level (info).
+ * Not captured: work a request hands to other threads, and log levels below the root logger's level (info). A capture
+ * started with allServer also keeps every other thread's lines (marked "other": scheduler, email, other users) on the
+ * nodes where it is open: the node that started it and those that served one of its requests.
  */
 final class SystemLogCapture {
 
@@ -50,6 +52,7 @@ final class SystemLogCapture {
     private static final ThreadLocal<Boolean> APPENDING = new ThreadLocal<>();
     private static final Map<String, Capture> OPEN = new ConcurrentHashMap<>();
     private static final Map<String, Long> MISSES = new ConcurrentHashMap<>();
+    private static volatile Capture[] allServer = new Capture[0]; // open captures that keep every thread's lines
 
     private static volatile boolean running;
     private static ScheduledExecutorService timer;
@@ -103,6 +106,7 @@ final class SystemLogCapture {
         for (String id : OPEN.keySet()) {
             close(id);
         }
+        allServer = new Capture[0];
         MISSES.clear();
     }
 
@@ -129,6 +133,7 @@ final class SystemLogCapture {
         }
         MISSES.remove(id);
         Capture opened = OPEN.computeIfAbsent(id, k -> new Capture(id, store.nodeFile(id, NODE), meta));
+        updateAllServer();
         GaugeSampler.watch(opened);
         GlowrootPackager.watch(opened);
         return opened;
@@ -139,8 +144,13 @@ final class SystemLogCapture {
         Capture capture = OPEN.remove(id);
         if (capture != null) {
             capture.close();
+            updateAllServer();
         }
         MISSES.put(id, System.currentTimeMillis());
+    }
+
+    private static synchronized void updateAllServer() {
+        allServer = OPEN.values().stream().filter(c -> c.allServer).toArray(Capture[]::new);
     }
 
     /** Marks the current thread as serving a tagged request. Returns what to pass to {@link #end}. */
@@ -169,6 +179,7 @@ final class SystemLogCapture {
             c.flush();
             if (now - c.lastWrite > IDLE_MS && OPEN.remove(e.getKey(), c)) {
                 c.close();
+                updateAllServer();
             }
         }
         MISSES.entrySet().removeIf(e -> now - e.getValue() > MISS_MS);
@@ -213,6 +224,7 @@ final class SystemLogCapture {
         final String glowrootUrl;  // "" = find the local agent
         final boolean gauges;      // sample this node's load while the capture is open (GaugeSampler)
         final boolean glowrootData; // cut the recording out of this node's Glowroot data after the stop (GlowrootPackager)
+        final boolean allServer;   // keep every thread's log lines too, marked "other"
         private final Path file;
         private final long maxBytes;
         private Writer out;
@@ -227,6 +239,7 @@ final class SystemLogCapture {
             this.glowrootUrl = meta.optString("glowrootUrl");
             this.gauges = meta.optBoolean("gauges");
             this.glowrootData = meta.optBoolean("glowrootData");
+            this.allServer = meta.optBoolean("allServer");
             this.file = file;
             this.maxBytes = meta.optLong("maxBytes");
             try {
@@ -420,7 +433,8 @@ final class SystemLogCapture {
 
         private void append(Object event) {
             Request r = CURRENT.get();
-            if (r == null || APPENDING.get() != null) {
+            Capture[] all = allServer;
+            if ((r == null && all.length == 0) || APPENDING.get() != null) {
                 return;
             }
             APPENDING.set(Boolean.TRUE);
@@ -432,15 +446,21 @@ final class SystemLogCapture {
                         .put("level", String.valueOf(level.invoke(event)))
                         .put("logger", loggerName.invoke(event))
                         .put("thread", threadName.invoke(event))
-                        .put("message", msg != null ? formattedMessage.invoke(msg) : "")
-                        .put("req", r.request);
+                        .put("message", msg != null ? formattedMessage.invoke(msg) : "");
                 Throwable t = (Throwable) thrown.invoke(event);
                 if (t != null) {
                     StringWriter trace = new StringWriter();
                     t.printStackTrace(new PrintWriter(trace));
                     e.put("thrown", trace.toString());
                 }
-                r.capture.write(e);
+                if (r != null) {
+                    r.capture.write(new JSONObject(e.toString()).put("req", r.request));
+                }
+                for (Capture c : all) {
+                    if (r == null || c != r.capture) {
+                        c.write(new JSONObject(e.toString()).put("other", true)); // not this recording's tab
+                    }
+                }
             } catch (Throwable t) {
                 // never break the application's logging call
             } finally {

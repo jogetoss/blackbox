@@ -491,15 +491,18 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         boolean traces = !"false".equals(getPropertyString("captureTraces"));
         boolean gauges = !"false".equals(getPropertyString("captureGauges"));
         boolean glowrootData = "true".equals(getPropertyString("captureGlowrootData"));
+        // Other users' log lines: only for recorders who may see every recording's system logs
+        boolean allServer = "true".equals(getPropertyString("captureAllServerLogs")) && access.canViewSystemLog();
         if (!SystemLogCapture.store().start(id, access.user.getUsername(), maxBytes, keepMs, traces, getPropertyString("glowrootUrl"), gauges,
-                glowrootData)) {
+                glowrootData, allServer)) {
             error(response, HttpServletResponse.SC_CONFLICT, "This system log id is already in use.");
             return;
         }
         SystemLogCapture.find(id); // this node samples the server load from now (GaugeSampler)
         ServerInfo.save(SystemLogCapture.store().dir(id), request, (int) Math.min(positive("recentChangesDays", 7), 365)); // System Info as it is now
         JSONObject started = new JSONObject().put("id", id).put("maxMb", maxBytes / (1024 * 1024))
-                .put("traces", traces).put("gauges", gauges).put("glowrootData", glowrootData).put("slowThresholdMs", slowMs());
+                .put("traces", traces).put("gauges", gauges).put("glowrootData", glowrootData).put("allServer", allServer)
+                .put("slowThresholdMs", slowMs());
         json(response, new JSONObject().put("systemLog", started));
     }
 

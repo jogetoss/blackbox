@@ -46,6 +46,7 @@ The permission settings take a Joget permission plugin (user, group, role, depar
 | Delete system logs not uploaded after (days) | 7 | |
 | Sample server load during recordings | Yes | |
 | Copy Glowroot traces of slow and failed requests | Yes | |
+| Also capture all other server log lines during recordings | No | Other threads and users; only for "Who can view system logs" recorders |
 | Copy Glowroot data for the recording | No | Needs Glowroot 0.14 |
 | Glowroot address | empty | Empty = this Joget's own Glowroot agent (usually `http://localhost:4000`) |
 | Recent changes period (days) | 7 | The Info tab's first section |
@@ -64,6 +65,10 @@ All of it needs **Capture system logs**, is shown only on this plugin's replay p
 - **System logs** (**System logs** tab): the Joget log lines (info and up) written while serving the recorded tab's
   requests, plus one entry per request, lined up with the video. A network request's details show its own lines. Not
   captured: work a request hands to another thread.
+- **Other server threads** (opt-in setting): every other log line written while the recording runs (scheduler,
+  email, background threads, other users' requests), on the nodes that started or served the recording. Greyed in the
+  System logs tab under the filter **This tab + other server threads**; not counted as the tab's errors. Only for
+  recordings started by users allowed by **Who can view system logs**.
 - **Glowroot traces** (**Traces** tab): the [Glowroot](https://glowroot.org) trace of each recorded request that
   Glowroot kept one for (slow or failed, by Glowroot's own settings, which BlackBox never changes). Failed lookups
   have **Retry**. Glowroot must allow anonymous access.
