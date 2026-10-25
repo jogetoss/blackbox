@@ -115,4 +115,34 @@ public class ServerInfoTest {
         assertTrue(p.getString("elsewhere.jar").startsWith("Not in the plugin folder\nOther 1"));
         assertFalse(p.has("notes.txt"));
     }
+    @Test
+    public void recentChangesListWhatChangedInThePeriod() throws Exception {
+        long now = System.currentTimeMillis();
+        long day = 24L * 3600 * 1000;
+        java.io.File plugins = java.nio.file.Files.createTempDirectory("p").toFile();
+        java.io.File wflow = java.nio.file.Files.createTempDirectory("w").toFile();
+        java.io.File newJar = new java.io.File(plugins, "new.jar");
+        java.nio.file.Files.write(newJar.toPath(), new byte[1]);
+        java.io.File oldJar = new java.io.File(plugins, "old.jar");
+        java.nio.file.Files.write(oldJar.toPath(), new byte[1]);
+        assertTrue(oldJar.setLastModified(now - 30 * day));
+        java.nio.file.Files.write(new java.io.File(wflow, "app_datasource-x.properties").toPath(), new byte[1]);
+        java.nio.file.Files.write(new java.io.File(wflow, "joget.log").toPath(), new byte[1]);
+        java.nio.file.Files.write(new java.io.File(wflow, "servers.json").toPath(), new byte[1]);
+        java.util.List<Object[]> apps = java.util.Arrays.asList(new Object[]{now - day, "leave v3 (published) Leave"},
+                new Object[]{now - 20 * day, "crm v1 CRM"});
+        JSONObject c = ServerInfo.recentChanges(7, now - 7 * day, apps, plugins, wflow, now - 2 * day);
+        assertEquals("the last 7 days", c.getString("Period"));
+        assertTrue(c.getString("App versions").endsWith("  leave v3 (published) Leave"));
+        assertFalse(c.getString("App versions").contains("crm"));
+        assertTrue(c.getString("Plugins (app_plugins)").endsWith("  new.jar"));
+        assertFalse(c.getString("Plugins (app_plugins)").contains("old.jar"));
+        assertTrue(c.getString("wflow files").endsWith("app_datasource-x.properties"));
+        assertFalse("no logs", c.getString("wflow files").contains("joget.log"));
+        assertFalse("not Joget's own runtime files", c.getString("wflow files").contains("servers.json"));
+        assertTrue(c.has("Joget started"));
+
+        JSONObject none = ServerInfo.recentChanges(1, now + day, java.util.Collections.<Object[]>emptyList(), plugins, wflow, 0);
+        assertTrue(none.getString("Changes").startsWith("None found"));
+    }
 }

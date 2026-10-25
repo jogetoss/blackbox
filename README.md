@@ -48,6 +48,7 @@ The permission settings take a Joget permission plugin (user, group, role, depar
 | Copy Glowroot traces of slow and failed requests | Yes | |
 | Copy Glowroot data for the recording | No | Needs Glowroot 0.14 |
 | Glowroot address | empty | Empty = this Joget's own Glowroot agent (usually `http://localhost:4000`) |
+| Recent changes period (days) | 7 | The Info tab's first section |
 | Export the apps used in the recording | Yes | At upload; shown like server data |
 | Add sample form data to the exported apps | Yes (masked) | Only for uploaders who may see the recording's server data |
 | Newest rows per table when the recording touched none | 20 | |
@@ -73,7 +74,9 @@ All of it needs **Capture system logs**, is shown only on this plugin's replay p
 - **Server load** (strip under the timeline): CPU, heap, busy request threads, DB connections and GC time, sampled
   every second on each node. No Glowroot needed.
 - **System Info** (**Info** tab): the server at recording start: host, Java, Joget, plugins, database settings,
-  connection pool, license and system properties. **Cluster** shows Joget's node name and node lists, Tomcat's
+  connection pool, license and system properties. It starts with **Changed in the last 7 days** (setting): app
+  versions edited or published, plugin jars and wflow files (such as `app_datasource-*.properties`) changed, and a Joget
+  restart. **Cluster** shows Joget's node name and node lists, Tomcat's
   `jvmRoute` and session replication, and which node served each recorded request: **Sticky sessions** warns when the
   tab's requests moved between nodes. **Plugins** lists every jar in `app_plugins` with its date, size and
   the plugins it loaded; "No plugin loaded" means the jar failed to load (the Joget log says why).

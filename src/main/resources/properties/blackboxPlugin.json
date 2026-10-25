@@ -144,6 +144,13 @@
             "type" : "header"
         },
         {
+            "name" : "recentChangesDays",
+            "label" : "Recent changes period (days)",
+            "description" : "The Info tab's first section lists the app versions, plugin jars and wflow files changed in this period, and a Joget restart. Taken at recording start, with the System Info snapshot.",
+            "type" : "textfield",
+            "value" : "7"
+        },
+        {
             "name" : "includeAppExport",
             "label" : "Export the apps used in the recording",
             "description" : "At upload, the apps found in the recorded URLs (at most 5, most used first; App Center left out) are exported with Joget's own app export (.jwa, without form data, plugins or groups) and kept with the recording. App definitions can hold plugin settings and environment variables.",

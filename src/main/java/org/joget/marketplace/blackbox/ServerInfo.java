@@ -42,6 +42,11 @@ final class ServerInfo {
     }
 
     static JSONObject collect(HttpServletRequest request) throws JSONException {
+        return collect(request, 0);
+    }
+
+    /** recentDays: how far back "recentChanges" looks (0: not collected). */
+    static JSONObject collect(HttpServletRequest request, int recentDays) throws JSONException {
         long now = System.currentTimeMillis();
         Runtime rt = Runtime.getRuntime();
         java.lang.management.RuntimeMXBean jvm = ManagementFactory.getRuntimeMXBean();
@@ -123,6 +128,13 @@ final class ServerInfo {
                 .put("host", host).put("process", process).put("java", java).put("joget", joget).put("database", db);
         if (pool != null && pool.length() > 0) {
             result.put("connectionPool", pool);
+        }
+        if (recentDays > 0) {
+            try {
+                result.put("recentChanges", recentChanges(recentDays, now));
+            } catch (Exception | LinkageError e) {
+                // outside a running Joget
+            }
         }
         if (cluster != null && cluster.length() > 0) {
             result.put("cluster", cluster);
@@ -271,6 +283,73 @@ final class ServerInfo {
         }
     }
 
+    /** What changed on this server lately: app versions (any edit updates their date), plugin jars, wflow files. */
+    private static JSONObject recentChanges(int days, long now) throws JSONException {
+        long since = now - days * 24L * 3600 * 1000;
+        org.joget.apps.app.dao.AppDefinitionDao dao = (org.joget.apps.app.dao.AppDefinitionDao) AppUtil.getApplicationContext()
+                .getBean("appDefinitionDao");
+        java.util.List<Object[]> apps = new java.util.ArrayList<>();
+        java.util.Collection<org.joget.apps.app.model.AppDefinition> recent = dao.findByVersion(null, null, null, null, "dateModified", true, 0, 50);
+        for (org.joget.apps.app.model.AppDefinition a : recent != null ? recent : java.util.Collections.<org.joget.apps.app.model.AppDefinition>emptyList()) {
+            if (a.getDateModified() != null) {
+                apps.add(new Object[]{a.getDateModified().getTime(), a.getAppId() + " v" + a.getVersion()
+                        + (a.isPublished() ? " (published)" : "") + " " + a.getName()});
+            }
+        }
+        PluginManager pm = (PluginManager) AppUtil.getApplicationContext().getBean("pluginManager");
+        return recentChanges(days, since, apps, new java.io.File(pm.getBaseDirectory()),
+                new java.io.File(org.joget.commons.util.SetupManager.getBaseDirectory()), ManagementFactory.getRuntimeMXBean().getStartTime());
+    }
+
+    /**
+     * apps: [modified ms, text], newest first. Lists app versions, plugin jars and files at the top of the wflow folder
+     * (app_datasource files and the like; not logs) changed since then, and Joget's start when it is that recent.
+     */
+    static JSONObject recentChanges(int days, long since, java.util.List<Object[]> apps, java.io.File pluginDir, java.io.File wflowDir,
+            long started) throws JSONException {
+        JSONObject c = new JSONObject();
+        java.text.SimpleDateFormat date = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm");
+        put(c, "Period", "the last " + days + " day" + (days == 1 ? "" : "s"));
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        for (Object[] a : apps) {
+            if ((Long) a[0] >= since) {
+                lines.add(date.format(new java.util.Date((Long) a[0])) + "  " + a[1]);
+            }
+        }
+        put(c, "App versions", lines.isEmpty() ? null : String.join("\n", lines));
+        put(c, "Plugins (app_plugins)", files(pluginDir, since, date, ".jar"));
+        put(c, "wflow files", files(wflowDir, since, date, null));
+        if (started >= since) {
+            put(c, "Joget started", date.format(new java.util.Date(started)));
+        }
+        if (c.length() == 1) {
+            put(c, "Changes", "None found (apps, plugins, wflow files, restarts)");
+        }
+        return c;
+    }
+
+    /** Files Joget itself rewrites while running (cluster node lists, who is online): not changes anyone made. */
+    private static final java.util.Set<String> JOGET_RUNTIME_FILES = new java.util.HashSet<>(java.util.Arrays.asList(
+            "servers.json", "serversip.properties", "app_presence.json"));
+
+    private static String files(java.io.File dir, long since, java.text.SimpleDateFormat date, String suffix) {
+        java.io.File[] all = dir != null ? dir.listFiles() : null;
+        java.util.List<java.io.File> changed = new java.util.ArrayList<>();
+        for (java.io.File f : all != null ? all : new java.io.File[0]) {
+            String n = f.getName().toLowerCase(java.util.Locale.ROOT);
+            if (f.isFile() && f.lastModified() >= since && (suffix == null || n.endsWith(suffix)) && !n.endsWith(".log")
+                    && !JOGET_RUNTIME_FILES.contains(n)) {
+                changed.add(f);
+            }
+        }
+        changed.sort((a, b) -> Long.compare(b.lastModified(), a.lastModified()));
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        for (java.io.File f : changed) {
+            lines.add(date.format(new java.util.Date(f.lastModified())) + "  " + f.getName());
+        }
+        return lines.isEmpty() ? null : String.join("\n", lines);
+    }
+
     /** The plugins Joget loaded from app_plugins, by jar file. */
     private static JSONObject plugins() throws JSONException {
         PluginManager pm = (PluginManager) AppUtil.getApplicationContext().getBean("pluginManager");
@@ -398,8 +477,12 @@ final class ServerInfo {
 
     /** Writes the snapshot into the capture's pending folder; it moves into the recording with the system log. */
     static void save(Path captureDir, HttpServletRequest request) {
+        save(captureDir, request, 0);
+    }
+
+    static void save(Path captureDir, HttpServletRequest request, int recentDays) {
         try {
-            Files.write(captureDir.resolve(FILE), collect(request).toString().getBytes(StandardCharsets.UTF_8));
+            Files.write(captureDir.resolve(FILE), collect(request, recentDays).toString().getBytes(StandardCharsets.UTF_8));
         } catch (Exception e) {
             LogUtil.warn(ServerInfo.class.getName(), "Could not save the server info of a recording: " + e.getMessage());
         }

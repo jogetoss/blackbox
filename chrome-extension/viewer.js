@@ -1242,11 +1242,13 @@ function renderInfo() {
   if (si) {
     const when = si.takenAt ? ` (snapshot at ${new Date(si.takenAt).toLocaleString()})` : '';
     const body = $('info');
-    const groups = [['host', `Host${when}`], ['cluster', 'Cluster'], ['process', 'Process'], ['java', 'Java'], ['joget', 'Joget'], ['plugins', 'Plugins (app_plugins)'], ['database', 'Database'],
+    const recent = si.recentChanges?.Period ? `Changed in ${si.recentChanges.Period}` : 'Recent changes';
+    const groups = [['recentChanges', recent], ['host', `Host${when}`], ['cluster', 'Cluster'], ['process', 'Process'], ['java', 'Java'], ['joget', 'Joget'], ['plugins', 'Plugins (app_plugins)'], ['database', 'Database'],
       ['connectionPool', 'Connection pool'], ['license', 'License'], ['systemProperties', 'System properties']];
     const served = nodesServed(current.systemLog);
     for (const [key, title] of groups) {
-      const values = key === 'cluster' && served ? { ...si[key], ...served } : si[key];
+      let values = key === 'cluster' && served ? { ...si[key], ...served } : si[key];
+      if (key === 'recentChanges' && values) values = Object.fromEntries(Object.entries(values).filter(([k]) => k !== 'Period'));
       if (!values || !Object.keys(values).length) continue;
       const list = kv(infoOrder(key, values));
       list.classList.add('multiline');
@@ -1281,6 +1283,7 @@ const INFO_LABELS = {
   database: ['Profile', 'JDBC driver', 'JDBC URL', 'User'],
   connectionPool: ['Ignored file keys', 'Pool size', 'Active connections', 'Idle connections', 'Waiting threads'],
   plugins: [], // jar files A-Z
+  recentChanges: ['Changes', 'App versions', 'Plugins (app_plugins)', 'wflow files', 'Joget started'],
   cluster: ['Sticky sessions', 'Recorded requests served by', 'Joget node name', 'Cluster mode', 'Registered nodes',
     'Active nodes', 'Tomcat jvmRoute', 'This session\'s route', 'Session replication'],
 };

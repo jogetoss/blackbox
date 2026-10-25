@@ -150,6 +150,10 @@ starts at `recording-start` (or the node's first recorded request) and ends at s
 - **Host**: hostname, node, processors, physical memory, OS. **Process**: id, start time, uptime.
 - **Java**: version, vendor, VM, heap used/committed/max, every JVM argument (one per line).
 - **Joget**: version, edition, application server, time zone, Glowroot address and version.
+- **Recent changes** (first in the Info tab): app versions by `dateModified` (`AppDefinitionDao.findByVersion`, newest
+  50; saving a form, list or userview updates it), jars in `app_plugins` and top-level files of the wflow folder modified
+  in the period (not logs, not `servers.json` / `serversIP.properties` / `app_presence.json`, which Joget rewrites), and
+  the JVM start when it is in the period.
 - **Cluster**: `ServerUtil` (this node's `wflow.name`, the shared `servers.json` nodes, the active nodes, each with its
   `serversIP.properties` address), `wflow.cluster` (set by the wflow-cluster agent), Tomcat's Engine `jvmRoute`, whether
   a `Catalina:type=Cluster` MBean exists (session replication), and the requested session id's route suffix. The viewer
