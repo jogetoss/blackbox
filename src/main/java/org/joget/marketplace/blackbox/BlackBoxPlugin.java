@@ -293,8 +293,9 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     private void exportApps(RecordingStore store, String recId, JSONObject meta, SampleData.Mode sample) {
         try {
             Path session = store.file(recId, RecordingStore.SESSION);
-            List<String> urls = AppExport.urls(session, store.file(recId, RecordingStore.SYSTEM_LOG));
-            List<AppExport.Seen> apps = AppExport.find(urls);
+            Path systemLog = store.file(recId, RecordingStore.SYSTEM_LOG);
+            List<String> urls = AppExport.urls(session, systemLog);
+            List<AppExport.Seen> apps = AppExport.find(AppExport.hits(session, systemLog));
             AppExport.AfterExport after = null;
             boolean keepIds = "true".equals(getPropertyString("sampleKeepIds"));
             Masker.IdMap ids = new Masker.IdMap(keepIds);
@@ -328,7 +329,9 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                     }
                 };
             }
-            JSONArray saved = AppExport.save(store.dir(recId), apps, AppExport.joget(), after);
+            String max = getPropertyString("maxApps");
+            int maxApps = max != null && max.trim().matches("\\d{1,4}") ? Integer.parseInt(max.trim()) : AppExport.MAX_APPS;
+            JSONArray saved = AppExport.save(store.dir(recId), apps, AppExport.joget(), after, maxApps);
             SampleData.writeIdMap(store.dir(recId), ids, keepIds);
             if (saved.length() > 0) {
                 meta.put("apps", saved);

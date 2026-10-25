@@ -24,6 +24,7 @@ import org.json.JSONObject;
  * The Joget apps a recording used, exported at upload with Joget's own app export (the same .jwa as App Composer's
  * Export, without form data, plugins or groups). Apps are found in the recorded URLs: userview, embed, form/datalist,
  * builder and JSON API paths, appId / appVersion parameters and process definition ids (appId#version#process).
+ * Apps with problems (failed requests, server errors, console errors on their pages) come first, then the most used.
  * Saved as app/&lt;appId&gt;-&lt;version&gt;.jwa plus app/apps.json (what was found and exported, or why not).
  * App definitions can hold plugin settings and environment variables, so they count as server data.
  */
@@ -34,8 +35,8 @@ final class AppExport {
     static final int MAX_APPS = 5;
     static final String FILE_NAME = "[A-Za-z0-9_-]+-\\d+\\.jwa";
 
-    /** Joget's own apps: in most recordings and rarely what the issue is about. */
-    private static final java.util.Set<String> SKIPPED = java.util.Collections.singleton("appcenter");
+    /** Joget's own App Center: usually just the way into the app in question, so kept only when it had problems or was the only app. */
+    static final String APP_CENTER = "appcenter";
 
     private static final String ID = "([A-Za-z0-9_-]+)";
     private static final Pattern[] PATHS = {
@@ -59,49 +60,101 @@ final class AppExport {
         final String appId;
         String version;
         int count;
+        int problems;
 
         Seen(String appId) {
             this.appId = appId;
         }
     }
 
-    /** The apps in these URLs, most used first, Joget's own left out. */
+    /**
+     * One recorded thing that can name an app: a request (url), or a problem on a page (console error: page only).
+     * page is the page the browser showed (a document's own URL, else the request's Referer); browser is false for
+     * the server's system log, which can also hold requests of other tabs (service worker fetches carry no tab).
+     */
+    static final class Hit {
+        final String url;
+        final String page;
+        final boolean problem;
+        final boolean browser;
+
+        Hit(String url, String page, boolean problem, boolean browser) {
+            this.url = url;
+            this.page = page;
+            this.problem = problem;
+            this.browser = browser;
+        }
+    }
+
+    /** The apps in these browser URLs, most used first. */
     static List<Seen> find(Iterable<String> urls) {
-        Map<String, Seen> seen = new LinkedHashMap<>();
+        List<Hit> hits = new ArrayList<>();
         for (String url : urls) {
-            if (url == null || RESOURCE.matcher(url).find()) {
-                continue;
-            }
-            for (Pattern p : PATHS) {
-                Matcher m = p.matcher(url);
-                if (m.find()) {
-                    note(seen, m.group(1), m.groupCount() > 1 ? m.group(2) : null);
-                }
-            }
-            Matcher m = PROCESS.matcher(url);
-            while (m.find()) {
-                note(seen, m.group(1), m.group(2));
-            }
-            m = APP_PARAM.matcher(url);
-            if (m.find()) {
-                Matcher v = VERSION_PARAM.matcher(url);
-                note(seen, m.group(1), v.find() ? v.group(1) : null);
+            hits.add(new Hit(url, null, false, true));
+        }
+        return find(hits);
+    }
+
+    /**
+     * The apps of these hits: apps with problems first, then the most used. Apps come from the browser's requests; the
+     * system log only adds to them (or names the apps when the browser recorded none). App Center is kept only when it
+     * had problems or was the only app.
+     */
+    static List<Seen> find(List<Hit> hits) {
+        boolean browserNamesApps = false;
+        for (Hit h : hits) {
+            if (h.browser && h.url != null && appOf(h.url) != null) {
+                browserNamesApps = true;
+                break;
             }
         }
+        Map<String, Seen> seen = new LinkedHashMap<>();
+        for (Hit h : hits) {
+            String[] app = h.url != null ? appOf(h.url) : null;
+            if (app != null && (h.browser || !browserNamesApps || seen.containsKey(app[0]))) {
+                Seen s = seen.computeIfAbsent(app[0], Seen::new);
+                s.count++;
+                if (app[1] != null && app[1].matches("\\d+") && s.version == null) {
+                    s.version = app[1]; // the first numbered version wins; "latest" and "_" mean the published one
+                }
+            }
+            if (h.problem) {
+                String[] where = app != null ? app : h.page != null ? appOf(h.page) : null;
+                if (where != null && (h.browser || !browserNamesApps || seen.containsKey(where[0]))) {
+                    seen.computeIfAbsent(where[0], Seen::new).problems++;
+                }
+            }
+        }
+        Seen appCenter = seen.get(APP_CENTER);
+        if (appCenter != null && appCenter.problems == 0 && seen.size() > 1) {
+            seen.remove(APP_CENTER);
+        }
         List<Seen> list = new ArrayList<>(seen.values());
-        list.sort((a, b) -> b.count - a.count);
+        list.sort((a, b) -> a.problems != b.problems ? b.problems - a.problems : b.count - a.count);
         return list;
     }
 
-    private static void note(Map<String, Seen> seen, String appId, String version) {
-        if (SKIPPED.contains(appId)) {
-            return;
+    /** {appId, version or null} of the app a URL names, or null. */
+    static String[] appOf(String url) {
+        if (url == null || RESOURCE.matcher(url).find()) {
+            return null;
         }
-        Seen s = seen.computeIfAbsent(appId, Seen::new);
-        s.count++;
-        if (version != null && version.matches("\\d+") && s.version == null) {
-            s.version = version; // the first numbered version wins; "latest" and "_" mean the published one
+        for (Pattern p : PATHS) {
+            Matcher m = p.matcher(url);
+            if (m.find()) {
+                return new String[]{m.group(1), m.groupCount() > 1 ? m.group(2) : null};
+            }
         }
+        Matcher m = PROCESS.matcher(url);
+        if (m.find()) {
+            return new String[]{m.group(1), m.group(2)};
+        }
+        m = APP_PARAM.matcher(url);
+        if (m.find()) {
+            Matcher v = VERSION_PARAM.matcher(url);
+            return new String[]{m.group(1), v.find() ? v.group(1) : null};
+        }
+        return null;
     }
 
     /** URLs of the recording: the browser's requests in session.json and the server's in the system log. */
@@ -111,30 +164,98 @@ final class AppExport {
         addUrls(urls, systemLog, "entries");
         List<String> decoded = new ArrayList<>(urls.size());
         for (String u : urls) {
-            try {
-                decoded.add(URLDecoder.decode(u.replace("+", "%2B"), "UTF-8"));
-            } catch (IllegalArgumentException | java.io.UnsupportedEncodingException e) {
-                decoded.add(u);
-            }
+            decoded.add(decode(u));
         }
         return decoded;
     }
 
-    private static void addUrls(List<String> urls, Path file, String key) {
-        if (file == null || !Files.isRegularFile(file)) {
-            return;
+    private static String decode(String u) {
+        if (u == null) {
+            return null;
         }
         try {
-            JSONArray list = new JSONObject(new String(Files.readAllBytes(file), StandardCharsets.UTF_8)).optJSONArray(key);
-            for (int i = 0; list != null && i < list.length(); i++) {
-                JSONObject e = list.optJSONObject(i);
-                if (e != null && !e.optString("url").isEmpty()) {
-                    urls.add(e.optString("url"));
+            return URLDecoder.decode(u.replace("+", "%2B"), "UTF-8");
+        } catch (IllegalArgumentException | java.io.UnsupportedEncodingException e) {
+            return u;
+        }
+    }
+
+    private static void addUrls(List<String> urls, Path file, String key) {
+        JSONArray list = array(file, key);
+        for (int i = 0; list != null && i < list.length(); i++) {
+            JSONObject e = list.optJSONObject(i);
+            if (e != null && !e.optString("url").isEmpty()) {
+                urls.add(e.optString("url"));
+            }
+        }
+    }
+
+    private static JSONArray array(Path file, String key) {
+        if (file == null || !Files.isRegularFile(file)) {
+            return null;
+        }
+        try {
+            return new JSONObject(new String(Files.readAllBytes(file), StandardCharsets.UTF_8)).optJSONArray(key);
+        } catch (IOException | JSONException e) {
+            return null; // unreadable: no apps from it
+        }
+    }
+
+    /**
+     * The hits of a recording: the browser's requests (failed or 4xx/5xx: a problem) and console errors (a problem on
+     * the page shown then), then the system log's requests (5xx: a problem) and error lines (a problem on their
+     * request). Other server threads' lines are left out.
+     */
+    static List<Hit> hits(Path session, Path systemLog) {
+        List<Hit> hits = new ArrayList<>();
+        JSONArray network = array(session, "network");
+        java.util.TreeMap<Long, String> pages = new java.util.TreeMap<>(); // t -> page shown from then on
+        for (int i = 0; network != null && i < network.length(); i++) {
+            JSONObject n = network.optJSONObject(i);
+            if (n == null || n.optString("url").isEmpty()) {
+                continue;
+            }
+            String url = decode(n.optString("url"));
+            String page = "Document".equals(n.optString("type")) ? url : decode(header(n.optJSONObject("requestHeaders"), "referer"));
+            if (page != null && page.contains("/web/")) {
+                pages.put(n.optLong("t"), page);
+            }
+            hits.add(new Hit(url, page, n.optBoolean("failed") || n.optInt("status") >= 400, true));
+        }
+        JSONArray console = array(session, "console");
+        for (int i = 0; console != null && i < console.length(); i++) {
+            JSONObject c = console.optJSONObject(i);
+            if (c != null && "error".equals(c.optString("level"))) {
+                Map.Entry<Long, String> page = pages.floorEntry(c.optLong("t"));
+                hits.add(new Hit(null, page != null ? page.getValue() : null, true, true));
+            }
+        }
+        JSONArray log = array(systemLog, "entries");
+        for (int i = 0; log != null && i < log.length(); i++) {
+            JSONObject e = log.optJSONObject(i);
+            if (e == null || e.optBoolean("other")) {
+                continue;
+            }
+            if ("request".equals(e.optString("kind")) && !e.optString("url").isEmpty()) {
+                hits.add(new Hit(decode(e.optString("url")), null, e.has("error") || e.optInt("status") >= 500, false));
+            } else if (e.optString("level").matches("ERROR|FATAL") && e.optString("req").contains(" ")) {
+                // req is "METHOD /path": a problem on that request's app, not another request of it
+                hits.add(new Hit(null, decode(e.optString("req").substring(e.optString("req").indexOf(' ') + 1)), true, false));
+            }
+        }
+        return hits;
+    }
+
+    private static String header(JSONObject headers, String name) {
+        if (headers != null) {
+            for (java.util.Iterator<?> it = headers.keys(); it.hasNext();) {
+                String k = String.valueOf(it.next());
+                if (k.equalsIgnoreCase(name)) {
+                    return headers.optString(k);
                 }
             }
-        } catch (IOException | JSONException e) {
-            // unreadable: no apps from it
         }
+        return null;
     }
 
     /** Exports one app version into out; returns its definition, or null when there is no such app. */
@@ -164,14 +285,14 @@ final class AppExport {
     }
 
     static JSONArray save(Path recordingDir, List<Seen> apps, Exporter exporter) throws IOException {
-        return save(recordingDir, apps, exporter, null);
+        return save(recordingDir, apps, exporter, null, MAX_APPS);
     }
 
     /**
-     * Exports the apps (at most MAX_APPS) into recordingDir/app/ and writes apps.json. Returns the summary kept in
-     * meta.json: [{id, name, version}] of the exported ones.
+     * Exports the apps (at most max, 0: all) into recordingDir/app/ and writes apps.json. Returns the summary kept in
+     * meta.json: [{id, name, version, problems}] of the exported ones.
      */
-    static JSONArray save(Path recordingDir, List<Seen> apps, Exporter exporter, AfterExport after) throws IOException {
+    static JSONArray save(Path recordingDir, List<Seen> apps, Exporter exporter, AfterExport after, int max) throws IOException {
         JSONArray list = new JSONArray();
         JSONArray summary = new JSONArray();
         if (apps.isEmpty()) {
@@ -186,8 +307,12 @@ final class AppExport {
                 if (s.version != null) {
                     a.put("urlVersion", s.version);
                 }
-                if (i >= MAX_APPS) {
-                    list.put(a.put("state", "skipped").put("reason", "Only the " + MAX_APPS + " most used apps are exported."));
+                if (s.problems > 0) {
+                    a.put("problems", s.problems);
+                }
+                if (max > 0 && i >= max) {
+                    list.put(a.put("state", "skipped").put("reason", "Only " + max + " apps are exported (apps with problems first, "
+                            + "then the most used): plugin setting \"Most apps to export\"."));
                     continue;
                 }
                 Path tmp = dir.resolve(s.appId + ".part");
@@ -220,7 +345,11 @@ final class AppExport {
                         a.put("modified", def.getDateModified().getTime());
                     }
                     list.put(a);
-                    summary.put(new JSONObject().put("id", s.appId).put("name", def.getName()).put("version", def.getVersion()));
+                    JSONObject one = new JSONObject().put("id", s.appId).put("name", def.getName()).put("version", def.getVersion());
+                    if (s.problems > 0) {
+                        one.put("problems", s.problems);
+                    }
+                    summary.put(one);
                 } catch (Exception | LinkageError e) {
                     LogUtil.warn(AppExport.class.getName(), "Could not export app " + s.appId + ": " + e);
                     list.put(a.put("state", "failed").put("reason", String.valueOf(e.getMessage())));
