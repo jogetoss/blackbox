@@ -8,6 +8,7 @@ How the extension (`chrome-extension/`) and the Joget plugin (`src/`) work insid
 | Path | What |
 |---|---|
 | `README.md` | Plugin: build, install, use, settings |
+| `e2e/README.md` | Browser tests of the extension (Playwright, its own Chromium) against a running Joget |
 | `chrome-extension/README.md` | Extension: install, settings, record, recordings, replay |
 | `ARCHITECTURE.md` | This file: internals, API, storage |
 

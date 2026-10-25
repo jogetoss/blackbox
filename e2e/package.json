@@ -1,0 +1,11 @@
+{
+  "name": "blackbox-e2e",
+  "private": true,
+  "description": "Browser tests of the BlackBox extension against a running Joget with the plugin (see README.md)",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.55.0"
+  }
+}
