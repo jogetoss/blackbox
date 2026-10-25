@@ -12,6 +12,7 @@
     "storage",
     "unlimitedStorage",
     "activeTab",
+    "scripting",
     "declarativeNetRequestWithHostAccess"
   ],
   "action": {

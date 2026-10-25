@@ -251,4 +251,33 @@ chrome.windows.onRemoved.addListener(async (windowId) => {
 // After a browser crash, the interrupted recording is still in IndexedDB: turn it into a normal one.
 chrome.runtime.onStartup.addListener(() => {
   recoverPartials().catch((e) => console.warn('Could not recover recordings:', e));
+  syncServerPages();
 });
+
+// The extension's Theme and Text size on the upload server's BlackBox pages: theme.js runs as a content script on
+// <context>/blackbox/* of the Upload URL (<context>/api/blackbox) while BlackBox has access to that server.
+// Kept in step with Settings.
+let serverPagesSync = Promise.resolve(); // one at a time: Save fires permissions.onAdded and storage.onChanged together
+
+function syncServerPages() {
+  serverPagesSync = serverPagesSync.then(async () => {
+    await chrome.scripting.unregisterContentScripts(); // the only registered script is this one
+    const { uploadUrl } = await chrome.storage.local.get('uploadUrl');
+    if (!uploadUrl) return;
+    const url = new URL(uploadUrl);
+    const context = url.pathname.match(/^(.*)\/api\/blackbox$/)?.[1];
+    if (context === undefined) return; // another server's upload endpoint: no BlackBox pages there
+    if (!(await chrome.permissions.contains({ origins: [url.origin + '/*'] }))) return;
+    await chrome.scripting.registerContentScripts([{
+      id: 'server-pages',
+      matches: [url.origin + context + '/blackbox/*'],
+      js: ['theme.js'],
+      runAt: 'document_start', // before the page is drawn
+    }]);
+  }).catch((e) => console.warn('Could not set Theme and Text size for the upload server\'s pages:', e));
+}
+
+chrome.runtime.onInstalled.addListener(syncServerPages);
+chrome.permissions.onAdded.addListener(syncServerPages);
+chrome.permissions.onRemoved.addListener(syncServerPages);
+chrome.storage.onChanged.addListener((c) => { if (c.uploadUrl) syncServerPages(); });

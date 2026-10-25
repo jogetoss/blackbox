@@ -198,7 +198,7 @@ starts at `recording-start` (or the node's first recorded request) and ends at s
 | `zip.js` | Reads and writes recording ZIPs (no library: `CompressionStream` / `DecompressionStream`) |
 | `idb.js` | IndexedDB: kept recordings, linked folder handle, upload marks for recordings on disk |
 | `options.js` | Settings |
-| `theme.js`, `ui.css` | Theme for all extension pages |
+| `theme.js`, `ui.css` | Theme and Text size for all extension pages; `theme.js` is also the content script on the Upload URL server's `<context>/blackbox/*` pages, registered by `background.js` while BlackBox has access to that server |
 | `build-standalone.py` | Builds `dist/blackbox-viewer.html` |
 
 The recorder is a window, not an offscreen document: a `chooseDesktopMedia` stream id can only be opened by the page

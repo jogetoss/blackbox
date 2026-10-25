@@ -36,7 +36,9 @@ Popup → **Settings**:
   `chrome://settings/content/siteDetails?site=chrome-extension://<extension id>`.
 - Both sounds go into one sound track. `session.json` says what the recording has: `recording.audio` =
   `{ page, pageSource: "tab" | "system", mic, message }`, where `message` says why a sound is missing.
-- **Text size** and **Theme** — for all extension pages.
+- **Text size** and **Theme** — for all extension pages and the BlackBox pages of the Upload URL's server
+  (`<context>/blackbox/`); the pages themselves have no pickers. Downloaded HTML files and the standalone viewer
+  follow the system theme; use the browser's zoom there.
 
 ## Record
 
@@ -73,7 +75,7 @@ failed and slow requests) and status.
 ## Replay page
 
 Opens after **Stop**, or from the Recordings page. The same viewer runs on the server's replay page, in a downloaded
-HTML file and in the standalone viewer. **? Features** in the header lists everything each of them can do.
+HTML file and in the standalone viewer. **Features** in the header lists everything each of them can do.
 
 - The status bar says **where this copy is** (*In this browser*, *On <server>*, …) and has **Upload**, **Move to
   folder**, **Download ZIP** and **Delete**.

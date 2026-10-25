@@ -1,9 +1,6 @@
 # BlackBox Joget plugin
 
-Joget DX 8.2 plugin that stores and replays recordings made by the BlackBox Chrome extension
-(`chrome-extension/`): `recording.webm` (video with the page's sound and, optionally, the microphone) + `session.json`
-(console, network, navigations). It can also keep
-what the server did during a recording: system logs, Glowroot traces, server load and a System Info snapshot.
+BlackBox Chrome extension records both client-side browser activity (video, audio, console, network, and navigation) and server-side Joget data (system logs, Glowroot traces, server load, and system info snapshots). Recorded sessions can be exported as self-contained HTML or ZIP files for easy playback without needing the plugin.
 
 Internals, API and storage: [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -22,7 +19,7 @@ rebuild it after changing `chrome-extension/viewer.js` or `viewer.css`.
 - **Recordings list:** `<context>/blackbox/` (e.g. `http://localhost:8080/jw/blackbox/`). Users who may see server
   data also get **Server issues** and **Server data** columns. Tick rows for **Download ZIP** / **Delete selected**;
   **Import ZIP…** adds a recording ZIP as a new recording owned by you.
-- **Replay page:** `<context>/blackbox/view?id=<id>`. **? Features** lists everything it can do.
+- **Replay page:** `<context>/blackbox/view?id=<id>`. **Features** lists everything it can do.
 - **Uploading:** in the extension's Settings, set **Upload URL** to `<context>/api/blackbox`. Uploads use your Joget
   login in that browser. When a recording stops and you are logged in, the extension uploads it and opens this replay
   page by itself.

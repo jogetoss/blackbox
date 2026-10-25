@@ -8,7 +8,6 @@
   let shown = [];
   const selected = new Set();
 
-  textSize();
   load();
   $('search').oninput = render;
   $('importFile').onchange = (e) => {
@@ -22,19 +21,6 @@
   };
   $('batchZip').onclick = downloadSelected;
   $('batchDelete').onclick = deleteSelected;
-
-  // Aa text size: the same setting as the replay page (localStorage 'bb-text-size')
-  function textSize() {
-    const apply = (v) => {
-      document.documentElement.style.zoom = v === '1' ? '' : v;
-      $('textSize').value = v;
-    };
-    try { apply(localStorage.getItem('bb-text-size') || '1'); } catch (e) { /* storage blocked */ }
-    $('textSize').onchange = () => {
-      apply($('textSize').value);
-      try { localStorage.setItem('bb-text-size', $('textSize').value); } catch (e) { /* not remembered */ }
-    };
-  }
 
   // A ZIP from Download ZIP (here or on another Joget) becomes a new recording owned by the user
   async function importZip(file) {

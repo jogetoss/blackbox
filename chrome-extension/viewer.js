@@ -57,28 +57,6 @@ const LEVEL_BOXES = {
 };
 const pickedLevels = Object.fromEntries(Object.entries(LEVEL_BOXES).map(([t, list]) => [t, new Set(list.map(([v]) => v))]));
 
-// ---------- text size ----------
-
-// Scales the whole page (CSS zoom), like browser zoom but for this page only. Remembered per browser in
-// localStorage ('bb-text-size'); the extension also keeps it in its settings (theme.js).
-const TEXT_SIZES = ['0.9', '1', '1.15', '1.3'];
-
-function applyTextSize(v) {
-  if (!TEXT_SIZES.includes(String(v))) v = '1';
-  document.documentElement.style.zoom = v === '1' ? '' : v;
-  if ($('textSize')) $('textSize').value = v;
-}
-
-try { applyTextSize(localStorage.getItem('bb-text-size') || '1'); } catch (e) { /* storage blocked: default size */ }
-if ($('textSize')) {
-  $('textSize').onchange = () => {
-    const v = $('textSize').value;
-    applyTextSize(v);
-    try { localStorage.setItem('bb-text-size', v); } catch (e) { /* not remembered */ }
-    document.dispatchEvent(new CustomEvent('blackbox-text-size', { detail: v }));
-  };
-}
-
 // ---------- loading ----------
 
 // The extension's recordings list is a separate page (recordings.html); replay.js loads one recording here.
@@ -1353,8 +1331,8 @@ const FEATURES = [
   ['← Recordings', 'Back to the recordings list.', ['extension', 'server']],
   ['Link to a moment', 'The address carries the playhead time (?t=5.8) and follows it. Copy the address to share that moment; opening it starts there.', ['extension', 'server', 'file']],
   ['Resize', 'Drag the line between the video and the panel, or above a row\'s details. Double-click a line to reset it. Remembered in this browser.', ALL],
-  ['Text size', 'The Aa picker scales the whole page. Remembered in this browser.', ALL,
-    { extension: 'The same setting as Text size in the extension\'s Settings.' }],
+  ['Text size and Theme', 'Set in the extension\'s Settings.', ['extension', 'server'],
+    { server: 'Used when the BlackBox extension\'s Upload URL is this server. Without it the page follows the system theme; use the browser\'s zoom.' }],
 ];
 
 function renderFeatures() {
