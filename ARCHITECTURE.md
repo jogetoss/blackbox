@@ -177,6 +177,17 @@ or `exportplugins`, so no data, groups or plugins go in). `apps.json` records ea
 `failed` (with the reason) or `skipped` (beyond 5). `meta.apps` keeps `[{id, name, version}]` for the list; `list` and
 `meta` drop it for users who may not see server data. `appfile` serves only names matching `<id>-<n>.jwa`.
 
+### Sample data
+
+`create` takes `sampleData=none|masked|real` (missing: masked); `me` returns `sampleData: {enabled, real}` for the
+upload form. `AppExport.save` calls an `AfterExport` hook per saved `.jwa`: `SampleData.build` with one `Masker` (random
+HMAC key per upload, so fakes are stable within a recording and differ between them) and one `IdMap` for all apps of
+the recording, then `SampleData.addTo` rewrites the `.jwa` with `data/<table>.json` (`FormUtil.formRowSetToJson(rows,
+true)`, the format `AppService.importFormData` reads) and `app_formuploads/<table>/<newId>/<file>`. Data comes from
+`FormDataDao` (`load`, `find` with `e.customProperties.<col> IN (...)`, newest by `dateModified`) and
+`FileUtil.getUploadPath`; activity ids are resolved with `WorkflowManager.getActivityById`. `apps.json` gets each app's
+`sample` summary (mode, tables: rows, how picked, files, masked columns) and the recording's `idMap`.
+
 ## Plugin parts
 
 | Part | Job |
@@ -195,6 +206,8 @@ or `exportplugins`, so no data, groups or plugins go in). `apps.json` records ea
 | `GlowrootData`, `GlowrootPackager`, `GlowrootTag` | Glowroot data packages; tagging recorded requests |
 | `ServerInfo` | System Info snapshot at recording-start (host, cluster, plugins, Java, Joget, DB, pool, license) |
 | `AppExport` | Finds the apps in the recorded URLs, exports them at upload, lists them in `app/apps.json` |
+| `SampleData` | Picks the sample rows of an exported app, masks / remaps them, adds them to the `.jwa` |
+| `Masker` | Shape-keeping fake values, kept values, user pseudonyms, the old -> new record id map |
 | `GaugeSampler` | Per node: samples heap, GC, CPU, busy threads and DB pool every second while a capture is open |
 | `GaugeStore` | `gauges/` files: append, merge per node, move on upload, ZIP import |
 | `TraceStore` | `traces/` files: append, merge (latest state per request), move on upload, summary of a trace |

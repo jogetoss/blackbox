@@ -153,6 +153,52 @@
                 {"value" : "true", "label" : "Yes"},
                 {"value" : "false", "label" : "No"}
             ]
+        },
+        {
+            "name" : "sampleData",
+            "label" : "Add sample form data to the exported apps",
+            "description" : "Added to each .jwa like Joget's own export with data, so importing it imports them: the records the recording opened or saved, rows of the app's other tables that point at them, and the newest rows of tables with none. Values are masked: same length, letters, digits and symbols, but fake (options, yes/no and small numbers kept). Uploaded files become placeholders. Only for uploaders who may see the recording's server data.",
+            "type" : "selectbox",
+            "value" : "true",
+            "options" : [
+                {"value" : "true", "label" : "Yes (masked)"},
+                {"value" : "false", "label" : "No"}
+            ]
+        },
+        {
+            "name" : "sampleRows",
+            "label" : "Newest rows per table when the recording touched none",
+            "type" : "textfield",
+            "value" : "20"
+        },
+        {
+            "name" : "sampleKeepIds",
+            "label" : "Record ids in sample data",
+            "description" : "New ids (default): every record gets a new unique id, also where other rows point at it, so importing never overwrites existing rows; the App tab lists old and new ids. Keep the original ids only for a server where overwriting is fine.",
+            "type" : "selectbox",
+            "value" : "false",
+            "options" : [
+                {"value" : "false", "label" : "New unique ids"},
+                {"value" : "true", "label" : "Keep the original ids"}
+            ]
+        },
+        {
+            "name" : "allowRealSampleData",
+            "label" : "Allow real values in sample data",
+            "description" : "When Yes, users allowed by \"Who can view system logs\" can tick \"Use real values\" when they upload. Columns matching the always-masked names stay masked.",
+            "type" : "selectbox",
+            "value" : "false",
+            "options" : [
+                {"value" : "false", "label" : "No"},
+                {"value" : "true", "label" : "Yes"}
+            ]
+        },
+        {
+            "name" : "sensitiveColumns",
+            "label" : "Always-masked column names",
+            "description" : "Comma-separated words. A column whose name has one as a word (ic_no, homeAddress, email-2) is always masked, also with real values.",
+            "type" : "textfield",
+            "value" : "password, ic, nric, passport, email, phone, mobile, tel, address, salary, birth, dob, bank, account, card, iban, ssn"
         }
     ]
 }]

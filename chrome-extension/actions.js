@@ -27,10 +27,31 @@ const Actions = (() => {
     $('upHeading').textContent = 'Upload: ' + (title || 'recording');
     $('upTitle').value = title;
     $('upNotes').value = '';
+    $('upSample').checked = true;
+    $('upReal').checked = false;
+    $('upSampleRow').hidden = true;
+    $('upRealRow').hidden = true;
+    sampleOptions().catch(() => { /* not reachable or not logged in: the upload says so */ });
     status('');
     $('uploadBox').hidden = false;
     $('upTitle').focus();
     form.onChange();
+  }
+
+  // The sample data choices the server offers (its BlackBox settings and this user's rights)
+  async function sampleOptions() {
+    if (!settings.uploadUrl) settings = await Server.getSettings();
+    if (!settings.uploadUrl || !(await Server.hasPermission(settings.uploadUrl))) return;
+    const me = await Server.me(settings.uploadUrl);
+    $('upSampleRow').hidden = !me.sampleData?.enabled;
+    $('upRealRow').hidden = !me.sampleData?.enabled || !me.sampleData?.real;
+  }
+
+  // The upload's sampleData parameter, or nothing when the form didn't offer the choice (the server's default: masked)
+  function sampleChoice() {
+    if ($('upSampleRow').hidden) return {};
+    if (!$('upSample').checked) return { sampleData: 'none' };
+    return { sampleData: !$('upRealRow').hidden && $('upReal').checked ? 'real' : 'masked' };
   }
 
   function closeUpload() {
@@ -126,7 +147,7 @@ const Actions = (() => {
       const hasVideo = rec.video instanceof Blob && rec.video.size > 0;
       if (!created[key]) {
         status('Uploading session…');
-        const meta = await Server.request(base, 'POST', { action: 'create', title: $('upTitle').value, notes: $('upNotes').value },
+        const meta = await Server.request(base, 'POST', { action: 'create', title: $('upTitle').value, notes: $('upNotes').value, ...sampleChoice() },
           JSON.stringify(rec.report), 'application/json', (d, t) => { $('upProgress').value = (hasVideo ? 0.05 : 1) * d / t; });
         created[key] = { id: meta.id, url: Server.viewLink(used, meta.id, Server.resolve(base, meta.url)) };
       }

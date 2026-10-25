@@ -156,11 +156,20 @@ final class AppExport {
         };
     }
 
+    /** Runs on each saved .jwa (e.g. adds sample data); returns what to note in apps.json as "sample", or null. */
+    interface AfterExport {
+        JSONObject run(Path jwa, AppDefinition def) throws IOException;
+    }
+
+    static JSONArray save(Path recordingDir, List<Seen> apps, Exporter exporter) throws IOException {
+        return save(recordingDir, apps, exporter, null);
+    }
+
     /**
      * Exports the apps (at most MAX_APPS) into recordingDir/app/ and writes apps.json. Returns the summary kept in
      * meta.json: [{id, name, version}] of the exported ones.
      */
-    static JSONArray save(Path recordingDir, List<Seen> apps, Exporter exporter) throws IOException {
+    static JSONArray save(Path recordingDir, List<Seen> apps, Exporter exporter, AfterExport after) throws IOException {
         JSONArray list = new JSONArray();
         JSONArray summary = new JSONArray();
         if (apps.isEmpty()) {
@@ -191,6 +200,17 @@ final class AppExport {
                     }
                     String file = s.appId + "-" + def.getVersion() + ".jwa";
                     Files.move(tmp, dir.resolve(file), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    if (after != null) {
+                        try {
+                            JSONObject sample = after.run(dir.resolve(file), def);
+                            if (sample != null) {
+                                a.put("sample", sample);
+                            }
+                        } catch (Exception | LinkageError e) {
+                            LogUtil.warn(AppExport.class.getName(), "Could not add sample data to app " + s.appId + ": " + e);
+                            a.put("sample", new JSONObject().put("error", String.valueOf(e.getMessage())));
+                        }
+                    }
                     a.put("state", "saved").put("file", file).put("name", def.getName()).put("version", def.getVersion())
                             .put("published", def.isPublished()).put("bytes", Files.size(dir.resolve(file)));
                     if (def.getDateModified() != null) {

@@ -49,6 +49,11 @@ The permission settings take a Joget permission plugin (user, group, role, depar
 | Copy Glowroot data for the recording | No | Needs Glowroot 0.14 |
 | Glowroot address | empty | Empty = this Joget's own Glowroot agent (usually `http://localhost:4000`) |
 | Export the apps used in the recording | Yes | At upload; shown like server data |
+| Add sample form data to the exported apps | Yes (masked) | Only for uploaders who may see the recording's server data |
+| Newest rows per table when the recording touched none | 20 | |
+| Record ids in sample data | New unique ids | Importing never overwrites existing rows |
+| Allow real values in sample data | No | Then "Who can view system logs" users may tick **Use real values** at upload |
+| Always-masked column names | password, ic, email, phone, address… | Words in column names; masked even with real values |
 
 ## Server data
 
@@ -87,6 +92,33 @@ The **App** tab lists them with **Download .jwa**; the recordings list shows the
 allowed by **Who can view system logs** (or the uploader, with **Uploaders can view the server data…**) see them:
 app definitions can hold plugin settings and environment variables. The ZIP download includes the `.jwa` files; the HTML
 download shows the list only.
+
+## Sample data
+
+Each exported `.jwa` gets sample form data the way Joget's own export adds it (`data/<table>.json`,
+`app_formuploads/`), so **importing the `.jwa` imports the rows too** (unless the import's "do not import form data"
+is ticked). Rows picked, per app table:
+
+- **Opened or saved in the recording:** record ids in the recorded URLs and form posts (`id=`, UUIDs, process and
+  activity ids; an activity id brings its process id, the record id of workflow forms).
+- **Linked:** rows with a column pointing at those (grid and subform rows, logs by process id), and rows those point at.
+- **Newest:** for tables with none of the above, the newest rows (setting).
+
+**Masked** (default): each letter becomes a letter of the same case, each digit a digit; spaces, punctuation and
+symbols stay, so length and format stay. The same value gets the same fake everywhere in the recording. Kept as they are:
+the forms' option values, values found in the app's own definition (status names, activity ids, hash variables),
+yes/no/true/false, numbers of up to 5 digits, UUIDs and process ids. Dates keep their year. User names become `user1`,
+`user2`… in every column. Uploaded files become small placeholder files with masked names. Columns named like a
+sensitive field (setting) are always masked.
+
+**Real values:** only when the admin allows them and the uploader is in **Who can view system logs**, ticked per upload.
+Sensitive columns stay masked; files over 5 MB (50 MB per app) become placeholders.
+
+**Record ids** get new unique ids everywhere they appear, so importing never overwrites rows of the same id. The App tab
+lists old → new ids, since the URLs, logs and traces show the old ones.
+
+The extension's upload form offers **Include sample form data (masked)** and, where allowed, **Use real values**.
+Automatic uploads use the server's default (masked).
 
 ## Storage
 

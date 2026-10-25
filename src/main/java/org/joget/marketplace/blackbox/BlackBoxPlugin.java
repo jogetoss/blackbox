@@ -111,7 +111,11 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 json(response, new JSONObject()
                         .put("user", new JSONObject().put("username", user.getUsername()).put("name", fullName(user)))
                         .put("canUpload", access.canUpload())
-                        .put("maxSizeMb", maxSizeMb()));
+                        .put("maxSizeMb", maxSizeMb())
+                        .put("sampleData", new JSONObject() // what the upload form may offer
+                                .put("enabled", !"false".equals(getPropertyString("includeAppExport"))
+                                        && !"false".equals(getPropertyString("sampleData")))
+                                .put("real", "true".equals(getPropertyString("allowRealSampleData")) && access.canViewSystemLog())));
             } else if ("list".equals(action) && !post) {
                 list(response, store, access);
             } else if ("create".equals(action) && post) {
@@ -263,7 +267,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             store.updateMeta(recId, meta);
         }
         if (!"false".equals(getPropertyString("includeAppExport"))) {
-            exportApps(store, recId, meta);
+            exportApps(store, recId, meta, sampleMode(request, access, meta));
         }
         LogUtil.info(getClassName(), "Recording " + recId + " uploaded by " + access.user.getUsername());
         // url: where the extension's "Open uploaded" link points
@@ -271,12 +275,50 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         json(response, meta);
     }
 
+    /**
+     * Sample data for this upload, or null for none. The upload's sampleData parameter (none, masked, real) picks
+     * within what the settings allow: only for uploaders who may see the recording's server data; real values only
+     * for those allowed by "Who can view system logs" (not the own-recordings rule) and when the settings allow them.
+     */
+    private SampleData.Mode sampleMode(HttpServletRequest request, Access access, JSONObject meta) {
+        String asked = request.getParameter("sampleData");
+        if ("false".equals(getPropertyString("sampleData")) || "none".equals(asked) || !access.canViewSystemLog(meta)) {
+            return null;
+        }
+        boolean real = "real".equals(asked) && "true".equals(getPropertyString("allowRealSampleData")) && access.canViewSystemLog();
+        return real ? SampleData.Mode.REAL : SampleData.Mode.MASKED;
+    }
+
     /** The apps the recording used, exported next to it (AppExport); meta.apps lists them for the recordings list. */
-    private void exportApps(RecordingStore store, String recId, JSONObject meta) {
+    private void exportApps(RecordingStore store, String recId, JSONObject meta, SampleData.Mode sample) {
         try {
-            List<AppExport.Seen> apps = AppExport.find(AppExport.urls(store.file(recId, RecordingStore.SESSION),
-                    store.file(recId, RecordingStore.SYSTEM_LOG)));
-            JSONArray saved = AppExport.save(store.dir(recId), apps, AppExport.joget());
+            Path session = store.file(recId, RecordingStore.SESSION);
+            List<String> urls = AppExport.urls(session, store.file(recId, RecordingStore.SYSTEM_LOG));
+            List<AppExport.Seen> apps = AppExport.find(urls);
+            AppExport.AfterExport after = null;
+            boolean keepIds = "true".equals(getPropertyString("sampleKeepIds"));
+            Masker.IdMap ids = new Masker.IdMap(keepIds);
+            if (sample != null) {
+                List<String> texts = new java.util.ArrayList<>(urls);
+                texts.addAll(SampleData.postData(session));
+                java.util.Set<String> candidates = SampleData.candidateIds(texts);
+                String sensitive = getPropertyString("sensitiveColumns");
+                Masker masker = new Masker(sensitive == null || sensitive.trim().isEmpty() ? Masker.DEFAULT_SENSITIVE : sensitive);
+                SampleData.Source src = SampleData.joget();
+                int newest = (int) Math.min(positive("sampleRows", 20), 500);
+                after = (jwa, def) -> {
+                    masker.setDefinition(SampleData.definitionText(jwa));
+                    List<SampleData.Table> tables = SampleData.build(SampleData.tables(def), candidates, src, sample, masker, ids, newest);
+                    SampleData.addTo(jwa, tables);
+                    try {
+                        return SampleData.summary(tables, sample);
+                    } catch (JSONException e) {
+                        throw new IOException(e);
+                    }
+                };
+            }
+            JSONArray saved = AppExport.save(store.dir(recId), apps, AppExport.joget(), after);
+            SampleData.writeIdMap(store.dir(recId), ids, keepIds);
             if (saved.length() > 0) {
                 meta.put("apps", saved);
                 store.updateMeta(recId, meta);

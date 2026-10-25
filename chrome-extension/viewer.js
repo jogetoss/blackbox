@@ -1321,6 +1321,20 @@ function renderApps() {
       'Size': a.bytes != null ? `${Math.max(1, Math.round(a.bytes / 1024))} KB` : undefined,
       'Not exported': a.state !== 'saved' ? a.reason || a.state : undefined,
     }));
+    const sample = a.sample;
+    if (sample?.error) box.append(el('p', 'note', `Sample data could not be added: ${sample.error}`));
+    if (sample?.tables?.length) {
+      const how = sample.mode === 'real' ? 'real values (sensitive columns masked)' : 'masked values (same shape, fake content)';
+      box.append(el('p', 'note', `Sample data in the .jwa, ${how}. Importing the .jwa imports it.`));
+      const PICKED = { touched: 'opened or saved in the recording', linked: 'linked to those records', newest: 'newest rows (the recording touched none)' };
+      box.append(kv(Object.fromEntries(sample.tables.map((t) => [t.table,
+        `${t.rows} row${t.rows === 1 ? '' : 's'}: ${PICKED[t.picked] || t.picked}`
+        + (t.files ? `, ${t.files} file${t.files === 1 ? '' : 's'}` : '')
+        + (t.masked?.length ? `\nMasked: ${t.masked.join(', ')}` : '')]))));
+      box.lastChild.classList.add('multiline');
+    } else if (sample) {
+      box.append(el('p', 'note', 'No sample data: the app has no form rows.'));
+    }
     if (a.state === 'saved' && a.file && appFileUrl) {
       const link = el('a', 'button', 'Download .jwa');
       link.href = appFileUrl(a.file);
@@ -1328,6 +1342,17 @@ function renderApps() {
       box.append(link);
     }
     section(page, title, box);
+  }
+  // Old -> new record ids: the URLs, logs and traces show the old ones
+  const map = current.apps.idMap;
+  if (map?.ids && Object.keys(map.ids).length) {
+    const d = el('details');
+    d.append(el('summary', null, map.kept ? `Record ids (${Object.keys(map.ids).length}, kept as they are)`
+      : `Record ids: old → new (${Object.keys(map.ids).length}). The recording shows the old ids; the sample data has the new ones.`));
+    const list = kv(map.ids);
+    list.classList.add('multiline');
+    d.append(list);
+    section(page, 'Record ids', d);
   }
 }
 

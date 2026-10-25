@@ -266,6 +266,8 @@ header > .muted { white-space: nowrap; }
 .upload-box { display: grid; gap: 4px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--bg-2); max-width: 720px; }
 .upload-box label { font-weight: 600; margin-top: 4px; }
 .upload-box input, .upload-box textarea { font: inherit; padding: 6px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; }
+.upload-box label.check { font-weight: normal; display: flex; gap: 6px; align-items: center; }
+.upload-box label.check input { padding: 0; }
 .upload-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
 .upload-box progress { width: 100%; }
 /* Status bar under the header, the same on every replay page: where this copy is, then its actions */
