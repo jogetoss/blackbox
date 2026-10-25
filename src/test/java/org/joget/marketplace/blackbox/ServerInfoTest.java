@@ -31,6 +31,10 @@ public class ServerInfoTest {
                 s.getJSONObject("java").optString("Arguments").isEmpty() ? 0 : s.getJSONObject("java").getString("Arguments").split("\n").length);
         assertTrue(s.getLong("takenAt") > 0);
         assertFalse("no pool outside Joget", s.has("connectionPool"));
+        JSONObject cluster = s.getJSONObject("cluster");
+        assertEquals("(not set: single server)", cluster.getString("Joget node name"));
+        assertEquals("Off", cluster.getString("Cluster mode"));
+        assertEquals("no Tomcat here", "(not set)", cluster.getString("Tomcat jvmRoute"));
     }
 
     private static java.util.Properties datasourceFile() {

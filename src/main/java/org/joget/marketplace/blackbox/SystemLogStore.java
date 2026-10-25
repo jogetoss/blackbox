@@ -132,9 +132,11 @@ public class SystemLogStore {
         boolean truncated = false;
         try (DirectoryStream<Path> files = Files.newDirectoryStream(dir)) {
             for (Path f : files) {
-                if (!NODE_FILE.matcher(f.getFileName().toString()).matches()) {
+                String file = f.getFileName().toString();
+                if (!NODE_FILE.matcher(file).matches()) {
                     continue;
                 }
+                String node = file.substring("system-log.".length(), file.length() - ".jsonl".length());
                 try (BufferedReader in = Files.newBufferedReader(f, StandardCharsets.UTF_8)) {
                     String line;
                     while ((line = in.readLine()) != null) {
@@ -147,6 +149,13 @@ public class SystemLogStore {
                         if ("truncated".equals(e.optString("kind"))) {
                             truncated = true;
                         } else {
+                            if ("request".equals(e.optString("kind"))) {
+                                try {
+                                    e.put("node", node); // which node served it: the sticky-session check
+                                } catch (JSONException ex) {
+                                    // can't happen for a string
+                                }
+                            }
                             entries.add(e);
                         }
                     }

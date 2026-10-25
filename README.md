@@ -67,7 +67,9 @@ All of it needs **Capture system logs**, is shown only on this plugin's replay p
 - **Server load** (strip under the timeline): CPU, heap, busy request threads, DB connections and GC time, sampled
   every second on each node. No Glowroot needed.
 - **System Info** (**Info** tab): the server at recording start: host, Java, Joget, plugins, database settings,
-  connection pool, license and system properties. **Plugins** lists every jar in `app_plugins` with its date, size and
+  connection pool, license and system properties. **Cluster** shows Joget's node name and node lists, Tomcat's
+  `jvmRoute` and session replication, and which node served each recorded request: **Sticky sessions** warns when the
+  tab's requests moved between nodes. **Plugins** lists every jar in `app_plugins` with its date, size and
   the plugins it loaded; "No plugin loaded" means the jar failed to load (the Joget log says why).
 
 **Sensitive data:** traces and Glowroot data hold SQL with its parameter values and request details; System Info holds

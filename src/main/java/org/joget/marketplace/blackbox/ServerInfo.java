@@ -28,6 +28,7 @@ import org.json.JSONObject;
  * <li>systemProperties: its system table (SysInfo.getSystemProperties(): all Java system properties plus JVM memory
  * and processors; on Community the same values read directly)</li>
  * </ul>
+ * Cluster holds Joget's node name and node lists (ServerUtil) and Tomcat's jvmRoute and session replication.
  * Plugins lists every jar in app_plugins with its date, size and the plugins it loaded (none: it failed to load).
  * Database and connectionPool hold the current profile's app_datasource file and the pool settings Joget really uses.
  * Apart from the database password (left out, and masked in JDBC URLs), nothing is left out or masked, so it can hold
@@ -98,6 +99,12 @@ final class ServerInfo {
             // outside a running Joget
         }
 
+        JSONObject cluster = null;
+        try {
+            cluster = cluster(request);
+        } catch (Exception | LinkageError e) {
+            // outside a running Joget
+        }
         JSONObject plugins = null;
         try {
             plugins = plugins();
@@ -116,6 +123,9 @@ final class ServerInfo {
                 .put("host", host).put("process", process).put("java", java).put("joget", joget).put("database", db);
         if (pool != null && pool.length() > 0) {
             result.put("connectionPool", pool);
+        }
+        if (cluster != null && cluster.length() > 0) {
+            result.put("cluster", cluster);
         }
         if (plugins != null && plugins.length() > 0) {
             result.put("plugins", plugins);
@@ -205,6 +215,60 @@ final class ServerInfo {
                     + " (the pool has no such setting; check the spelling)");
         }
         return p;
+    }
+
+    /**
+     * Joget's cluster view (ServerUtil: this node's wflow.name, the nodes in the shared servers.json and the licensed
+     * active nodes, with their serversIP.properties address) and Tomcat's: the Engine's jvmRoute (the suffix load
+     * balancers use for sticky sessions) and whether session replication (a Catalina Cluster) is on.
+     */
+    static JSONObject cluster(HttpServletRequest request) throws JSONException {
+        JSONObject c = new JSONObject();
+        String name = org.joget.commons.util.ServerUtil.getServerName();
+        put(c, "Joget node name", name.isEmpty() ? "(not set: single server)" : name);
+        put(c, "Cluster mode", "true".equals(System.getProperty("wflow.cluster")) ? "On (wflow-cluster agent)" : "Off");
+        put(c, "Registered nodes", nodes(org.joget.commons.util.ServerUtil.getServerList()));
+        put(c, "Active nodes", nodes(org.joget.commons.util.ServerUtil.getActiveServerList()));
+        Object route = mbean("Catalina:type=Engine", "jvmRoute");
+        put(c, "Tomcat jvmRoute", route != null ? String.valueOf(route) : "(not set)");
+        put(c, "Session replication", replication());
+        String session = request.getRequestedSessionId();
+        if (session != null && session.contains(".")) {
+            put(c, "This session's route", session.substring(session.indexOf('.') + 1));
+        }
+        return c;
+    }
+
+    private static String nodes(String[] names) {
+        if (names == null || names.length == 0) {
+            return null;
+        }
+        String[] sorted = names.clone();
+        java.util.Arrays.sort(sorted);
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        for (String n : sorted) {
+            String ip = org.joget.commons.util.ServerUtil.getIPAddress(n);
+            lines.add(ip != null && !ip.isEmpty() ? n + " (" + ip + ")" : n);
+        }
+        return String.join("\n", lines);
+    }
+
+    private static Object mbean(String name, String attribute) {
+        try {
+            return ManagementFactory.getPlatformMBeanServer().getAttribute(new javax.management.ObjectName(name), attribute);
+        } catch (Exception | LinkageError e) {
+            return null;
+        }
+    }
+
+    private static String replication() {
+        try {
+            java.util.Set<javax.management.ObjectName> found = ManagementFactory.getPlatformMBeanServer()
+                    .queryNames(new javax.management.ObjectName("Catalina:type=Cluster,*"), null);
+            return found.isEmpty() ? "Off" : "On (Tomcat cluster)";
+        } catch (Exception | LinkageError e) {
+            return null;
+        }
     }
 
     /** The plugins Joget loaded from app_plugins, by jar file. */

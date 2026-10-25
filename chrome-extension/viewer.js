@@ -1234,15 +1234,38 @@ function renderInfo() {
   if (si) {
     const when = si.takenAt ? ` (snapshot at ${new Date(si.takenAt).toLocaleString()})` : '';
     const body = $('info');
-    const groups = [['host', `Host${when}`], ['process', 'Process'], ['java', 'Java'], ['joget', 'Joget'], ['plugins', 'Plugins (app_plugins)'], ['database', 'Database'],
+    const groups = [['host', `Host${when}`], ['cluster', 'Cluster'], ['process', 'Process'], ['java', 'Java'], ['joget', 'Joget'], ['plugins', 'Plugins (app_plugins)'], ['database', 'Database'],
       ['connectionPool', 'Connection pool'], ['license', 'License'], ['systemProperties', 'System properties']];
+    const served = nodesServed(current.systemLog);
     for (const [key, title] of groups) {
-      if (!si[key] || !Object.keys(si[key]).length) continue;
-      const list = kv(infoOrder(key, si[key]));
+      const values = key === 'cluster' && served ? { ...si[key], ...served } : si[key];
+      if (!values || !Object.keys(values).length) continue;
+      const list = kv(infoOrder(key, values));
       list.classList.add('multiline');
       section(body, title, list);
     }
   }
+}
+
+// Which node served the recorded requests (system log request entries carry it). More than one node in one tab
+// usually means the load balancer doesn't keep the session on one node (no sticky sessions), or a node failed over.
+function nodesServed(log) {
+  const reqs = (log?.entries || []).filter((e) => e.kind === 'request' && e.node);
+  if (!reqs.length) return null;
+  const counts = {};
+  let switches = 0;
+  reqs.forEach((e, i) => {
+    counts[e.node] = (counts[e.node] || 0) + 1;
+    if (i && e.node !== reqs[i - 1].node) switches++;
+  });
+  const nodes = Object.keys(counts).sort();
+  const list = nodes.map((n) => `${n}: ${counts[n]} requests`).join('\n');
+  return {
+    'Recorded requests served by': list,
+    'Sticky sessions': nodes.length === 1
+      ? `Yes: all ${reqs.length} requests on ${nodes[0]}`
+      : `⚠ No: the tab's requests moved between ${nodes.length} nodes ${switches} times. Check the load balancer's sticky sessions (or a node failed over).`,
+  };
 }
 
 // The server's JSON keeps no key order: labels first in this order, then file and pool keys A-Z.
@@ -1250,6 +1273,8 @@ const INFO_LABELS = {
   database: ['Profile', 'JDBC driver', 'JDBC URL', 'User'],
   connectionPool: ['Ignored file keys', 'Pool size', 'Active connections', 'Idle connections', 'Waiting threads'],
   plugins: [], // jar files A-Z
+  cluster: ['Sticky sessions', 'Recorded requests served by', 'Joget node name', 'Cluster mode', 'Registered nodes',
+    'Active nodes', 'Tomcat jvmRoute', 'This session\'s route', 'Session replication'],
 };
 
 function infoOrder(group, obj) {

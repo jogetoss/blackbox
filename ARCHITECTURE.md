@@ -149,6 +149,11 @@ starts at `recording-start` (or the node's first recorded request) and ends at s
 - **Host**: hostname, node, processors, physical memory, OS. **Process**: id, start time, uptime.
 - **Java**: version, vendor, VM, heap used/committed/max, every JVM argument (one per line).
 - **Joget**: version, edition, application server, time zone, Glowroot address and version.
+- **Cluster**: `ServerUtil` (this node's `wflow.name`, the shared `servers.json` nodes, the active nodes, each with its
+  `serversIP.properties` address), `wflow.cluster` (set by the wflow-cluster agent), Tomcat's Engine `jvmRoute`, whether
+  a `Catalina:type=Cluster` MBean exists (session replication), and the requested session id's route suffix. The viewer
+  adds **Recorded requests served by** and **Sticky sessions** from the system log: `attach` puts the `node` (from the
+  `system-log.<node>.jsonl` file name) on each request entry.
 - **Plugins**: one entry per jar in `app_plugins` (`PluginManager.getBaseDirectory()`): modified date, size, then each
   plugin it loaded (name, version, class) from `listOsgiPlugin` + `getJarFileName`. A jar with none failed to load or
   holds no plugin; a loaded jar not in the folder says so.

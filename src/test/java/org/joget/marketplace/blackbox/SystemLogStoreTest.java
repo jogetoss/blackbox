@@ -55,6 +55,8 @@ public class SystemLogStoreTest {
         assertEquals(100, entries.getJSONObject(0).getLong("ts"));
         assertEquals(200, entries.getJSONObject(1).getLong("ts"));
         assertEquals(300, entries.getJSONObject(2).getLong("ts"));
+        assertEquals("request entries say which node served them", "node-a", entries.getJSONObject(0).getString("node"));
+        assertFalse("log lines don't", entries.getJSONObject(1).has("node"));
         assertTrue(body.has("stoppedAt"));
         assertFalse("node files deleted", Files.exists(store.nodeFile(ID, "node-a")));
         assertEquals("pending meta points at the recording", root.getFileName().toString(), store.readMeta(ID).getString("recording"));
