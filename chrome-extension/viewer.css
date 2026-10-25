@@ -314,3 +314,4 @@ button.warn { background: var(--warn-bg); color: var(--warn); border-color: var(
 .fix-url { display: grid; gap: 4px; }
 .fix-url[hidden] { display: none; }
 .fix-url input { width: 100%; box-sizing: border-box; font-family: var(--mono); }
+.info p.note { color: var(--fg-2); margin: 0 0 8px; }

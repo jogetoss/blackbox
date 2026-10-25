@@ -103,6 +103,11 @@
     title.append(a);
     if (r.recording?.tab?.url) title.append(el('div', 'muted small', r.recording.tab.url));
     if (r.notes) title.append(el('div', 'muted small', r.notes.length > 140 ? r.notes.slice(0, 140) + '…' : r.notes));
+    if (r.canViewSystemLog && r.apps?.length) {
+      const apps = el('div', 'muted small', 'App: ' + r.apps.map((x) => `${x.name || x.id} v${x.version}`).join(', '));
+      apps.title = 'Exported at upload: open the recording\'s App tab to download the .jwa';
+      title.append(apps);
+    }
     tr.append(title);
 
     const owner = el('td', 'hide-sm', r.ownerName || r.owner);

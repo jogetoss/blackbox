@@ -11,6 +11,7 @@ window.blackboxPage = 'file'; // for the Features list
     const traces = text('bb-traces') ? JSON.parse(text('bb-traces')) : null; // summaries; the full pages are in the ZIP
     const gauges = text('bb-gauges') ? JSON.parse(text('bb-gauges')) : null;
     const serverInfo = text('bb-serverinfo') ? JSON.parse(text('bb-serverinfo')) : null;
+    const apps = text('bb-apps') ? JSON.parse(text('bb-apps')) : null; // the list; the .jwa files are in the ZIP
 
     // Nothing here talks to a server: no downloads, no delete, no link to the recordings list
     for (const id of ['dlZip', 'dlHtml', 'dlGlowroot', 'delete', 'back']) if ($(id)) $(id).hidden = true;
@@ -28,7 +29,7 @@ window.blackboxPage = 'file'; // for the Features list
     const video = b64 ? await (await fetch('data:video/webm;base64,' + b64)).blob() : null;
     $('serverLegend').hidden = !systemLog;
     window.blackboxTimeInUrl = true; // blackbox-….html?t=… opens at that moment
-    window.blackboxOpen(video, report, { systemLog, traces, gauges, serverInfo, title: meta.title, info: uploadInfo(meta) });
+    window.blackboxOpen(video, report, { systemLog, traces, gauges, serverInfo, apps, title: meta.title, info: uploadInfo(meta) });
     $('recStatus').hidden = false;
   } catch (e) {
     $('loading').textContent = '';

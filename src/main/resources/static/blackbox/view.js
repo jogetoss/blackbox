@@ -47,18 +47,22 @@ window.blackboxPage = 'server'; // for the Features list
     let traces = null;
     let gauges = null;
     let serverInfo = null;
+    let apps = null;
     if (meta.systemLog && meta.systemLog.status === 'attached' && meta.canViewSystemLog) {
       systemLog = await BB.getJson('systemlog', { id }).catch((e) => { systemLogError = e; return null; });
       traces = await BB.getJson('traces', { id }).catch(() => null);
       gauges = await BB.getJson('gauges', { id }).catch(() => null);
       serverInfo = await BB.getJson('serverinfo', { id }).catch(() => null); // missing in older recordings
     }
+    if (meta.apps && meta.canViewSystemLog) apps = await BB.getJson('apps', { id }).catch(() => null);
     $('serverLegend').hidden = !systemLog;
     window.blackboxOpen(meta.videoSize ? BB.url('video', { id }) : null, report, {
       systemLog,
       traces: traces && traces.traces,
       gauges: gauges && gauges.nodes ? gauges : null,
       serverInfo,
+      apps,
+      appFileUrl: (file) => BB.url('appfile', { id, file }),
       traceUrl: (t) => BB.url('trace', { id, file: t.file }),
       retryTraces: async (keys) => {
         const next = await BB.post('trace-retry', { id, keys: keys.join(',') });

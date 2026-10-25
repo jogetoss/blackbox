@@ -13,7 +13,7 @@ import java.util.Base64;
 /**
  * Writes one recording as a single .html file that replays it in any browser, with no server or extension:
  * the replay page (view.html) with viewer.css and viewer.js inlined, the recording in data blocks
- * (meta, session.json, system-log.json, the video as base64) and export.js to open it.
+ * (meta, session.json, system-log.json, apps.json, the video as base64) and export.js to open it.
  *
  * Data blocks are &lt;script type="application/json"&gt; elements. JSON text never needs a raw '&lt;' (in strings it can
  * be written <), so every '&lt;' is escaped and no "&lt;/script" can end a block early.
@@ -63,6 +63,12 @@ public class RecordingHtml {
     /** traces: the recording's Glowroot trace summaries (TraceStore.merge), or null. The trace pages are not included. */
     public void write(OutputStream out, String meta, Path session, Path systemLog, Path video, String traces, String gauges,
             Path serverInfo) throws IOException {
+        write(out, meta, session, systemLog, video, traces, gauges, serverInfo, null);
+    }
+
+    /** apps: the recording's app/apps.json (the App tab), or null. The .jwa files are not included: they are in the ZIP. */
+    public void write(OutputStream out, String meta, Path session, Path systemLog, Path video, String traces, String gauges,
+            Path serverInfo, Path apps) throws IOException {
         out.write(head.getBytes(StandardCharsets.UTF_8));
         block(out, "bb-meta", "application/json");
         escaped(new java.io.ByteArrayInputStream(meta.getBytes(StandardCharsets.UTF_8)), out);
@@ -92,6 +98,13 @@ public class RecordingHtml {
         if (serverInfo != null) {
             block(out, "bb-serverinfo", "application/json");
             try (InputStream in = Files.newInputStream(serverInfo)) {
+                escaped(in, out);
+            }
+            end(out);
+        }
+        if (apps != null) {
+            block(out, "bb-apps", "application/json");
+            try (InputStream in = Files.newInputStream(apps)) {
                 escaped(in, out);
             }
             end(out);

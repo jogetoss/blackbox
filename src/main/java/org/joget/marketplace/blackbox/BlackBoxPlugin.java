@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
+import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -124,6 +125,9 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 if (meta != null) {
                     meta.put("canDelete", access.canDelete(meta));
                     meta.put("canViewSystemLog", access.canViewSystemLog(meta));
+                    if (!access.canViewSystemLog(meta)) {
+                        meta.remove("apps");
+                    }
                     json(response, meta);
                 }
             } else if ("systemlog".equals(action) && !post) {
@@ -165,6 +169,23 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                         sendFile(request, response, store.file(id, ServerInfo.FILE), "application/json;charset=UTF-8", id + "-server-info.json");
                     }
                 }
+            } else if ("apps".equals(action) && !post) {
+                if (viewable(response, store, access, id) != null) {
+                    if (!access.canViewSystemLog(store.readMeta(id))) {
+                        error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to view server data.");
+                    } else {
+                        sendFile(request, response, AppExport.list(store.dir(id)), "application/json;charset=UTF-8", id + "-apps.json");
+                    }
+                }
+            } else if ("appfile".equals(action) && !post) {
+                if (viewable(response, store, access, id) != null) {
+                    if (!access.canViewSystemLog(store.readMeta(id))) {
+                        error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to view server data.");
+                    } else {
+                        Path f = AppExport.file(store.dir(id), request.getParameter("file"));
+                        sendFile(request, response, f, "application/zip", f != null ? f.getFileName().toString() : "app.jwa");
+                    }
+                }
             } else if ("gauges".equals(action) && !post) {
                 gauges(response, store, access, id);
             } else if ("glowroot".equals(action) && !post) {
@@ -200,6 +221,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 if (!server) {
                     meta.remove("systemLog"); // its error count is server data too
                     meta.remove("serverData");
+                    meta.remove("apps");
                 }
                 rows.put(meta);
             }
@@ -240,10 +262,28 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             }
             store.updateMeta(recId, meta);
         }
+        if (!"false".equals(getPropertyString("includeAppExport"))) {
+            exportApps(store, recId, meta);
+        }
         LogUtil.info(getClassName(), "Recording " + recId + " uploaded by " + access.user.getUsername());
         // url: where the extension's "Open uploaded" link points
         meta.put("url", request.getContextPath() + "/blackbox/view?id=" + meta.getString("id"));
         json(response, meta);
+    }
+
+    /** The apps the recording used, exported next to it (AppExport); meta.apps lists them for the recordings list. */
+    private void exportApps(RecordingStore store, String recId, JSONObject meta) {
+        try {
+            List<AppExport.Seen> apps = AppExport.find(AppExport.urls(store.file(recId, RecordingStore.SESSION),
+                    store.file(recId, RecordingStore.SYSTEM_LOG)));
+            JSONArray saved = AppExport.save(store.dir(recId), apps, AppExport.joget());
+            if (saved.length() > 0) {
+                meta.put("apps", saved);
+                store.updateMeta(recId, meta);
+            }
+        } catch (IOException | RuntimeException | LinkageError e) {
+            LogUtil.warn(getClassName(), "Could not export the apps of recording " + recId + ": " + e);
+        }
     }
 
     private void uploadVideo(HttpServletRequest request, HttpServletResponse response, RecordingStore store, Access access, String id)
@@ -304,8 +344,9 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
         JSONObject gauges = systemLog != null ? GaugeStore.merge(store.dir(id)) : null;
         Path info = systemLog != null ? store.file(id, ServerInfo.FILE) : null;
+        Path apps = access.canViewSystemLog(meta) ? AppExport.list(store.dir(id)) : null;
         export.write(response.getOutputStream(), meta.toString(), session, systemLog, store.file(id, RecordingStore.VIDEO), traces,
-                gauges != null ? gauges.toString() : null, info);
+                gauges != null ? gauges.toString() : null, info, apps);
         LogUtil.info(getClassName(), "Recording " + id + " downloaded as HTML by " + access.user.getUsername());
     }
 
@@ -331,7 +372,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         response.setContentType("application/zip");
         response.setHeader("Content-Disposition", "attachment; filename=\"blackbox-" + id + ".zip\"");
         RecordingZip.write(response.getOutputStream(), meta, session, systemLog, store.file(id, RecordingStore.VIDEO),
-                systemLog != null ? store.dir(id) : null);
+                systemLog != null ? store.dir(id) : null, access.canViewSystemLog(meta) ? store.dir(id) : null);
     }
 
     /** A ZIP from {@link #downloadZip} (raw request body) becomes a new recording owned by the user. */

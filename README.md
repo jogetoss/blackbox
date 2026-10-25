@@ -48,6 +48,7 @@ The permission settings take a Joget permission plugin (user, group, role, depar
 | Copy Glowroot traces of slow and failed requests | Yes | |
 | Copy Glowroot data for the recording | No | Needs Glowroot 0.14 |
 | Glowroot address | empty | Empty = this Joget's own Glowroot agent (usually `http://localhost:4000`) |
+| Export the apps used in the recording | Yes | At upload; shown like server data |
 
 ## Server data
 
@@ -74,6 +75,18 @@ All of it needs **Capture system logs**, is shown only on this plugin's replay p
 
 **Sensitive data:** traces and Glowroot data hold SQL with its parameter values and request details; System Info holds
 JVM arguments and system properties, which can include secrets passed as `-D` options. Share recordings accordingly.
+
+## App export
+
+At upload, BlackBox finds the Joget apps in the recorded URLs (userview, embed, form/datalist, App Composer and JSON API
+paths, `appId`/`appVersion` parameters, process ids like `app#2#process`) and exports up to 5, most used first, with
+Joget's own app export (`.jwa`: the definition only, no form data, plugins or groups). App Center is left out. The
+version is the one a URL names, else the published one, else the latest.
+
+The **App** tab lists them with **Download .jwa**; the recordings list shows the app names under the title. Only users
+allowed by **Who can view system logs** (or the uploader, with **Uploaders can view the server data…**) see them:
+app definitions can hold plugin settings and environment variables. The ZIP download includes the `.jwa` files; the HTML
+download shows the list only.
 
 ## Storage
 

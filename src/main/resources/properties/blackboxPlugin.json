@@ -138,6 +138,21 @@
             "description" : "Empty = the Glowroot agent of this Joget (found from its admin.json, usually http://localhost:4000). Read as Glowroot's anonymous user.",
             "type" : "textfield",
             "value" : ""
+        },
+        {
+            "label" : "Support data: what a support engineer needs besides the recording. Shown only to users who may view system logs.",
+            "type" : "header"
+        },
+        {
+            "name" : "includeAppExport",
+            "label" : "Export the apps used in the recording",
+            "description" : "At upload, the apps found in the recorded URLs (at most 5, most used first; App Center left out) are exported with Joget's own app export (.jwa, without form data, plugins or groups) and kept with the recording. App definitions can hold plugin settings and environment variables.",
+            "type" : "selectbox",
+            "value" : "true",
+            "options" : [
+                {"value" : "true", "label" : "Yes"},
+                {"value" : "false", "label" : "No"}
+            ]
         }
     ]
 }]

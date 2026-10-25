@@ -79,16 +79,20 @@ document.addEventListener('drop', (e) => {
 // extra.traceUrl = (trace) => URL of a saved trace's full page, or null when the page is not available,
 // extra.retryTraces = async (keys) => asks the server to look again for failed traces ([] = all failed ones),
 // extra.gauges = { nodes: { name: [samples] } }: the server load during the recording (shows the Server load strip),
-// extra.serverInfo = { license, system, blackbox }: System Info at recording start (shown in the Info tab).
+// extra.serverInfo = { license, system, blackbox }: System Info at recording start (shown in the Info tab),
+// extra.apps = parsed app/apps.json: the apps exported at upload (shows the App tab),
+// extra.appFileUrl = (file) => URL of an exported .jwa, or null when the files are not available here.
 window.blackboxOpen = (videoSrc, sessionReport, extra) => {
   current = {
     video: videoSrc || null, report: sessionReport, systemLog: extra?.systemLog || null, traces: extra?.traces || null,
     gauges: extra?.gauges || null,
     serverInfo: extra?.serverInfo || null,
+    apps: extra?.apps || null,
     title: extra?.title || '', info: extra?.info || {},
   };
   traceLink = extra?.traceUrl || null;
   traceRetry = extra?.retryTraces || null;
+  appFileUrl = extra?.appFileUrl || null;
   openRecording();
 };
 
@@ -216,6 +220,8 @@ function openRecording() {
   updateTracesTab();
   if (tab === 'server' && !current.systemLog) tab = 'console';
   if (tab === 'traces' && !current.traces) tab = 'console';
+  if ($('appsTab')) $('appsTab').hidden = !current.apps;
+  if (tab === 'apps' && !current.apps) tab = 'console';
   issues = [
     ...r.console.filter((e) => e.level === 'error').map((e) => e.t),
     ...r.network.filter(isBad).map((e) => e.t),
@@ -229,6 +235,7 @@ function openRecording() {
   drawOverview();
   openLoad();
   renderInfo();
+  renderApps();
   setTab(tab);
   startMs = Math.min(timeFromUrl(), durationMs);
   if (startMs) seek(startMs); // before the video loads, this sets where it starts
@@ -786,10 +793,11 @@ $('detailClose').onclick = () => closeDetail();
 function setTab(name) {
   tab = name;
   document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
-  const isInfo = name === 'info'; // a page of text: no toolbar or list
+  const isInfo = name === 'info' || name === 'apps'; // a page of text: no toolbar or list
   $('toolbar').hidden = isInfo;
   $('list').hidden = isInfo;
   $('info').hidden = name !== 'info';
+  if ($('appsPage')) $('appsPage').hidden = name !== 'apps';
   if (isInfo) tabNote.hidden = true;
   ov.box.hidden = name !== 'network'; // shown: the ResizeObserver draws it
   if (!isInfo) {
@@ -1283,6 +1291,44 @@ function infoOrder(group, obj) {
   const rank = (k) => (labels.includes(k) ? labels.indexOf(k) : labels.length);
   const keys = Object.keys(obj).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
   return Object.fromEntries(keys.map((k) => [k, obj[k]]));
+}
+
+// ---------- app tab ----------
+
+let appFileUrl = null;
+
+// The apps the recording used, exported at upload (plugin page and downloaded HTML; the .jwa files only on the server)
+function renderApps() {
+  const page = $('appsPage');
+  if (!page) return;
+  page.replaceChildren();
+  const list = current.apps?.apps || [];
+  if (!current.apps) return;
+  const when = current.apps.exportedAt ? new Date(current.apps.exportedAt).toLocaleString() : '';
+  page.append(el('p', 'note', `Exported at upload${when ? ` (${when})` : ''} with Joget's own app export: the app definition only, `
+    + 'no form data, plugins or groups. Import it on a test server to reproduce the issue.'
+    + (appFileUrl ? '' : ' The .jwa files are in the recording ZIP, not in this file.')));
+  if (!list.length) page.append(el('p', null, 'No apps were found in the recorded URLs.'));
+  for (const a of list) {
+    const title = a.name ? `${a.name} (${a.id})` : a.id;
+    const box = el('div');
+    box.append(kv({
+      'App id': a.id,
+      'Version': a.version != null ? `${a.version}${a.published ? ' (published)' : ' (not published)'}` : undefined,
+      'Version in the URLs': a.urlVersion,
+      'Last modified': a.modified && new Date(a.modified).toLocaleString(),
+      'Requests in the recording': a.requests,
+      'Size': a.bytes != null ? `${Math.max(1, Math.round(a.bytes / 1024))} KB` : undefined,
+      'Not exported': a.state !== 'saved' ? a.reason || a.state : undefined,
+    }));
+    if (a.state === 'saved' && a.file && appFileUrl) {
+      const link = el('a', 'button', 'Download .jwa');
+      link.href = appFileUrl(a.file);
+      link.title = `${a.file}: import it in App Center > Import App`;
+      box.append(link);
+    }
+    section(page, title, box);
+  }
 }
 
 // ---------- features drawer ----------

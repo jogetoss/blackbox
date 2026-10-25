@@ -19,7 +19,8 @@ import org.json.JSONObject;
  * A recording as one ZIP, to move it to another Joget: meta.json (title, notes, who uploaded it), session.json,
  * system-log.json (if any), the Glowroot traces (traces.json and traces/*.html, if any), the server load samples
  * (gauges.json, if any), the System Info snapshot (server-info.json, if any), each node's Glowroot data
- * (glowroot/{node}.zip with glowroot/{node}.json, if any) and recording.webm.
+ * (glowroot/{node}.zip with glowroot/{node}.json, if any), the exported apps (app/apps.json and app/*.jwa, if any)
+ * and recording.webm.
  * {@link #importZip} turns such a ZIP into a new recording.
  */
 public class RecordingZip {
@@ -40,6 +41,12 @@ public class RecordingZip {
     /** traceDir: the folder whose Glowroot traces go in (the recording's), or null for none. */
     public static void write(OutputStream out, JSONObject meta, Path session, Path systemLog, Path video, Path traceDir)
             throws IOException {
+        write(out, meta, session, systemLog, video, traceDir, null);
+    }
+
+    /** appDir: the folder whose exported apps go in (the recording's), or null for none. */
+    public static void write(OutputStream out, JSONObject meta, Path session, Path systemLog, Path video, Path traceDir,
+            Path appDir) throws IOException {
         JSONObject m = new JSONObject();
         try {
             for (String k : META_KEYS) {
@@ -92,6 +99,14 @@ public class RecordingZip {
                     zip.write(s.toString().getBytes(StandardCharsets.UTF_8));
                     zip.closeEntry();
                 }
+            }
+        }
+        Path apps = appDir != null ? AppExport.list(appDir) : null;
+        if (apps != null) {
+            add(zip, AppExport.DIR + "/" + AppExport.LIST, apps);
+            zip.setLevel(Deflater.NO_COMPRESSION); // a .jwa is a ZIP already
+            for (Path f : AppExport.files(appDir)) {
+                add(zip, AppExport.DIR + "/" + f.getFileName().toString(), f);
             }
         }
         if (video != null) {
@@ -156,6 +171,12 @@ public class RecordingZip {
                     importGauges(store, id, zip, maxBytes);
                     importServerInfo(store, id, zip);
                     importGlowroot(store, id, zip, maxBytes);
+                }
+                if (keepSystemLog) {
+                    JSONArray apps = importApps(store, id, zip, maxBytes);
+                    if (apps.length() > 0) {
+                        meta.put("apps", apps);
+                    }
                 }
                 if (!old.optString("owner").isEmpty()) {
                     meta.put("importedFrom", new JSONObject()
@@ -230,6 +251,42 @@ public class RecordingZip {
             }
             GlowrootData.writeStatus(store.dir(id), node, status);
         }
+    }
+
+    /** app/apps.json and the .jwa files it lists as saved; returns the meta.json summary of those. */
+    private static JSONArray importApps(RecordingStore store, String id, ZipFile zip, long maxBytes)
+            throws IOException, RecordingStore.InvalidUpload, JSONException {
+        JSONArray summary = new JSONArray();
+        ZipEntry index = zip.getEntry(AppExport.DIR + "/" + AppExport.LIST);
+        if (index == null) {
+            return summary;
+        }
+        JSONObject body;
+        try (InputStream in = zip.getInputStream(index)) {
+            body = new JSONObject(new String(read(in, MAX_META_BYTES, AppExport.LIST), StandardCharsets.UTF_8));
+        } catch (JSONException e) {
+            throw new RecordingStore.InvalidUpload(AppExport.LIST + " in the ZIP is not valid JSON.");
+        }
+        Path dir = Files.createDirectories(store.dir(id).resolve(AppExport.DIR));
+        JSONArray apps = body.optJSONArray("apps");
+        for (int i = 0; apps != null && i < apps.length(); i++) {
+            JSONObject a = apps.optJSONObject(i);
+            String file = a != null ? a.optString("file") : "";
+            if (!"saved".equals(a != null ? a.optString("state") : null) || !file.matches(AppExport.FILE_NAME)) {
+                continue;
+            }
+            ZipEntry e = zip.getEntry(AppExport.DIR + "/" + file);
+            if (e == null) {
+                a.put("state", "missing").put("reason", "Not in the imported ZIP.");
+                continue;
+            }
+            try (InputStream in = zip.getInputStream(e)) {
+                Files.write(dir.resolve(file), read(in, maxBytes, file));
+            }
+            summary.put(new JSONObject().put("id", a.optString("id")).put("name", a.optString("name")).put("version", a.optLong("version")));
+        }
+        Files.write(dir.resolve(AppExport.LIST), body.toString().getBytes(StandardCharsets.UTF_8));
+        return summary;
     }
 
     private static void importServerInfo(RecordingStore store, String id, ZipFile zip) throws IOException, RecordingStore.InvalidUpload {

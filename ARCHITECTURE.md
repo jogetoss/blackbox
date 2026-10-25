@@ -29,7 +29,7 @@ resolved against the Upload URL. The Recording page URL setting, when set, takes
 
 The plugin serves this at `<context>/api/blackbox` with more actions: `list`, `meta`, `session`, `video` (GET with HTTP
 Range), `systemlog`, `download` (`format=zip` or `html`), `import`, `delete`, `recording-start`, `recording-stop`,
-`traces`, `trace`, `trace-retry`, `gauges`, `serverinfo`, `glowroot`.
+`traces`, `trace`, `trace-retry`, `gauges`, `serverinfo`, `glowroot`, `apps`, `appfile`.
 
 - The API lives at `/api/*` because Spring Security runs there (the logged-in user is known), but Joget's
   `JsonResponseFilter` does not: on `/web/json/*` it rejects requests whose `Referer` is not Joget, and the extension's
@@ -45,7 +45,8 @@ Range), `systemlog`, `download` (`format=zip` or `html`), `import`, `delete`, `r
 
 One folder per recording under `<wflow>/blackbox/<id>/`: `meta.json`, `session.json`, `recording.webm`,
 `system-log.json` when system logs were attached, `traces/` when Glowroot traces were copied, `gauges/` with the
-server load samples, `server-info.json`, and `glowroot/` with the Glowroot data. Captures waiting for an upload are in
+server load samples, `server-info.json`, `glowroot/` with the Glowroot data, and `app/` with the exported apps
+(`apps.json` + `<appId>-<version>.jwa`). Captures waiting for an upload are in
 `<wflow>/blackbox/pending/`, Retry requests in `<wflow>/blackbox/retry/`. No database tables. Folders on a shared
 `wflow` directory work for clustered nodes; deleting a recording removes its folder.
 
@@ -167,6 +168,15 @@ starts at `recording-start` (or the node's first recorded request) and ends at s
 - **System properties**: System Info's system table (`SysInfo.getSystemProperties()`): every Java system property plus
   JVM memory and processors. On Community the same values are read directly.
 
+## App export
+
+`create` (after the system log is attached) runs `AppExport`: URLs from `session.json`'s `network` and the system log's
+request entries (URL-decoded), matched against Joget's app URL patterns; apps ranked by how often they appear; the top
+5 exported with `AppService.exportApp` (reads the upload request's parameters, which carry no `tablenames`, `usergroups`
+or `exportplugins`, so no data, groups or plugins go in). `apps.json` records each app's state: `saved`, `missing`,
+`failed` (with the reason) or `skipped` (beyond 5). `meta.apps` keeps `[{id, name, version}]` for the list; `list` and
+`meta` drop it for users who may not see server data. `appfile` serves only names matching `<id>-<n>.jwa`.
+
 ## Plugin parts
 
 | Part | Job |
@@ -183,7 +193,8 @@ starts at `recording-start` (or the node's first recorded request) and ends at s
 | `TraceCollector` | Per node: picks the slow and failed recorded requests, finds their Glowroot trace (retries), saves it; Retry requests per node |
 | `GlowrootClient` | Glowroot's JSON backend and trace export; finds the local agent's port |
 | `GlowrootData`, `GlowrootPackager`, `GlowrootTag` | Glowroot data packages; tagging recorded requests |
-| `ServerInfo` | System Info snapshot at recording-start |
+| `ServerInfo` | System Info snapshot at recording-start (host, cluster, plugins, Java, Joget, DB, pool, license) |
+| `AppExport` | Finds the apps in the recorded URLs, exports them at upload, lists them in `app/apps.json` |
 | `GaugeSampler` | Per node: samples heap, GC, CPU, busy threads and DB pool every second while a capture is open |
 | `GaugeStore` | `gauges/` files: append, merge per node, move on upload, ZIP import |
 | `TraceStore` | `traces/` files: append, merge (latest state per request), move on upload, summary of a trace |
