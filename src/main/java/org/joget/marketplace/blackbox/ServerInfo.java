@@ -14,6 +14,8 @@ import org.joget.apps.app.service.AppUtil;
 import org.joget.commons.util.DynamicDataSourceManager;
 import org.joget.commons.util.LogUtil;
 import org.joget.commons.util.ResourceBundleUtil;
+import org.joget.plugin.base.Plugin;
+import org.joget.plugin.base.PluginManager;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -26,6 +28,7 @@ import org.json.JSONObject;
  * <li>systemProperties: its system table (SysInfo.getSystemProperties(): all Java system properties plus JVM memory
  * and processors; on Community the same values read directly)</li>
  * </ul>
+ * Plugins lists every jar in app_plugins with its date, size and the plugins it loaded (none: it failed to load).
  * Database and connectionPool hold the current profile's app_datasource file and the pool settings Joget really uses.
  * Apart from the database password (left out, and masked in JDBC URLs), nothing is left out or masked, so it can hold
  * secrets passed as -D options: it is shown only to users allowed to view system logs, like the system log itself.
@@ -95,6 +98,13 @@ final class ServerInfo {
             // outside a running Joget
         }
 
+        JSONObject plugins = null;
+        try {
+            plugins = plugins();
+        } catch (Exception | LinkageError e) {
+            // outside a running Joget
+        }
+
         // Everything System Info shows, as it shows it
         Map<?, ?> license = sysInfo != null ? call(sysInfo, "getLicenseProperties") : null;
         Map<?, ?> system = sysInfo != null ? call(sysInfo, "getSystemProperties") : null;
@@ -106,6 +116,9 @@ final class ServerInfo {
                 .put("host", host).put("process", process).put("java", java).put("joget", joget).put("database", db);
         if (pool != null && pool.length() > 0) {
             result.put("connectionPool", pool);
+        }
+        if (plugins != null && plugins.length() > 0) {
+            result.put("plugins", plugins);
         }
         if (license != null) {
             result.put("license", sorted(license));
@@ -192,6 +205,53 @@ final class ServerInfo {
                     + " (the pool has no such setting; check the spelling)");
         }
         return p;
+    }
+
+    /** The plugins Joget loaded from app_plugins, by jar file. */
+    private static JSONObject plugins() throws JSONException {
+        PluginManager pm = (PluginManager) AppUtil.getApplicationContext().getBean("pluginManager");
+        Map<String, java.util.List<String>> loaded = new TreeMap<>();
+        for (Plugin p : pm.listOsgiPlugin(null)) {
+            String jar = pm.getJarFileName(p.getClass().getName());
+            if (jar != null) {
+                loaded.computeIfAbsent(jar, k -> new java.util.ArrayList<>())
+                        .add(p.getName() + " " + p.getVersion() + " (" + p.getClass().getName() + ")");
+            }
+        }
+        return plugins(new java.io.File(pm.getBaseDirectory()), loaded);
+    }
+
+    /**
+     * One entry per jar in the plugin folder (jar file -> date, size, then one plugin per line), plus jars Joget loaded
+     * from elsewhere. A jar in the folder with no loaded plugin failed to load (Joget logs why) or holds no plugin.
+     */
+    static JSONObject plugins(java.io.File dir, Map<String, java.util.List<String>> loaded) throws JSONException {
+        Map<String, String> entries = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        java.io.File[] jars = dir.listFiles((d, n) -> n.toLowerCase(java.util.Locale.ROOT).endsWith(".jar"));
+        java.text.SimpleDateFormat date = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm");
+        for (java.io.File jar : jars != null ? jars : new java.io.File[0]) {
+            java.util.List<String> names = loaded.get(jar.getName());
+            String size = jar.length() >= MB ? String.format(java.util.Locale.ROOT, "%.1f MB", jar.length() / (double) MB)
+                    : Math.max(1, jar.length() / 1024) + " KB";
+            java.util.List<String> sortedNames = names != null ? new java.util.ArrayList<>(names) : null;
+            if (sortedNames != null) {
+                java.util.Collections.sort(sortedNames);
+            }
+            entries.put(jar.getName(), "Modified " + date.format(new java.util.Date(jar.lastModified())) + " · " + size + "\n"
+                    + (sortedNames != null ? String.join("\n", sortedNames) : "No plugin loaded (failed to load: check the Joget log)"));
+        }
+        for (Map.Entry<String, java.util.List<String>> e : loaded.entrySet()) {
+            if (!entries.containsKey(e.getKey())) {
+                java.util.List<String> names = new java.util.ArrayList<>(e.getValue());
+                java.util.Collections.sort(names);
+                entries.put(e.getKey(), "Not in the plugin folder\n" + String.join("\n", names));
+            }
+        }
+        JSONObject o = new JSONObject();
+        for (Map.Entry<String, String> e : entries.entrySet()) {
+            o.put(e.getKey(), e.getValue());
+        }
+        return o;
     }
 
     private static Map<String, String> propertyMap(Properties props) {

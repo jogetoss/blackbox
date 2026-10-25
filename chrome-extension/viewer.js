@@ -1234,7 +1234,7 @@ function renderInfo() {
   if (si) {
     const when = si.takenAt ? ` (snapshot at ${new Date(si.takenAt).toLocaleString()})` : '';
     const body = $('info');
-    const groups = [['host', `Host${when}`], ['process', 'Process'], ['java', 'Java'], ['joget', 'Joget'], ['database', 'Database'],
+    const groups = [['host', `Host${when}`], ['process', 'Process'], ['java', 'Java'], ['joget', 'Joget'], ['plugins', 'Plugins (app_plugins)'], ['database', 'Database'],
       ['connectionPool', 'Connection pool'], ['license', 'License'], ['systemProperties', 'System properties']];
     for (const [key, title] of groups) {
       if (!si[key] || !Object.keys(si[key]).length) continue;
@@ -1249,6 +1249,7 @@ function renderInfo() {
 const INFO_LABELS = {
   database: ['Profile', 'JDBC driver', 'JDBC URL', 'User'],
   connectionPool: ['Ignored file keys', 'Pool size', 'Active connections', 'Idle connections', 'Waiting threads'],
+  plugins: [], // jar files A-Z
 };
 
 function infoOrder(group, obj) {

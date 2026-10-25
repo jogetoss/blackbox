@@ -149,6 +149,9 @@ starts at `recording-start` (or the node's first recorded request) and ends at s
 - **Host**: hostname, node, processors, physical memory, OS. **Process**: id, start time, uptime.
 - **Java**: version, vendor, VM, heap used/committed/max, every JVM argument (one per line).
 - **Joget**: version, edition, application server, time zone, Glowroot address and version.
+- **Plugins**: one entry per jar in `app_plugins` (`PluginManager.getBaseDirectory()`): modified date, size, then each
+  plugin it loaded (name, version, class) from `listOsgiPlugin` + `getJarFileName`. A jar with none failed to load or
+  holds no plugin; a loaded jar not in the folder says so.
 - **Database**: the current profile's `app_datasource-<profile>.properties`: profile, JDBC driver, URL and user, then
   every other key in the file. The password is left out, and `password=` values in the URL are masked.
 - **Connection pool**: the pool state at recording start (size, active, idle, waiting), then every Tomcat JDBC pool

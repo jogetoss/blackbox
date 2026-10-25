@@ -91,4 +91,24 @@ public class ServerInfoTest {
         assertEquals("500", p.getString("maxActive"));
         assertFalse(p.has("Ignored file keys"));
     }
+    @Test
+    public void pluginsListEveryJarWithWhatItLoaded() throws Exception {
+        java.io.File dir = java.nio.file.Files.createTempDirectory("plugins").toFile();
+        java.nio.file.Files.write(new java.io.File(dir, "b-plugin.jar").toPath(), new byte[2048]);
+        java.nio.file.Files.write(new java.io.File(dir, "A-broken.jar").toPath(), new byte[10]);
+        java.nio.file.Files.write(new java.io.File(dir, "notes.txt").toPath(), new byte[10]);
+        java.util.Map<String, java.util.List<String>> loaded = new java.util.HashMap<>();
+        loaded.put("b-plugin.jar", java.util.Arrays.asList("Zeta 1.0 (x.Zeta)", "Alpha 2.1 (x.Alpha)"));
+        loaded.put("elsewhere.jar", java.util.Collections.singletonList("Other 1 (x.Other)"));
+        JSONObject p = ServerInfo.plugins(dir, loaded);
+        assertEquals(3, p.length());
+        String[] b = p.getString("b-plugin.jar").split("\n");
+        assertTrue(b[0], b[0].startsWith("Modified ") && b[0].endsWith(" · 2 KB"));
+        assertEquals("plugins sorted", "Alpha 2.1 (x.Alpha)", b[1]);
+        assertEquals("Zeta 1.0 (x.Zeta)", b[2]);
+        assertTrue(p.getString("A-broken.jar").endsWith("No plugin loaded (failed to load: check the Joget log)"));
+        assertTrue(p.getString("A-broken.jar").contains(" · 1 KB"));
+        assertTrue(p.getString("elsewhere.jar").startsWith("Not in the plugin folder\nOther 1"));
+        assertFalse(p.has("notes.txt"));
+    }
 }
