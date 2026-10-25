@@ -161,7 +161,21 @@ final class Masker {
         if (!always && containsOption(value, options)) {
             return value; // a multi-select value like "a;b"
         }
-        return ids.replaceIn(value, this::shape);
+        return ids.replaceIn(value, this::shapeAroundHashVariables);
+    }
+
+    /** Hash variables stored as text (#form.table.field[{currentUser.username}]#) are the app's, not data: kept. */
+    private static final Pattern HASH_VARIABLE = Pattern.compile("#[A-Za-z][A-Za-z0-9_.\\-]*(\\[[^#]*\\])?#");
+
+    String shapeAroundHashVariables(String value) {
+        Matcher m = HASH_VARIABLE.matcher(value);
+        StringBuilder out = new StringBuilder();
+        int from = 0;
+        while (m.find()) {
+            out.append(m.start() > from ? shape(value.substring(from, m.start())) : "").append(m.group());
+            from = m.end();
+        }
+        return from == 0 ? shape(value) : out.append(from < value.length() ? shape(value.substring(from)) : "").toString();
     }
 
     private static boolean containsOption(String value, Collection<String> options) {

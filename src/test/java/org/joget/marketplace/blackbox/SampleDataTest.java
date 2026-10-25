@@ -60,6 +60,14 @@ public class SampleDataTest {
     }
 
     @Test
+    public void hashVariablesInsideValuesAreKept() {
+        String v = "DE#form.mt_year.y[{date.yyyy}]#-02-01-12204#form.org.prefix[{currentUser.username}]#";
+        String m = masker.value("caseNo", v, Collections.emptySet(), none);
+        assertTrue(m, m.matches("[A-Z]{2}#form\\.mt_year\\.y\\[\\{date\\.yyyy\\}\\]#-\\d{2}-\\d{2}-\\d{5}#form\\.org\\.prefix\\[\\{currentUser\\.username\\}\\]#"));
+        assertNotEquals(v, m);
+    }
+
+    @Test
     public void datesKeepTheirYearAndStayValid() {
         String d = masker.value("dob", "1985-07-21 10:30:00", Collections.emptySet(), none);
         assertTrue(d, d.matches("1985-(0[1-9]|1[0-2])-(0[1-9]|1\\d|2[0-8]) 10:30:00"));
