@@ -83,8 +83,8 @@ All of it needs **Capture system logs**, is shown only on this plugin's replay p
   versions edited or published, plugin jars and wflow files (such as `app_datasource-*.properties`) changed, and a Joget
   restart. **Cluster** shows Joget's node name and node lists, Tomcat's
   `jvmRoute` and session replication, and which node served each recorded request: **Sticky sessions** warns when the
-  tab's requests moved between nodes. **Plugins** lists every jar in `app_plugins` with its date, size and
-  the plugins it loaded; "No plugin loaded" means the jar failed to load (the Joget log says why).
+  tab's requests moved between nodes. **Plugins** lists every jar in `app_plugins` with its date and size;
+  "not loaded" means the jar failed to load (the Joget log says why).
 
 **Sensitive data:** traces and Glowroot data hold SQL with its parameter values and request details; System Info holds
 JVM arguments and system properties, which can include secrets passed as `-D` options. Share recordings accordingly.
@@ -93,7 +93,8 @@ JVM arguments and system properties, which can include secrets passed as `-D` op
 
 At upload, BlackBox finds the Joget apps in the recorded URLs (userview, embed, form/datalist, App Composer and JSON API
 paths, `appId`/`appVersion` parameters, process ids like `app#2#process`) and exports up to 5, most used first, with
-Joget's own app export (`.jwa`: the definition only, no form data, plugins or groups). App Center is left out. The
+Joget's own app export (`.jwa`: the definition only, no form data, plugins or groups). App Center is left out, and so
+are app icons and screenshots (App Center loads them for every app), so only apps the tab actually used are exported. The
 version is the one a URL names, else the published one, else the latest.
 
 The **App** tab lists them with **Download .jwa**; the recordings list shows the app names under the title. Only users

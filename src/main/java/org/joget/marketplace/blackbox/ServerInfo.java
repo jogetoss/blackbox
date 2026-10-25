@@ -29,7 +29,7 @@ import org.json.JSONObject;
  * and processors; on Community the same values read directly)</li>
  * </ul>
  * Cluster holds Joget's node name and node lists (ServerUtil) and Tomcat's jvmRoute and session replication.
- * Plugins lists every jar in app_plugins with its date, size and the plugins it loaded (none: it failed to load).
+ * Plugins lists every jar in app_plugins with its date and size, marking jars that loaded no plugin.
  * Database and connectionPool hold the current profile's app_datasource file and the pool settings Joget really uses.
  * Apart from the database password (left out, and masked in JDBC URLs), nothing is left out or masked, so it can hold
  * secrets passed as -D options: it is shown only to users allowed to view system logs, like the system log itself.
@@ -365,29 +365,22 @@ final class ServerInfo {
     }
 
     /**
-     * One entry per jar in the plugin folder (jar file -> date, size, then one plugin per line), plus jars Joget loaded
-     * from elsewhere. A jar in the folder with no loaded plugin failed to load (Joget logs why) or holds no plugin.
+     * One entry per jar in the plugin folder (jar file -> date · size), plus jars Joget loaded from elsewhere. A jar in
+     * the folder with no loaded plugin failed to load (Joget logs why) or holds no plugin.
      */
     static JSONObject plugins(java.io.File dir, Map<String, java.util.List<String>> loaded) throws JSONException {
         Map<String, String> entries = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         java.io.File[] jars = dir.listFiles((d, n) -> n.toLowerCase(java.util.Locale.ROOT).endsWith(".jar"));
         java.text.SimpleDateFormat date = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm");
         for (java.io.File jar : jars != null ? jars : new java.io.File[0]) {
-            java.util.List<String> names = loaded.get(jar.getName());
             String size = jar.length() >= MB ? String.format(java.util.Locale.ROOT, "%.1f MB", jar.length() / (double) MB)
                     : Math.max(1, jar.length() / 1024) + " KB";
-            java.util.List<String> sortedNames = names != null ? new java.util.ArrayList<>(names) : null;
-            if (sortedNames != null) {
-                java.util.Collections.sort(sortedNames);
-            }
-            entries.put(jar.getName(), "Modified " + date.format(new java.util.Date(jar.lastModified())) + " · " + size + "\n"
-                    + (sortedNames != null ? String.join("\n", sortedNames) : "No plugin loaded (failed to load: check the Joget log)"));
+            entries.put(jar.getName(), date.format(new java.util.Date(jar.lastModified())) + " · " + size
+                    + (loaded.containsKey(jar.getName()) ? "" : " · not loaded (check the Joget log)"));
         }
-        for (Map.Entry<String, java.util.List<String>> e : loaded.entrySet()) {
-            if (!entries.containsKey(e.getKey())) {
-                java.util.List<String> names = new java.util.ArrayList<>(e.getValue());
-                java.util.Collections.sort(names);
-                entries.put(e.getKey(), "Not in the plugin folder\n" + String.join("\n", names));
+        for (String jar : loaded.keySet()) {
+            if (!entries.containsKey(jar)) {
+                entries.put(jar, "Not in the plugin folder");
             }
         }
         JSONObject o = new JSONObject();

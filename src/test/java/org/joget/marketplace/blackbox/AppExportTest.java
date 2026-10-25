@@ -25,6 +25,9 @@ public class AppExportTest {
                 "/jw/web/json/workflow/process/start/expense#4#approval",
                 "/jw/web/json/plugin/x/service?appId=inv&appVersion=7",
                 "/jw/web/userview/appcenter/v/_/home",
+                "/jw/web/app/crm/resources/crm.png?timestamp=1",
+                "/jw/web/app/isr/2/resources/icon.png",
+                "/jw/web/userview/screenshot/appcenter/v?timestamp=1",
                 "/jw/web/json/workflow/currentUsername",
                 null));
         assertEquals(Arrays.asList("leave", "hr", "crm", "expense", "inv"), ids(apps));

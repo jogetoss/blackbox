@@ -45,6 +45,8 @@ final class AppExport {
         Pattern.compile("/web/(?:client/|console/|json/(?:console/)?)?app/" + ID + "/(\\d+|latest|_)?"),
         Pattern.compile("/web/json/data/(?:form|list|app)/(?:\\w+/)?" + ID + "/(\\d+)/"),
     };
+    /** App icons and userview screenshots (App Center loads them for every app): files, not the app in use. */
+    private static final Pattern RESOURCE = Pattern.compile("/web/(?:app/[A-Za-z0-9_-]+/(?:\\d+/)?resources/|userview/screenshot/)");
     private static final Pattern PROCESS = Pattern.compile("(?:^|[/=&?])" + ID + "(?:#|%23)(\\d+|latest)(?:#|%23)\\w+");
     private static final Pattern APP_PARAM = Pattern.compile("[?&]appId=" + ID + "(?:&|$)");
     private static final Pattern VERSION_PARAM = Pattern.compile("[?&]appVersion=(\\d+)(?:&|$)");
@@ -67,7 +69,7 @@ final class AppExport {
     static List<Seen> find(Iterable<String> urls) {
         Map<String, Seen> seen = new LinkedHashMap<>();
         for (String url : urls) {
-            if (url == null) {
+            if (url == null || RESOURCE.matcher(url).find()) {
                 continue;
             }
             for (Pattern p : PATHS) {
