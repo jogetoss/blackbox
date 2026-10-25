@@ -156,7 +156,7 @@ final class AppExport {
         };
     }
 
-    /** Runs on each saved .jwa (e.g. adds sample data); returns what to note in apps.json as "sample", or null. */
+    /** Runs on each saved .jwa (e.g. adds sample data); returns keys to add to the app's apps.json entry, or null. */
     interface AfterExport {
         JSONObject run(Path jwa, AppDefinition def) throws IOException;
     }
@@ -202,9 +202,10 @@ final class AppExport {
                     Files.move(tmp, dir.resolve(file), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                     if (after != null) {
                         try {
-                            JSONObject sample = after.run(dir.resolve(file), def);
-                            if (sample != null) {
-                                a.put("sample", sample);
+                            JSONObject extra = after.run(dir.resolve(file), def);
+                            for (java.util.Iterator<?> it = extra != null ? extra.keys() : java.util.Collections.emptyIterator(); it.hasNext();) {
+                                String k = String.valueOf(it.next());
+                                a.put(k, extra.get(k));
                             }
                         } catch (Exception | LinkageError e) {
                             LogUtil.warn(AppExport.class.getName(), "Could not add sample data to app " + s.appId + ": " + e);

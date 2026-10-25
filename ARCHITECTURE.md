@@ -188,6 +188,11 @@ true)`, the format `AppService.importFormData` reads) and `app_formuploads/<tabl
 `FileUtil.getUploadPath`; activity ids are resolved with `WorkflowManager.getActivityById`. `apps.json` gets each app's
 `sample` summary (mode, tables: rows, how picked, files, masked columns) and the recording's `idMap`.
 
+`ProcessData` runs in the same hook: process ids from the recorded ids, the sample's old record ids and the process ids
+in its rows (activity ids resolved with `getActivityById`), kept when the process definition id starts with
+`<appId>#`; `getRunningProcessById`, `getProcessVariableList`, `getActivityList` (by activated time) and
+`getRunningActivityInfo` (assignees, accepted user). Written to the app's `processes` in `apps.json`.
+
 ## Plugin parts
 
 | Part | Job |
@@ -207,6 +212,7 @@ true)`, the format `AppService.importFormData` reads) and `app_formuploads/<tabl
 | `ServerInfo` | System Info snapshot at recording-start (host, cluster, plugins, Java, Joget, DB, pool, license) |
 | `AppExport` | Finds the apps in the recorded URLs, exports them at upload, lists them in `app/apps.json` |
 | `SampleData` | Picks the sample rows of an exported app, masks / remaps them, adds them to the `.jwa` |
+| `ProcessData` | The touched process instances of an exported app, read only, masked like the sample |
 | `Masker` | Shape-keeping fake values, kept values, user pseudonyms, the old -> new record id map |
 | `GaugeSampler` | Per node: samples heap, GC, CPU, busy threads and DB pool every second while a capture is open |
 | `GaugeStore` | `gauges/` files: append, merge per node, move on upload, ZIP import |

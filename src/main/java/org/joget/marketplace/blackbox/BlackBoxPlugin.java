@@ -305,13 +305,24 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 String sensitive = getPropertyString("sensitiveColumns");
                 Masker masker = new Masker(sensitive == null || sensitive.trim().isEmpty() ? Masker.DEFAULT_SENSITIVE : sensitive);
                 SampleData.Source src = SampleData.joget();
+                ProcessData.Source psrc = ProcessData.joget();
                 int newest = (int) Math.min(positive("sampleRows", 20), 500);
                 after = (jwa, def) -> {
                     masker.setDefinition(SampleData.definitionText(jwa));
                     List<SampleData.Table> tables = SampleData.build(SampleData.tables(def), candidates, src, sample, masker, ids, newest);
                     SampleData.addTo(jwa, tables);
                     try {
-                        return SampleData.summary(tables, sample);
+                        JSONObject extra = new JSONObject().put("sample", SampleData.summary(tables, sample));
+                        // Processes: recorded process / activity ids, and those in the sample rows (record ids, links)
+                        java.util.Set<String> refs = new java.util.LinkedHashSet<>(candidates);
+                        refs.addAll(ids.all().keySet());
+                        refs.addAll(SampleData.valuesIn(tables));
+                        JSONArray processes = ProcessData.collect(def.getAppId(), ProcessData.processIds(refs, psrc), psrc, sample,
+                                masker, ids);
+                        if (processes.length() > 0) {
+                            extra.put("processes", processes);
+                        }
+                        return extra;
                     } catch (JSONException e) {
                         throw new IOException(e);
                     }

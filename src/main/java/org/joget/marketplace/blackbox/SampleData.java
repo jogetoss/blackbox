@@ -448,6 +448,21 @@ final class SampleData {
         out.closeEntry();
     }
 
+    /** The string values of the converted sample rows (process ids among them are kept as they are). */
+    static Set<String> valuesIn(List<Table> tables) {
+        Set<String> values = new LinkedHashSet<>();
+        for (Table t : tables) {
+            for (FormRow row : t.rows) {
+                for (Object v : row.values()) {
+                    if (v instanceof String && WORKFLOW_ID.matcher((String) v).matches()) {
+                        values.add((String) v);
+                    }
+                }
+            }
+        }
+        return values;
+    }
+
     /** apps.json's summary of one app's sample. */
     static JSONObject summary(List<Table> tables, Mode mode) throws JSONException {
         JSONArray list = new JSONArray();

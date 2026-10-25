@@ -1335,6 +1335,7 @@ function renderApps() {
     } else if (sample) {
       box.append(el('p', 'note', 'No sample data: the app has no form rows.'));
     }
+    for (const p of a.processes || []) box.append(processBlock(p));
     if (a.state === 'saved' && a.file && appFileUrl) {
       const link = el('a', 'button', 'Download .jwa');
       link.href = appFileUrl(a.file);
@@ -1354,6 +1355,34 @@ function renderApps() {
     d.append(list);
     section(page, 'Record ids', d);
   }
+}
+
+// One process instance (read only: Joget can't import running processes)
+function processBlock(p) {
+  const d = el('details', 'process');
+  const date = (ms) => (ms ? new Date(ms).toLocaleString() : undefined);
+  d.append(el('summary', null, `Process: ${p.name || p.processDefId} · ${p.state || ''} · ${p.id}`));
+  d.append(kv({
+    'Process definition': p.processDefId,
+    'Record id in the sample': p.recordId,
+    'Requester': p.requester,
+    'Started': date(p.started || p.created),
+    'Finished': date(p.finished),
+  }));
+  const vars = p.variables || {};
+  if (Object.keys(vars).length) {
+    d.append(el('h4', null, 'Workflow variables'));
+    d.append(kv(vars));
+  }
+  if (p.activities?.length) {
+    d.append(el('h4', null, `Activities${p.activitiesCut ? ' (first 100)' : ''}`));
+    const list = kv(Object.fromEntries(p.activities.map((x, i) => [`${i + 1}. ${x.name || x.defId}`,
+      [x.state, x.assignees?.length ? `assigned to ${x.assignees.join(', ')}` : '', x.acceptedBy ? `done by ${x.acceptedBy}` : '',
+        date(x.created), x.finished ? `→ ${date(x.finished)}` : ''].filter(Boolean).join(' · ') + `\n${x.id}`])));
+    list.classList.add('multiline');
+    d.append(list);
+  }
+  return d;
 }
 
 // ---------- features drawer ----------

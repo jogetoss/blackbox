@@ -117,6 +117,12 @@ Sensitive columns stay masked; files over 5 MB (50 MB per app) become placeholde
 **Record ids** get new unique ids everywhere they appear, so importing never overwrites rows of the same id. The App tab
 lists old → new ids, since the URLs, logs and traces show the old ones.
 
+**Process data** (with the sample data, read only: Joget can't import running processes): the App tab lists the
+app's process instances the recording touched (process and activity ids in the URLs and posts, and in the sample rows):
+state, requester, dates, workflow variables, and each activity with its state, assignees and who completed it. Masked
+the same way (same user pseudonyms; variable values masked unless found in the app definition). At most 20 processes
+per app and 100 activities each; processes already archived out of the running tables are not found.
+
 The extension's upload form offers **Include sample form data (masked)** and, where allowed, **Use real values**.
 Automatic uploads use the server's default (masked).
 
