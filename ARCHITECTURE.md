@@ -181,12 +181,21 @@ starts at `recording-start` (or the node's first recorded request) and ends at s
 
 ## App export
 
-`create` (after the system log is attached) runs `AppExport`: URLs from `session.json`'s `network` and the system log's
-request entries (URL-decoded), matched against Joget's app URL patterns; apps ranked by how often they appear; the top
-5 exported with `AppService.exportApp` (reads the upload request's parameters, which carry no `tablenames`, `usergroups`
-or `exportplugins`, so no data, groups or plugins go in). `apps.json` records each app's state: `saved`, `missing`,
-`failed` (with the reason) or `skipped` (beyond 5). `meta.apps` keeps `[{id, name, version}]` for the list; `list` and
-`meta` drop it for users who may not see server data. `appfile` serves only names matching `<id>-<n>.jwa`.
+`create` (after the system log is attached) runs `AppExport`: `hits` reads `session.json` (each request with its page:
+a document's own URL, else its Referer; failed or 4xx/5xx = a problem; console errors = a problem on the page shown
+then) and the system log (requests, 5xx = a problem; error lines = a problem on their request; other threads skipped),
+URL-decoded. `find` matches them against Joget's app URL patterns (`appOf`; app icons and screenshots name none). The
+browser's requests name the apps; system log hits only add to those (it also gets other tabs' service worker
+requests, which carry no tab id), unless the browser named none. App Center is dropped unless it had problems or was
+alone. Apps rank by problems, then requests; the top `maxApps` (default 5, 0 = all) are exported with
+`AppService.exportApp` (reads the upload request's parameters, which carry no `tablenames`, `usergroups` or
+`exportplugins`, so no data, groups or plugins go in). `apps.json` records each app's state: `saved`, `missing`,
+`failed` (with the reason) or `skipped` (beyond the cap), and `problems`. `meta.apps` keeps `[{id, name, version,
+problems}]` for the list; `list` and `meta` drop it for users who may not see server data. `appfile` serves only names
+matching `<id>-<n>.jwa`.
+
+`viewer.js` repeats `appOf` to draw the Apps lane (segments from the same page signals, flips under 0.5 s merged), the
+App filter and the App tab's problem lists, so the lane works for local recordings too.
 
 ### Sample data
 

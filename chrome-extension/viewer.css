@@ -152,6 +152,38 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 6p
   position: absolute; top: 0; bottom: 0; pointer-events: none;
   background: color-mix(in srgb, var(--accent) 18%, transparent); border: 1px solid var(--accent); border-width: 0 1px;
 }
+/* Apps lane under the timeline (viewer.js): one colour per app, by order of first appearance */
+:root { --app-0: #0072b2; --app-1: #e69f00; --app-2: #009e73; --app-3: #cc79a7; --app-4: #56b4e9; --app-5: #d55e00; }
+.lane { display: flex; flex-direction: column; gap: 3px; }
+.app-lane { position: relative; height: 22px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+.app-segs { position: absolute; inset: 0; overflow: hidden; border-radius: 5px; }
+.app-seg {
+  position: absolute; top: 0; bottom: 0; box-sizing: border-box; padding: 2px 4px 0; border-top: 3px solid var(--c);
+  border-right: 1px solid var(--bg); background: color-mix(in srgb, var(--c) 28%, var(--bg-2));
+  font-size: 11px; line-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg);
+}
+.app-seg:hover { background: color-mix(in srgb, var(--c) 45%, var(--bg-2)); }
+.app-0 { --c: var(--app-0); } .app-1 { --c: var(--app-1); } .app-2 { --c: var(--app-2); }
+.app-3 { --c: var(--app-3); } .app-4 { --c: var(--app-4); } .app-5 { --c: var(--app-5); }
+.dot.app-0, .dot.app-1, .dot.app-2, .dot.app-3, .dot.app-4, .dot.app-5 { background: var(--c); border-radius: 2px; }
+.app-filter[hidden] { display: none; }
+/* App tab: apps with problems open on top, the others folded */
+.info .apps-head { font-weight: 600; margin: 0 0 4px; }
+.info details.app { border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; margin: 8px 0; }
+.info details.app > summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.info details.app[open] > summary { margin-bottom: 8px; }
+.app-badge { margin-left: auto; color: var(--fg-2); font-size: 12px; }
+.app-badge.bad { color: var(--error); font-weight: 600; }
+.app-problems { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.app-problems h4 { font-size: 12px; margin: 0 0 2px; color: var(--fg-2); }
+.app-problem {
+  display: grid; grid-template-columns: 52px 60px minmax(0, 1fr) max-content; gap: 8px; text-align: left;
+  font: inherit; font-size: 12px; padding: 3px 6px; background: var(--error-bg); border: 0; border-radius: 4px; cursor: pointer;
+}
+.app-problem .t { font-family: var(--mono); }
+.app-problem .text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-problem .go { color: var(--accent); }
+.app-problem:hover .go { text-decoration: underline; }
 /* Server load strip under the timeline (viewer.js) */
 .load { display: flex; flex-direction: column; gap: 3px; }
 .load-strip { height: 48px; cursor: pointer; }

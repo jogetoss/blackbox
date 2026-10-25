@@ -91,16 +91,25 @@ JVM arguments and system properties, which can include secrets passed as `-D` op
 
 ## App export
 
-At upload, BlackBox finds the Joget apps in the recorded URLs (userview, embed, form/datalist, App Composer and JSON API
-paths, `appId`/`appVersion` parameters, process ids like `app#2#process`) and exports up to 5, most used first, with
-Joget's own app export (`.jwa`: the definition only, no form data, plugins or groups). App Center is left out, and so
-are app icons and screenshots (App Center loads them for every app), so only apps the tab actually used are exported. The
-version is the one a URL names, else the published one, else the latest.
+At upload, BlackBox finds the Joget apps the recorded tab used (userview, embed, form/datalist, App Composer and JSON
+API paths, `appId`/`appVersion` parameters, process ids like `app#2#process`) and exports them with Joget's own app
+export (`.jwa`: the definition only, no form data, plugins or groups). Apps with problems come first (failed requests,
+server errors, console errors on their pages), then the most used; **Most apps to export** (default 5, 0 = no limit)
+caps them. App icons and screenshots don't count (App Center loads them for every app), and App Center itself is
+exported only when it had problems or was the only app. Apps come from the browser's requests; the system log only adds
+to them, since it can also hold other tabs' service worker requests. The version is the one a URL names, else the
+published one, else the latest.
 
-The **App** tab lists them with **Download .jwa**; the recordings list shows the app names under the title. Only users
-allowed by **Who can view system logs** (or the uploader, with **Uploaders can view the server data…**) see them:
-app definitions can hold plugin settings and environment variables. The ZIP download includes the `.jwa` files; the HTML
-download shows the list only.
+The **App** tab starts with how many apps were used and how many had problems. Apps with problems are open on top, each
+problem a link that seeks the video and opens it in its tab; the others are folded to their requests and time in use;
+apps not exported are one grey line. Each has **Download .jwa**. The recordings list shows the app names under the
+title, ⚠ marking apps with problems. Only users allowed by **Who can view system logs** (or the uploader, with
+**Uploaders can view the server data…**) see them: app definitions can hold plugin settings and environment variables.
+The ZIP download includes the `.jwa` files; the HTML download shows the list only.
+
+On every replay page (no upload needed), the **Apps** lane under the Issues timeline shows which app's page the tab
+showed, one colour per app, ⚠ where it had a problem; hover for its time, requests and problems, click to jump there
+and list only that app. The **App** filter on the Network and System logs tabs does the same.
 
 ## Sample data
 

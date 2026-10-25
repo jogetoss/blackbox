@@ -104,8 +104,11 @@
     if (r.recording?.tab?.url) title.append(el('div', 'muted small', r.recording.tab.url));
     if (r.notes) title.append(el('div', 'muted small', r.notes.length > 140 ? r.notes.slice(0, 140) + '…' : r.notes));
     if (r.canViewSystemLog && r.apps?.length) {
-      const apps = el('div', 'muted small', 'App: ' + r.apps.map((x) => `${x.name || x.id} v${x.version}`).join(', '));
-      apps.title = 'Exported at upload: open the recording\'s App tab to download the .jwa';
+      // Apps with problems first (the server lists them so), marked ⚠; at most 3 named
+      const names = r.apps.map((x) => `${x.problems ? '⚠ ' : ''}${x.name || x.id} v${x.version}`);
+      const apps = el('div', 'muted small', 'App: ' + names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3}` : ''));
+      apps.title = names.join('\n') + '\n\n⚠ = had failed requests, server errors or console errors. Exported at upload: '
+        + 'open the recording\'s App tab to download the .jwa';
       title.append(apps);
     }
     tr.append(title);
