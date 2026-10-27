@@ -167,23 +167,13 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 6p
 .app-3 { --c: var(--app-3); } .app-4 { --c: var(--app-4); } .app-5 { --c: var(--app-5); }
 .dot.app-0, .dot.app-1, .dot.app-2, .dot.app-3, .dot.app-4, .dot.app-5 { background: var(--c); border-radius: 2px; }
 .app-filter[hidden] { display: none; }
-/* App tab: apps with problems open on top, the others folded */
+/* App tab: one folded block per app, Download .jwa in its header */
 .info .apps-head { font-weight: 600; margin: 0 0 4px; }
 .info details.app { border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; margin: 8px 0; }
 .info details.app > summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
 .info details.app[open] > summary { margin-bottom: 8px; }
 .app-badge { margin-left: auto; color: var(--fg-2); font-size: 12px; }
-.app-badge.bad { color: var(--error); font-weight: 600; }
-.app-problems { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
-.app-problems h4 { font-size: 12px; margin: 0 0 2px; color: var(--fg-2); }
-.app-problem {
-  display: grid; grid-template-columns: 52px 60px minmax(0, 1fr) max-content; gap: 8px; text-align: left;
-  font: inherit; font-size: 12px; padding: 3px 6px; background: var(--error-bg); border: 0; border-radius: 4px; cursor: pointer;
-}
-.app-problem .t { font-family: var(--mono); }
-.app-problem .text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.app-problem .go { color: var(--accent); }
-.app-problem:hover .go { text-decoration: underline; }
+.app-download { font-size: 12px; padding: 2px 10px; }
 /* Server load strip under the timeline (viewer.js) */
 .load { display: flex; flex-direction: column; gap: 3px; }
 .load-strip { height: 48px; cursor: pointer; }

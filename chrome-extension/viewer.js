@@ -1505,52 +1505,33 @@ function renderApps() {
   page.append(el('p', 'apps-head', `${used} app${used === 1 ? '' : 's'} used · `
     + (withProblems.length ? `⚠ ${withProblems.length} with problems` : 'no problems found in them')));
   const when = current.apps.exportedAt ? new Date(current.apps.exportedAt).toLocaleString() : '';
-  page.append(el('p', 'note', `Exported at upload${when ? ` (${when})` : ''} with Joget's own app export: the app definition only, `
+  page.append(el('p', 'note', `Exported${when ? ` ${when}` : ''} with Joget's own app export: the app definition only, `
     + 'no form data, plugins or groups. Import it on a test server to reproduce the issue.'
     + (appFileUrl ? '' : ' The .jwa files are in the recording ZIP, not in this file.')));
   if (!all.length) page.append(el('p', null, 'No apps were found in the recorded URLs.'));
-  for (const a of [...withProblems, ...rest]) page.append(appBlock(a, probs(a)));
-  if (!withProblems.length && rest.length === 1) page.querySelector('details.app').open = true; // the only app: no need to fold it
+  for (const a of [...withProblems, ...rest]) page.append(appBlock(a));
+  if (withProblems.length + rest.length === 1) page.querySelector('details.app').open = true; // the only app: no need to fold it
   if (notExported.length) {
     page.append(el('p', 'note muted', 'Not exported: ' + notExported.map((a) => `${a.id} (${a.reason || a.state})`).join(', ')));
   }
-  // Old -> new record ids: the URLs, logs and traces show the old ones
-  const map = current.apps.idMap;
-  if (map?.ids && Object.keys(map.ids).length) {
-    const d = el('details');
-    d.append(el('summary', null, map.kept ? `Record ids (${Object.keys(map.ids).length}, kept as they are)`
-      : `Record ids: old → new (${Object.keys(map.ids).length}). The recording shows the old ids; the sample data has the new ones.`));
-    const list = kv(map.ids);
-    list.classList.add('multiline');
-    d.append(list);
-    section(page, 'Record ids', d);
-  }
 }
 
-// One app: open with its problems when it had some, else folded to its name, requests and time in use
-function appBlock(a, probs) {
+// One app, folded to its name, requests, time in use and Download .jwa. Its errors are in the Console, Network and
+// System logs tabs (App filter).
+function appBlock(a) {
   const d = el('details', 'app');
-  d.open = probs.length > 0;
   const summary = el('summary');
   summary.append(el('strong', null, a.name ? `${a.name} (${a.id})` : a.id), a.version != null ? ` v${a.version}` : '');
   const ms = inUseMs(a.id);
-  summary.append(el('span', probs.length ? 'app-badge bad' : 'app-badge',
-    probs.length ? `⚠ ${problemText(probs)}` : `${a.requests} request${a.requests === 1 ? '' : 's'}${ms ? ` · ${fmt(ms)} in use` : ''}`));
-  d.append(summary);
-  if (probs.length) {
-    const box = el('div', 'app-problems');
-    box.append(el('h4', null, 'Problems'));
-    for (const p of probs.slice(0, 20)) {
-      const row = el('button', 'app-problem');
-      row.append(el('span', 't', fmt(p.t)), el('span', 'kind', { network: 'request', console: 'console', server: 'server' }[p.kind]),
-        el('span', 'text', p.text), el('span', 'go', '→ jump'));
-      row.title = `Jump to ${fmt(p.t)} and show it in the ${{ network: 'Network', console: 'Console', server: 'System logs' }[p.kind]} tab`;
-      row.onclick = () => { seek(p.t); openRow(p.kind, p.item); };
-      box.append(row);
-    }
-    if (probs.length > 20) box.append(el('div', 'muted', `+${probs.length - 20} more: use ◀ Prev issue / Next issue ▶`));
-    d.append(box);
+  summary.append(el('span', 'app-badge', `${a.requests} request${a.requests === 1 ? '' : 's'}${ms ? ` · ${fmt(ms)} in use` : ''}`));
+  if (a.state === 'saved' && a.file && appFileUrl) {
+    const link = el('a', 'button app-download', 'Download .jwa');
+    link.href = appFileUrl(a.file);
+    link.title = `${a.file}: import it in App Center > Import App`;
+    summary.append(link);
   }
+  d.append(summary);
+  const sample = a.sample;
   d.append(kv({
     'App id': a.id,
     'Version': a.version != null ? `${a.version}${a.published ? ' (published)' : ' (not published)'}` : undefined,
@@ -1560,29 +1541,14 @@ function appBlock(a, probs) {
     'Time in use': ms ? fmt(ms) : undefined,
     'Size': a.bytes != null ? `${Math.max(1, Math.round(a.bytes / 1024))} KB` : undefined,
     'Not exported': a.state !== 'saved' ? a.reason || a.state : undefined,
+    'Sample data': sample?.error ? `could not be added: ${sample.error}`
+      : sample ? (sample.tables?.length ? (sample.mode === 'real' ? 'real values' : 'masked') : 'none: the app has no form rows') : undefined,
   }));
-  const sample = a.sample;
-  if (sample?.error) d.append(el('p', 'note', `Sample data could not be added: ${sample.error}`));
+  // The captured tables and their rows (in the .jwa: importing it imports them)
   if (sample?.tables?.length) {
-    const how = sample.mode === 'real' ? 'real values (sensitive columns masked)' : 'masked values (same shape, fake content)';
-    d.append(el('p', 'note', `Sample data in the .jwa, ${how}. Importing the .jwa imports it.`));
-    const PICKED = { touched: 'opened or saved in the recording', linked: 'linked to those records', newest: 'newest rows (the recording touched none)' };
-    const tables = kv(Object.fromEntries(sample.tables.map((t) => [t.table,
-      `${t.rows} row${t.rows === 1 ? '' : 's'}: ${PICKED[t.picked] || t.picked}`
-      + (t.files ? `, ${t.files} file${t.files === 1 ? '' : 's'}` : '')
-      + (t.masked?.length ? `\nMasked: ${t.masked.join(', ')}` : '')])));
-    tables.classList.add('multiline');
-    d.append(tables);
-  } else if (sample) {
-    d.append(el('p', 'note', 'No sample data: the app has no form rows.'));
+    d.append(kv(Object.fromEntries(sample.tables.map((t) => [t.table, `${t.rows} row${t.rows === 1 ? '' : 's'}`]))));
   }
   for (const p of a.processes || []) d.append(processBlock(p));
-  if (a.state === 'saved' && a.file && appFileUrl) {
-    const link = el('a', 'button', 'Download .jwa');
-    link.href = appFileUrl(a.file);
-    link.title = `${a.file}: import it in App Center > Import App`;
-    d.append(link);
-  }
   return d;
 }
 
@@ -1664,7 +1630,7 @@ const FEATURES = [
     { server: 'Server errors from the system logs are marked too (purple).', file: 'Server errors are marked too (purple) when the system logs are in the file.' }],
   ['Apps lane', 'Under the Issues timeline: which app\'s page the tab showed, one colour per app, ⚠ where that app had a problem. Hover for its time, requests and problems; click to jump there and list only that app on the Network and System logs tabs.', ALL],
   ['App filter', 'On the Network and System logs tabs when the tab used more than one app: list only one app\'s rows (its URLs, or made while its page was on screen).', ALL],
-  ['App tab', 'The apps the recording used, exported at upload as .jwa with sample data and process data. Apps with problems come first and open, each problem a link to its moment; the others are folded to their requests and time in use.', ['server', 'file'],
+  ['App tab', 'The apps the recording used, exported as .jwa with sample data and process data. Each app is folded to its requests, time in use and Download .jwa; open it for its version, the captured tables with their rows, and its processes. Errors are in the Console, Network and System logs tabs (App filter).', ['server', 'file'],
     { file: 'The .jwa files themselves are only in the ZIP download.' }],
   ['Requests strip', 'At the top of the Network tab: one bar per request, from start to end, coloured by kind. Drag across it to list only the requests in that time range; double-click or ✕ shows all again.', ALL],
   ['System logs tab', 'The Joget log lines written while serving the recorded requests, lined up with the video and filtered by level. Only for users allowed to view system logs, and only when the plugin captured them.', ['server', 'file'],

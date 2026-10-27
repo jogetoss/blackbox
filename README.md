@@ -109,9 +109,10 @@ The extension sends the recorded requests and console errors with `recording-sto
 **Delete system logs not uploaded after (days)**. Without a system log capture (setting off, or the server could not be
 reached when recording started), the export runs at upload instead, with the choices saved with the recording.
 
-The **App** tab starts with how many apps were used and how many had problems. Apps with problems are open on top, each
-problem a link that seeks the video and opens it in its tab; the others are folded to their requests and time in use;
-apps not exported are one grey line. Each has **Download .jwa**. The recordings list shows the app names under the
+The **App** tab starts with how many apps were used and how many had problems. Apps with problems come first; each app
+is folded to its requests, time in use and **Download .jwa**, and opens to its version, sample data mode, the captured
+tables with their rows, and its processes. Errors are in the Console, Network and System logs tabs (**App** filter).
+Apps not exported are one grey line. The recordings list shows the app names under the
 title, ⚠ marking apps with problems. Only users allowed by **Who can view system logs** (or the uploader, with
 **Uploaders can view the server data…**) see them: app definitions can hold plugin settings and environment variables.
 The ZIP download includes the `.jwa` files; the HTML download shows the list only.
@@ -140,8 +141,8 @@ sensitive field (setting) are always masked.
 
 **Real values:** for any uploader who gets sample data, by unticking **Mask data** in the popup (per recording). Sensitive columns stay masked; files over 5 MB (50 MB per app) become placeholders.
 
-**Record ids** get new unique ids everywhere they appear, so importing never overwrites rows of the same id. The App tab
-lists old → new ids, since the URLs, logs and traces show the old ones.
+**Record ids** get new unique ids everywhere they appear, so importing never overwrites rows of the same id. The old → new
+map stays in `apps.json` (in the ZIP download), not on the page.
 
 **Process data** (with the sample data, read only: Joget can't import running processes): the App tab lists the
 app's process instances the recording touched (process and activity ids in the URLs and posts, and in the sample rows):
