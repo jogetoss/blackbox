@@ -172,7 +172,7 @@ Java, Database, DB pool, License, System properties; the JVM start from Recent c
 - **Cluster**: `ServerUtil` (this node's `wflow.name`, the shared `servers.json` nodes, the active nodes, each with its
   `serversIP.properties` address), `wflow.cluster` (set by the wflow-cluster agent), Tomcat's Engine `jvmRoute`, whether
   a `Catalina:type=Cluster` MBean exists (session replication), and the requested session id's route suffix. The viewer
-  adds **Recorded requests served by** and **Sticky sessions** from the system log: `attach` puts the `node` (from the
+  adds **Sticky sessions**, and **Recorded requests served by** when more than one node served them, from the system log: `attach` puts the `node` (from the
   `system-log.<node>.jsonl` file name) on each request entry.
 - **Plugins**: one entry per jar in `app_plugins` (`PluginManager.getBaseDirectory()`): modified date, size, then each
   plugin it loaded (name, version, class) from `listOsgiPlugin` + `getJarFileName`. A jar with none failed to load or
@@ -186,6 +186,11 @@ Java, Database, DB pool, License, System properties; the JVM start from Recent c
   key and MAC addresses. Missing on Community.
 - **System properties**: System Info's system table (`SysInfo.getSystemProperties()`): every Java system property plus
   JVM memory and processors. On Community the same values are read directly.
+
+The viewer leaves out what another section already shows; `server-info.json` (and the ZIP) keeps it all: Host **Node**
+when Cluster has **Joget node name**; License `platform.version`, `platform.db.profile`, `platform.db.jdbc.driver`;
+system properties shown in Joget, Host, Cluster or Java (`platform.jvm.*`, `wflow.name`, `os.*`, `java.version`,
+`java.runtime.version`, `java.vm.name`, `java.vm.vendor`, `user.timezone`) and those a `-D` argument sets to the same value.
 
 ## App export
 

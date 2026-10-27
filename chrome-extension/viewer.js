@@ -1406,20 +1406,17 @@ function renderInfo() {
   $('info').replaceChildren(
     kv({
       ...current.info,
-      'Tab title': rec.tab?.title,
       'Tab URL': rec.tab?.url,
       'Started': rec.startedAt && new Date(rec.startedAt).toLocaleString(),
       'Stopped': rec.stoppedAt && new Date(rec.stoppedAt).toLocaleString(),
-      'Duration': fmt(durationMs),
       'Stop reason': rec.stopReason,
       'Captured surface': rec.capturedSurface,
       'Sound': soundInfo(rec.audio),
-      'Console entries': s.console,
       'Console errors': s.errors,
-      'Requests': s.requests,
       'Failed requests': s.failedRequests,
       'Navigations': (report.navigations || []).length,
-      'System logs': systemLogInfo(rec.systemLog),
+      // the counts are on the tabs; a capture that didn't reach the server still says why here
+      'System logs': current.systemLog ? undefined : systemLogInfo(rec.systemLog),
       'Server clock offset': serverOffset ? `${serverOffset} ms (corrected)` : undefined,
       'User agent': rec.userAgent,
       'Recorded with': report.tool,
@@ -1442,7 +1439,9 @@ function renderInfo() {
       if (key === 'recentChanges') values = recentChanges(si.recentChanges);
       if (key === 'plugins' && values) values = pluginRows(values);
       if (key === 'host' && values) values = renameKeys(values, { 'Physical memory': 'Total RAM' }); // older recordings
-      if (key === 'systemProperties' && values) values = withoutKeys(values, SHOWN_ELSEWHERE);
+      if (key === 'host' && values && si.cluster?.['Joget node name']) values = withoutKeys(values, ['Node']);
+      if (key === 'license' && values) values = withoutKeys(values, LICENSE_SHOWN_ELSEWHERE);
+      if (key === 'systemProperties' && values) values = withoutKeys(values, [...SHOWN_ELSEWHERE, ...setByArguments(si.java?.Arguments, values)]);
       if (!values || !Object.keys(values).length) continue;
       const list = kv(infoOrder(key, values));
       list.classList.add('multiline');
@@ -1463,8 +1462,23 @@ function pluginRows(plugins) {
   return Object.fromEntries(Object.entries(plugins).map(([jar, v]) => [jar, String(v).replace(' (check the Joget log)', '')]));
 }
 
-// System properties also in the Java and Host sections (Enterprise's SysInfo adds them)
-const SHOWN_ELSEWHERE = ['platform.jvm.total', 'platform.jvm.max', 'platform.jvm.processors'];
+// System properties also in the Joget, Host, Cluster and Java sections (Enterprise's SysInfo adds the platform.* ones)
+const SHOWN_ELSEWHERE = ['platform.jvm.total', 'platform.jvm.max', 'platform.jvm.processors', 'platform.jvm.used',
+  'wflow.name', 'os.name', 'os.version', 'os.arch', 'java.version', 'java.runtime.version', 'java.vm.name',
+  'java.vm.vendor', 'user.timezone'];
+
+// License keys also in the Joget and Database sections
+const LICENSE_SHOWN_ELSEWHERE = ['platform.version', 'platform.db.profile', 'platform.db.jdbc.driver'];
+
+// System properties a -D argument sets to the same value (the last -D of a name wins, as in Java)
+function setByArguments(args, props) {
+  const set = {};
+  for (const line of String(args || '').split('\n')) {
+    const m = line.match(/^-D([^=]+)=(.*)$/);
+    if (m) set[m[1]] = m[2];
+  }
+  return Object.keys(set).filter((k) => String(props[k]) === set[k]);
+}
 
 function renameKeys(obj, names) {
   return Object.fromEntries(Object.entries(obj).map(([k, v]) => [names[k] || k, v]));
@@ -1488,7 +1502,7 @@ function nodesServed(log) {
   const nodes = Object.keys(counts).sort();
   const list = nodes.map((n) => `${n}: ${counts[n]} requests`).join('\n');
   return {
-    'Recorded requests served by': list,
+    'Recorded requests served by': nodes.length > 1 ? list : undefined, // one node: Sticky sessions says it
     'Sticky sessions': nodes.length === 1
       ? `Yes: all ${reqs.length} requests on ${nodes[0]}`
       : `⚠ No: the tab's requests moved between ${nodes.length} nodes ${switches} times. Check the load balancer's sticky sessions (or a node failed over).`,
@@ -1550,7 +1564,7 @@ function renderApps() {
 function appBlock(a) {
   const d = el('details', 'app');
   const summary = el('summary');
-  summary.append(el('strong', null, a.name ? `${a.name} (${a.id})` : a.id), a.version != null ? ` v${a.version}` : '');
+  summary.append(el('strong', null, a.name || a.id)); // id and version are in the rows below
   const ms = inUseMs(a.id);
   summary.append(el('span', 'app-badge', `${a.requests} request${a.requests === 1 ? '' : 's'}${ms ? ` · ${fmt(ms)} in use` : ''}`));
   if (a.state === 'saved' && a.file && appFileUrl) {
@@ -1566,8 +1580,6 @@ function appBlock(a) {
     'Version': a.version != null ? `${a.version}${a.published ? ' (published)' : ' (not published)'}` : undefined,
     'Version in the URLs': a.urlVersion,
     'Last modified': a.modified && new Date(a.modified).toLocaleString(),
-    'Requests in the recording': a.requests,
-    'Time in use': ms ? fmt(ms) : undefined,
     'Size': a.bytes != null ? `${Math.max(1, Math.round(a.bytes / 1024))} KB` : undefined,
     'Not exported': a.state !== 'saved' ? a.reason || a.state : undefined,
     'Sample data': sample?.error ? `could not be added: ${sample.error}`
