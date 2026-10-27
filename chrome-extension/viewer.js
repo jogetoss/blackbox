@@ -1490,7 +1490,7 @@ function infoOrder(group, obj) {
 let appFileUrl = null;
 
 // The apps the recording used, exported at upload (plugin page and downloaded HTML; the .jwa files only on the server).
-// Apps with problems first and open, each problem a link to its moment; the others folded to one line.
+// One folded block per app, apps with problems first; apps not exported are one grey line.
 function renderApps() {
   const page = $('appsPage');
   if (!page) return;
@@ -1502,8 +1502,7 @@ function renderApps() {
   const rest = all.filter((a) => !probs(a).length && a.state === 'saved');
   const notExported = all.filter((a) => !probs(a).length && a.state !== 'saved');
   const used = all.length;
-  page.append(el('p', 'apps-head', `${used} app${used === 1 ? '' : 's'} used · `
-    + (withProblems.length ? `⚠ ${withProblems.length} with problems` : 'no problems found in them')));
+  page.append(el('p', 'apps-head', `${used} app${used === 1 ? '' : 's'} used`));
   const when = current.apps.exportedAt ? new Date(current.apps.exportedAt).toLocaleString() : '';
   page.append(el('p', 'note', `Exported${when ? ` ${when}` : ''} with Joget's own app export: the app definition only, `
     + 'no form data, plugins or groups. Import it on a test server to reproduce the issue.'

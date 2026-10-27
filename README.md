@@ -109,7 +109,7 @@ The extension sends the recorded requests and console errors with `recording-sto
 **Delete system logs not uploaded after (days)**. Without a system log capture (setting off, or the server could not be
 reached when recording started), the export runs at upload instead, with the choices saved with the recording.
 
-The **App** tab starts with how many apps were used and how many had problems. Apps with problems come first; each app
+The **App** tab starts with how many apps were used. Apps with problems come first; each app
 is folded to its requests, time in use and **Download .jwa**, and opens to its version, sample data mode, the captured
 tables with their rows, and its processes. Errors are in the Console, Network and System logs tabs (**App** filter).
 Apps not exported are one grey line. The recordings list shows the app names under the
