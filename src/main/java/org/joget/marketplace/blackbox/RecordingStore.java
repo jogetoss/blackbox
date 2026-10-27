@@ -309,7 +309,7 @@ public class RecordingStore {
         }
     }
 
-    private static byte[] readLimited(InputStream in, long maxBytes) throws IOException, InvalidUpload {
+    static byte[] readLimited(InputStream in, long maxBytes) throws IOException, InvalidUpload {
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         byte[] buf = new byte[64 * 1024];
         long size = 0;

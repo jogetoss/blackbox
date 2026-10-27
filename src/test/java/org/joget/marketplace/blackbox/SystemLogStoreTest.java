@@ -87,6 +87,35 @@ public class SystemLogStoreTest {
     }
 
     @Test
+    public void appExportAtStopMovesWithTheAttach() throws Exception {
+        assertTrue(store.start(ID, "admin", 1024, DAY));
+        lines("node-a", "{\"ts\":200,\"kind\":\"log\",\"level\":\"INFO\",\"message\":\"b\"}",
+                "{\"ts\":100,\"kind\":\"request\",\"method\":\"GET\",\"url\":\"/jw/web/x\",\"status\":200}");
+        assertTrue(store.stop(ID, "admin"));
+
+        // What the export at stop reads: the lines so far, nothing moved
+        Path lines = root.resolve("lines.json");
+        store.writeLines(ID, lines);
+        JSONArray entries = new JSONObject(new String(Files.readAllBytes(lines), StandardCharsets.UTF_8)).getJSONArray("entries");
+        assertEquals(2, entries.length());
+        assertEquals(100, entries.getJSONObject(0).getLong("ts"));
+        assertTrue(Files.exists(store.nodeFile(ID, "node-a")));
+
+        assertTrue(store.put(ID, "appExport", new JSONObject().put("state", "done")));
+        assertEquals("done", store.readMeta(ID).getJSONObject("appExport").getString("state"));
+        assertFalse("no such capture", store.put("1f8fad5b-d9cb-469f-a165-70867728950e", "appExport", "x"));
+
+        Path app = Files.createDirectories(store.dir(ID).resolve(AppExport.DIR));
+        Files.write(app.resolve("crm-3.jwa"), new byte[] {1});
+        Files.write(app.resolve(AppExport.LIST), "{}".getBytes(StandardCharsets.UTF_8));
+        Path rec = Files.createDirectories(root.resolve("rec"));
+        assertNotNull(store.attach(ID, "admin", rec.resolve(SystemLogStore.FILE)));
+        assertTrue(Files.isRegularFile(rec.resolve(AppExport.DIR).resolve("crm-3.jwa")));
+        assertNotNull(AppExport.list(rec));
+        assertFalse(Files.exists(app.resolve("crm-3.jwa")));
+    }
+
+    @Test
     public void onlyTheOwnerCanUseACapture() throws Exception {
         assertTrue(store.start(ID, "alice", 1024, DAY));
         assertFalse(store.start(ID, "bob", 1024, DAY));

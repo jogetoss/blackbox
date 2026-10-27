@@ -5,7 +5,7 @@
 // The video is recorded by recorder.html, not an offscreen document: a chooseDesktopMedia
 // stream id can only be opened by the page that showed the picker.
 
-importScripts('idb.js', 'report.js'); // crash safety: recoverPartials()
+importScripts('idb.js', 'report.js', 'quick.js'); // crash safety: recoverPartials(); quick settings
 
 const MAX_BODY_CHARS = 1024 * 1024; // keep at most 1 MB of text per response body
 const BODY_TYPES = new Set(['XHR', 'Fetch', 'Document', 'EventSource', 'Other']);
@@ -124,7 +124,9 @@ async function startSystemLog(tabId) {
   const id = crypto.randomUUID();
   let slowMs; // the server's "slow" (Glowroot's slow threshold) for the Recordings page's slow count
   try {
-    const res = await postAction(uploadUrl, 'recording-start', id);
+    // Quick settings can turn off the plugin's all-server logs and Glowroot data for this recording
+    const q = await Quick.get();
+    const res = await postAction(uploadUrl, 'recording-start', id, { allServer: String(q.allServer), glowrootData: String(q.glowrootData) });
     const body = await res.json().catch(() => null);
     slowMs = body?.systemLog?.slowThresholdMs;
     if (!res.ok) {
@@ -150,16 +152,21 @@ async function startSystemLog(tabId) {
   return { status: 'on', id, server: origin, uploadUrl, slowMs };
 }
 
+function stopTagging() {
+  return chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [SYSTEM_LOG_RULE] }).catch(() => {});
+}
+
 // Stops tagging requests and tells the server the capture is over (its lines stay there until the upload).
+// A normal stop is sent by the recorder instead, with what the server needs to export the apps (stopOnServer).
 async function stopSystemLog(systemLog) {
-  await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [SYSTEM_LOG_RULE] }).catch(() => {});
+  await stopTagging();
   if (!systemLog?.id) return;
   await postAction(systemLog.uploadUrl, 'recording-stop', systemLog.id)
     .catch(() => {}); // the server also stops capturing once the id goes quiet
 }
 
-function postAction(uploadUrl, action, id) {
-  return fetch(uploadUrl + '?' + new URLSearchParams({ action, id }), { method: 'POST', credentials: 'include' });
+function postAction(uploadUrl, action, id, params) {
+  return fetch(uploadUrl + '?' + new URLSearchParams({ action, id, ...params }), { method: 'POST', credentials: 'include' });
 }
 
 async function stop(reason) {
@@ -173,8 +180,13 @@ async function stop(reason) {
     return null;
   }
   await chrome.debugger.detach({ tabId: rec.tabId }).catch(() => {});
-  await stopSystemLog(rec.systemLog);
-  const res = await toRecorder({ type: 'stop', reason });
+  await stopTagging();
+  let res;
+  try {
+    res = await toRecorder({ type: 'stop', reason });
+  } finally {
+    if (!res?.stopSent) await stopSystemLog(rec.systemLog); // the recorder had nothing to save, or is gone
+  }
   if (res?.error) throw new Error(res.error);
   return res;
 }

@@ -16,6 +16,14 @@
     #systemLog { margin-top: 8px; color: var(--warn); overflow-wrap: anywhere; }
     #error { margin-top: 8px; color: var(--danger); white-space: pre-wrap; }
     #viewer, #settings { display: block; margin-top: 10px; }
+    #quick { margin: 10px 0 0; padding: 6px 8px 8px; border: 1px solid var(--line); border-radius: 6px; }
+    #quick legend { padding: 0 4px; color: var(--muted); }
+    #quick label { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+    #quick label input { margin: 0; }
+    #quick .sub { margin-left: 18px; }
+    #quick .sub2 { margin-left: 36px; }
+    #qRealWarn { margin: 2px 0 0 36px; color: var(--warn); }
+    #qNote { margin-top: 4px; color: var(--muted); }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -26,12 +34,30 @@
     <button data-mode="window" title="Pick a window; pick a Chrome window to get the URL bar">Record a window</button>
     <button data-mode="screen" title="Pick a screen">Record the screen</button>
   </div>
+  <!-- Quick settings for the next recording: sound is this browser's; the rest the server offers (BlackBox plugin
+       settings and this user's rights) and can only turn a setting off -->
+  <fieldset id="quick">
+    <legend>Next recording</legend>
+    <label title="The sound of the tab you start from, also when you record a window or the screen"><input type="checkbox" id="qPage"> Page sound</label>
+    <label title="To talk through the problem while recording"><input type="checkbox" id="qMic"> Microphone</label>
+    <div id="qServer" hidden>
+      <label id="qAppsRow" hidden title="When the recording stops, the server exports the apps it used (.jwa), so support can import them"><input type="checkbox" id="qApps"> Export the apps used</label>
+      <label id="qSampleRow" class="sub" hidden title="The records you opened or saved, added to the exported apps with fake values of the same shape"><input type="checkbox" id="qSample"> Sample form data</label>
+      <label id="qRealRow" class="sub2" hidden title="Real values instead of masked ones. Columns the server marks as sensitive stay masked."><input type="checkbox" id="qReal"> Real values</label>
+      <div id="qRealWarn" hidden>Customer data: share the recording only with people who may see it.</div>
+      <label id="qAllServerRow" hidden title="Every log line the server writes while recording (scheduler jobs, other users), not only this tab's"><input type="checkbox" id="qAllServer"> All server log lines</label>
+      <label id="qGlowrootRow" hidden title="Glowroot's data for the recording's time, about a minute after it stops"><input type="checkbox" id="qGlowroot"> Glowroot data</label>
+    </div>
+    <div id="qNote" hidden></div>
+  </fieldset>
   <button id="stop" hidden>Stop &amp; save</button>
   <div id="status"></div>
   <div id="systemLog" hidden></div>
   <a href="#" id="viewer">Recordings</a>
   <a href="#" id="settings">Settings</a>
   <div id="error"></div>
+  <script src="server.js"></script>
+  <script src="quick.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

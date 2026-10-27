@@ -21,7 +21,7 @@ server can accept it in place of a CSRF token.
 
 | Request | Body | Success response (JSON) |
 |---|---|---|
-| `GET ?action=me` | — | `{"user":{"name":"…"},"canUpload":true,"maxSizeMb":500}` |
+| `GET ?action=me` | — | `{"user":{"name":"…"},"canUpload":true,"maxSizeMb":500}` (the plugin adds `sampleData` and `options`, see "App export") |
 | `POST ?action=create&title=…&notes=…` | `session.json` (`application/json`) | `{"id":"…","url":"/path/to/view"}` — `url` optional |
 | `POST ?action=video&id=<id>` | `recording.webm` (`video/webm`) | any JSON object |
 
@@ -63,7 +63,8 @@ The extension keeps recordings in IndexedDB (newest 10), or reads them from a li
 2. `SystemLogFilter` marks the threads of those requests; an appender on log4j's root logger keeps their log lines (what
    `joget.log` would show, level info and up) plus one entry per request (method, URL, status, time). They go to
    `<wflow>/blackbox/pending/<id>/system-log.<node>.jsonl`, flushed every 2 seconds.
-3. Stop removes the rule and calls `recording-stop`. The lines wait on the server until the recording is uploaded;
+3. Stop removes the rule; the recorder calls `recording-stop` with the app export's input (see "App export"), or the
+   service worker calls it plainly when the recorder can't. The lines wait on the server until the recording is uploaded;
    `session.json` carries the id (`recording.systemLog`), and `create` moves them into the recording as
    `system-log.json`. Only the user who started the capture can attach it. Captures never uploaded are deleted after
    the keep period (checked every hour).
@@ -181,14 +182,29 @@ starts at `recording-start` (or the node's first recorded request) and ends at s
 
 ## App export
 
-`create` (after the system log is attached) runs `AppExport`: `hits` reads `session.json` (each request with its page:
+**When:** at stop. The recorder builds `session.json`, then POSTs `recording-stop` with a JSON body of its network
+entries (`t`, `url`, `type`, `status`, `failed`, `postData`, the `referer` header) and console errors, plus `apps=false`
+or `sampleData=none|masked|real` from `recording.options` (the popup's quick settings, `quick.js`). `exportAtStop`
+writes them and the capture's lines so far (`SystemLogStore.writeLines`; lines other nodes haven't flushed are missing)
+next to the capture, exports into the pending folder's `app/`, and keeps the state in the capture's `meta.json` as
+`appExport` (`off`, `exporting`, `done` with `saved`, `failed`). The recorder waits up to 150 s and saves the state in
+`recording.systemLog.appExport`. `create` waits up to 120 s while it is `exporting`, then `attach` moves `app/` into the
+recording and `meta.apps` takes `saved`; `off` exports nothing. With no export at stop (no capture, the stop's body
+never arrived, or `failed`), `create` exports as below from the uploaded files, taking `apps` / `sampleData` from the
+upload (the upload form, or `recording.options` for automatic uploads).
+
+`me.options` says what the popup may offer: `systemLog`, `apps`, `sample` (also needs the server data of one's own
+recordings), `real`, `allServer` and `glowrootData`. Each only turns a setting off: `recording-start` takes
+`allServer=false` and `glowrootData=false`.
+
+The export (`exportApps`) runs `AppExport`: `hits` reads `session.json` (each request with its page:
 a document's own URL, else its Referer; failed or 4xx/5xx = a problem; console errors = a problem on the page shown
 then) and the system log (requests, 5xx = a problem; error lines = a problem on their request; other threads skipped),
 URL-decoded. `find` matches them against Joget's app URL patterns (`appOf`; app icons and screenshots name none). The
 browser's requests name the apps; system log hits only add to those (it also gets other tabs' service worker
 requests, which carry no tab id), unless the browser named none. App Center is dropped unless it had problems or was
 alone. Apps rank by problems, then requests; the top `maxApps` (default 5, 0 = all) are exported with
-`AppService.exportApp` (reads the upload request's parameters, which carry no `tablenames`, `usergroups` or
+`AppService.exportApp` (reads the current request's parameters, which carry no `tablenames`, `usergroups` or
 `exportplugins`, so no data, groups or plugins go in). `apps.json` records each app's state: `saved`, `missing`,
 `failed` (with the reason) or `skipped` (beyond the cap), and `problems`. `meta.apps` keeps `[{id, name, version,
 problems}]` for the list; `list` and `meta` drop it for users who may not see server data. `appfile` serves only names
@@ -199,9 +215,9 @@ App filter and the App tab's problem lists, so the lane works for local recordin
 
 ### Sample data
 
-`create` takes `sampleData=none|masked|real` (missing: masked); `me` returns `sampleData: {enabled, real}` for the
-upload form. `AppExport.save` calls an `AfterExport` hook per saved `.jwa`: `SampleData.build` with one `Masker` (random
-HMAC key per upload, so fakes are stable within a recording and differ between them) and one `IdMap` for all apps of
+`recording-stop` and `create` take `sampleData=none|masked|real` (missing: masked); `me` returns `sampleData: {enabled,
+real}` for the upload form. `AppExport.save` calls an `AfterExport` hook per saved `.jwa`: `SampleData.build` with one
+`Masker` (random HMAC key per export, so fakes are stable within a recording and differ between them) and one `IdMap` for all apps of
 the recording, then `SampleData.addTo` rewrites the `.jwa` with `data/<table>.json` (`FormUtil.formRowSetToJson(rows,
 true)`, the format `AppService.importFormData` reads) and `app_formuploads/<table>/<newId>/<file>`. Data comes from
 `FormDataDao` (`load`, `find` with `e.customProperties.<col> IN (...)`, newest by `dateModified`) and
@@ -243,14 +259,15 @@ in its rows (activity ids resolved with `getActivityById`), kept when the proces
 
 | Part | Job |
 |---|---|
-| `popup.js` | Record this tab / a window / the screen, Stop; gets the tab-capture stream id (the video for "this tab", the tab's sound for a window or the screen); system logs warning |
-| `recorder.js` | Shows the `desktopCapture` picker (window/screen) or uses the tab stream, mixes page sound and microphone into one track, records with `MediaRecorder`, saves progress every 5 s, keeps the recording in IndexedDB |
+| `popup.js` | Record this tab / a window / the screen, Stop; gets the tab-capture stream id (the video for "this tab", the tab's sound for a window or the screen); system logs warning; quick settings (from `me.options`, cached as `quickOffer`) |
+| `recorder.js` | Shows the `desktopCapture` picker (window/screen) or uses the tab stream, mixes page sound and microphone into one track, records with `MediaRecorder`, saves progress every 5 s, sends `recording-stop` with the app export's input, keeps the recording in IndexedDB |
 | `background.js` | Attaches the debugger (Network, Runtime, Log, Page), fetches response bodies, forwards events to the recorder; starts/stops system log capture; REC badge |
 | `viewer.js` | Replay UI shared by every replay page: video + synced lists, timeline, request details, Features drawer |
 | `recordings.js` | Recordings page: list with Browser issues; batch Upload, Download ZIP, Delete for ticked rows |
 | `actions.js` | Upload (with its form), Move to folder, Download ZIP and Delete of one recording; links in messages |
 | `replay.js` | Replay page: loads the recording named in the address, its status bar, ⚠ Upload and the fix box |
 | `report.js` | Builds `session.json`; recovers recordings interrupted by a crash |
+| `quick.js` | Quick settings (`chrome.storage.local` `quick`): the popup's per-recording choices, as `recording.options` and the app export parameters |
 | `store.js` | Kept recordings + linked folder, row list, loading a recording |
 | `server.js` | Calls the Upload endpoint with the browser's cookies |
 | `zip.js` | Reads and writes recording ZIPs (no library: `CompressionStream` / `DecompressionStream`) |

@@ -4,7 +4,8 @@ const Actions = (() => {
   const $ = (id) => document.getElementById(id);
   let settings = { uploadUrl: '', viewUrl: '' }; // in memory so Upload can ask for permission inside the click
   const created = {};        // row key -> { id, url } on the server, so a retry after a failed video upload doesn't duplicate
-  const form = { row: null, onUploaded: async () => {}, onChange: () => {} };
+  // ready: the app export choices are in the form (sampleOptions); options: the ones saved with the recording
+  const form = { row: null, onUploaded: async () => {}, onChange: () => {}, ready: Promise.resolve(), options: null };
 
   Server.getSettings().then((s) => { settings = s; });
   chrome.storage.onChanged.addListener(async (changes) => {
@@ -19,6 +20,10 @@ const Actions = (() => {
     form.onChange = onChange || (() => {});
     $('upCancel').onclick = () => closeUpload();
     $('upSend').onclick = () => send();
+    $('upApps').onchange = $('upSample').onchange = () => {
+      $('upSample').disabled = !$('upApps').checked;
+      $('upReal').disabled = !$('upApps').checked || !$('upSample').checked;
+    };
   }
 
   function showUpload(row) {
@@ -27,29 +32,46 @@ const Actions = (() => {
     $('upHeading').textContent = 'Upload: ' + (title || 'recording');
     $('upTitle').value = title;
     $('upNotes').value = '';
-    $('upSample').checked = true;
-    $('upReal').checked = false;
-    $('upSampleRow').hidden = true;
-    $('upRealRow').hidden = true;
-    sampleOptions().catch(() => { /* not reachable or not logged in: the upload says so */ });
+    for (const id of ['upAtStop', 'upAppsRow', 'upSampleRow', 'upRealRow']) $(id).hidden = true;
+    form.options = null;
+    form.ready = sampleOptions(row).catch(() => { /* not reachable or not logged in: the upload says so */ });
     status('');
     $('uploadBox').hidden = false;
     $('upTitle').focus();
     form.onChange();
   }
 
-  // The sample data choices the server offers (its BlackBox settings and this user's rights)
-  async function sampleOptions() {
+  // The app export choices: done at stop (the server kept them: say so), else ticked as chosen in the popup when the
+  // recording started, among those the server offers (its BlackBox settings and this user's rights)
+  async function sampleOptions(row) {
+    const rec = await Store.load(row.kind, row.id);
+    const recording = rec?.report?.recording;
+    const atStop = recording?.systemLog?.appExport;
+    if (atStop && atStop.state !== 'failed') {
+      $('upAtStop').textContent = atStop.state === 'off' ? 'Apps not exported: turned off for this recording.'
+        : `Apps exported when the recording stopped (${atStop.apps || 0}), sample data: ${atStop.sampleData || 'none'}.`;
+      $('upAtStop').hidden = false;
+      return;
+    }
+    const o = form.options = recording?.options || null;
+    $('upApps').checked = o?.apps !== false;
+    $('upSample').checked = !o || o.sampleData !== 'none';
+    $('upReal').checked = o?.sampleData === 'real';
+    $('upApps').onchange?.();
     if (!settings.uploadUrl) settings = await Server.getSettings();
     if (!settings.uploadUrl || !(await Server.hasPermission(settings.uploadUrl))) return;
     const me = await Server.me(settings.uploadUrl);
+    $('upAppsRow').hidden = !me.options?.apps;
     $('upSampleRow').hidden = !me.sampleData?.enabled;
     $('upRealRow').hidden = !me.sampleData?.enabled || !me.sampleData?.real;
   }
 
-  // The upload's sampleData parameter, or nothing when the form didn't offer the choice (the server's default: masked)
+  // The upload's apps / sampleData parameters: from the form when it offered the choice, else as saved with the
+  // recording (nothing saved: the server's defaults). Exported at stop: the server ignores them.
   function sampleChoice() {
-    if ($('upSampleRow').hidden) return {};
+    if ($('upAppsRow').hidden && $('upSampleRow').hidden) return Quick.exportParams(form.options);
+    if (!$('upAppsRow').hidden && !$('upApps').checked) return { apps: 'false' };
+    if ($('upSampleRow').hidden) return {}; // the server adds none
     if (!$('upSample').checked) return { sampleData: 'none' };
     return { sampleData: !$('upRealRow').hidden && $('upReal').checked ? 'real' : 'masked' };
   }
@@ -146,6 +168,7 @@ const Actions = (() => {
       }
       const hasVideo = rec.video instanceof Blob && rec.video.size > 0;
       if (!created[key]) {
+        await form.ready; // the choices saved with the recording are in the form, also when nobody clicks Send
         status('Uploading session…');
         const meta = await Server.request(base, 'POST', { action: 'create', title: $('upTitle').value, notes: $('upNotes').value, ...sampleChoice() },
           JSON.stringify(rec.report), 'application/json', (d, t) => { $('upProgress').value = (hasVideo ? 0.05 : 1) * d / t; });

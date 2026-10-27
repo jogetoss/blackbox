@@ -23,6 +23,10 @@ rebuild it after changing `chrome-extension/viewer.js` or `viewer.css`.
 - **Uploading:** in the extension's Settings, set **Upload URL** to `<context>/api/blackbox`. Uploads use your Joget
   login in that browser. When a recording stops and you are logged in, the extension uploads it and opens this replay
   page by itself.
+- **Quick settings:** the extension's popup sets the next recording's choices: page sound and microphone, and, as far
+  as the settings below and the user's rights allow, **Export the apps used**, **Sample form data**, **Real values**,
+  **All server log lines** and **Glowroot data**. They can only turn a setting off for one recording; the server
+  checks each again. The popup remembers them, and the recording keeps them, so the automatic upload uses them too.
 - **Downloads:** **Download ZIP** (to import on another server or in the extension) and **Download HTML** (one file
   that replays anywhere, no Joget needed). Both include the server data only for users allowed to see it, so share
   them only with people who may see it.
@@ -50,11 +54,11 @@ The permission settings take a Joget permission plugin (user, group, role, depar
 | Copy Glowroot data for the recording | No | Needs Glowroot 0.14 |
 | Glowroot address | empty | Empty = this Joget's own Glowroot agent (usually `http://localhost:4000`) |
 | Recent changes period (days) | 7 | The Info tab's first section |
-| Export the apps used in the recording | Yes | At upload; shown like server data |
+| Export the apps used in the recording | Yes | When the recording stops; shown like server data |
 | Add sample form data to the exported apps | Yes (masked) | Only for uploaders who may see the recording's server data |
 | Newest rows per table when the recording touched none | 20 | |
 | Record ids in sample data | New unique ids | Importing never overwrites existing rows |
-| Allow real values in sample data | No | Then "Who can view system logs" users may tick **Use real values** at upload |
+| Allow real values in sample data | No | Then "Who can view system logs" users may tick **Real values** in the popup |
 | Always-masked column names | password, ic, email, phone, address… | Words in column names; masked even with real values |
 
 ## Server data
@@ -91,7 +95,7 @@ JVM arguments and system properties, which can include secrets passed as `-D` op
 
 ## App export
 
-At upload, BlackBox finds the Joget apps the recorded tab used (userview, embed, form/datalist, App Composer and JSON
+When the recording stops, BlackBox finds the Joget apps the recorded tab used (userview, embed, form/datalist, App Composer and JSON
 API paths, `appId`/`appVersion` parameters, process ids like `app#2#process`) and exports them with Joget's own app
 export (`.jwa`: the definition only, no form data, plugins or groups). Apps with problems come first (failed requests,
 server errors, console errors on their pages), then the most used; **Most apps to export** (default 5, 0 = no limit)
@@ -99,6 +103,12 @@ caps them. App icons and screenshots don't count (App Center loads them for ever
 exported only when it had problems or was the only app. Apps come from the browser's requests; the system log only adds
 to them, since it can also hold other tabs' service worker requests. The version is the one a URL names, else the
 published one, else the latest.
+
+The export, with its sample and process data, shows the apps and records **as they were when the recording stopped**.
+The extension sends the recorded requests and console errors with `recording-stop` and waits for the export (up to
+150 s), then the upload adds it to the recording. Exported but never uploaded, it is deleted with the system logs after
+**Delete system logs not uploaded after (days)**. Without a system log capture (setting off, or the server could not be
+reached when recording started), the export runs at upload instead, with the choices saved with the recording.
 
 The **App** tab starts with how many apps were used and how many had problems. Apps with problems are open on top, each
 problem a link that seeks the video and opens it in its tab; the others are folded to their requests and time in use;
@@ -129,7 +139,8 @@ yes/no/true/false, numbers of up to 5 digits, UUIDs and process ids. Dates keep 
 `user2`… in every column. Uploaded files become small placeholder files with masked names. Columns named like a
 sensitive field (setting) are always masked.
 
-**Real values:** only when the admin allows them and the uploader is in **Who can view system logs**, ticked per upload.
+**Real values:** only when the admin allows them and the uploader is in **Who can view system logs**, ticked per
+recording in the popup.
 Sensitive columns stay masked; files over 5 MB (50 MB per app) become placeholders.
 
 **Record ids** get new unique ids everywhere they appear, so importing never overwrites rows of the same id. The App tab
@@ -141,8 +152,10 @@ state, requester, dates, workflow variables, and each activity with its state, a
 the same way (same user pseudonyms; variable values masked unless found in the app definition). At most 20 processes
 per app and 100 activities each; processes already archived out of the running tables are not found.
 
-The extension's upload form offers **Include sample form data (masked)** and, where allowed, **Use real values**.
-Automatic uploads use the server's default (masked).
+The popup's **Sample form data** and **Real values** pick the sample per recording (default: masked). When the export
+ran at stop, the upload form says what it made; otherwise it offers **Export the apps used**, **Include sample form data
+(masked)** and, where allowed, **Use real values**, ticked as chosen in the popup. Automatic uploads use the popup's
+choices.
 
 ## Storage
 

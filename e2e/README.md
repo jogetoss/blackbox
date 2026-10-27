@@ -30,6 +30,9 @@ BB_HEADED=1 npx playwright test  # watch it in a window
   `host_permissions`, so uploads don't ask for host access (Playwright can't click Chrome's permission dialog).
 - Pages call the extension's own code (`idbAddRecording`, `Store`, `Actions`) through `page.evaluate`, since a real
   recording needs Chrome's screen picker.
+- `tests/quick-settings.spec.js`: the popup's quick settings (shown as `me.options` allows, remembered), the app export
+  at `recording-stop` kept by the upload, apps turned off at stop, and the automatic upload sending the choices saved
+  with the recording (needs "Capture system logs" on).
 - `tests/upload-form.spec.js`: the sample data choice on the upload form, the `sampleData` parameter it sends, and the
   App data the server builds (needs j8213's iService app).
 

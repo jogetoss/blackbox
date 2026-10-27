@@ -42,7 +42,64 @@ function linkify(text) {
   return parts;
 }
 
+// ---------- quick settings ----------
+// Sound: this browser's settings (the same as in Settings). Server options: only those the server offers
+// (me.options), remembered as quickOffer so they show at once the next time the popup opens.
+
+const QUICK_BOXES = [['qApps', 'apps'], ['qSample', 'sample'], ['qReal', 'real'], ['qAllServer', 'allServer'], ['qGlowroot', 'glowrootData']];
+let offer = null;
+
+async function initQuick() {
+  const s = await chrome.storage.local.get(['recordPageAudio', 'recordMic', 'quickOffer']);
+  $('qPage').checked = s.recordPageAudio !== false; // on unless turned off
+  $('qMic').checked = !!s.recordMic;
+  $('qPage').onchange = () => chrome.storage.local.set({ recordPageAudio: $('qPage').checked });
+  $('qMic').onchange = () => chrome.storage.local.set({ recordMic: $('qMic').checked });
+  const q = await Quick.get();
+  for (const [box, key] of QUICK_BOXES) {
+    $(box).checked = q[key];
+    $(box).onchange = () => { Quick.set({ [key]: $(box).checked }); showQuick(offer); };
+  }
+  showQuick(s.quickOffer || null);
+  const fresh = await serverOffer().catch(() => undefined); // not reachable: keep what was known
+  if (fresh !== undefined) {
+    showQuick(fresh);
+    await chrome.storage.local.set({ quickOffer: fresh });
+  }
+}
+
+// The server's me.options, or null when there is no server to ask or the user isn't logged in there
+async function serverOffer() {
+  const { uploadUrl } = await Server.getSettings();
+  if (!uploadUrl || !(await Server.hasPermission(uploadUrl))) return null;
+  try {
+    return (await Server.me(uploadUrl)).options || null;
+  } catch (e) {
+    if (e.status === 401) {
+      $('qNote').textContent = `Log in to ${new URL(uploadUrl).origin} for the server's options.`;
+      $('qNote').hidden = false;
+      return null;
+    }
+    throw e;
+  }
+}
+
+// Sample data needs the app export, real values need sample data
+function showQuick(o) {
+  offer = o;
+  $('qAppsRow').hidden = !o?.apps;
+  $('qSampleRow').hidden = !o?.sample;
+  $('qRealRow').hidden = !o?.real;
+  $('qSample').disabled = !$('qApps').checked;
+  $('qReal').disabled = !$('qApps').checked || !$('qSample').checked;
+  $('qRealWarn').hidden = $('qRealRow').hidden || $('qReal').disabled || !$('qReal').checked;
+  $('qAllServerRow').hidden = !o?.allServer;
+  $('qGlowrootRow').hidden = !o?.glowrootData;
+  $('qServer').hidden = !(o?.apps || o?.allServer || o?.glowrootData);
+}
+
 function render(rec) {
+  $('quick').hidden = !!rec; // the choices are made: they apply from the start
   $('start').hidden = !!rec;
   $('stop').hidden = !rec;
   systemLogNote(rec).then((note) => { $('systemLog').replaceChildren(...linkify(note)); $('systemLog').hidden = !note; }, () => {});
@@ -108,3 +165,4 @@ $('settings').onclick = (e) => {
 };
 
 bg({ type: 'get-state' }).then(render, showError);
+initQuick().catch(showError);

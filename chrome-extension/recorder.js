@@ -128,6 +128,7 @@ async function pickAndStart() {
   if (res?.error) throw new Error(res.error);
   meta.tab = { url: res.url, title: res.title };
   meta.systemLog = res.systemLog; // { status, id?, server?, message? }: the plugin attaches the lines by id on upload
+  meta.options = Quick.options(await Quick.get()); // the popup's app export choices, used at stop and at upload
   meta.userAgent = navigator.userAgent;
   recId = recordingId(startedAt);
   await idbPartialPut(recId + ':meta', { ...meta, lastSavedAt: startedAt });
@@ -207,6 +208,7 @@ async function stopAndSave(reason) {
   stopInputs();
 
   const report = buildReport(meta, consoleEntries, navigations, network, stoppedAt, reason);
+  const stopSent = await stopOnServer(report);
 
   // Nothing is downloaded: the recording stays in the extension until the user uploads or downloads it.
   const id = recId;
@@ -220,7 +222,7 @@ async function stopAndSave(reason) {
     await downloadFiles(id, video, report);
     await idbPartialClear(id).catch(() => {});
     $('status').textContent = `Could not keep the recording in the extension; saved to Downloads/blackbox/${id}`;
-    return { id, downloaded: true };
+    return { id, downloaded: true, stopSent };
   }
   await idbPartialClear(id); // saved in full: the crash-safety copy is no longer needed
   // With "Open on the server when logged in" on (the default), the Replay page uploads it and opens the server's
@@ -229,7 +231,45 @@ async function stopAndSave(reason) {
   chrome.tabs.create({ url: chrome.runtime.getURL('viewer.html?' + new URLSearchParams({ id, ...(openOnServer !== false ? { upload: 'server' } : {}) })) });
   $('status').textContent = 'Saved.';
   setTimeout(() => window.close(), 500);
-  return { id };
+  return { id, stopSent };
+}
+
+// The server waits this long for the app export at stop; the upload then waits for it on the server
+const STOP_WAIT_MS = 150000;
+
+// Ends the server's system log capture and sends what it needs to export the apps the recording used, as they are
+// now, with their sample and process data (the requests and console errors, as in session.json). Waits for it, so the
+// upload that follows finds the export done. Returns false when the server never got the stop (the service worker
+// then sends a plain one). report.recording.systemLog.appExport says what the server did.
+async function stopOnServer(report) {
+  const log = meta.systemLog;
+  if (log?.status !== 'on' || !log.uploadUrl) return false;
+  $('status').textContent = 'Saving… the server is exporting the apps used';
+  const body = {
+    network: report.network.map((n) => ({
+      t: n.t, url: n.url, type: n.type, status: n.status, failed: n.failed, postData: n.postData,
+      requestHeaders: { referer: Object.entries(n.requestHeaders || {}).find(([k]) => k.toLowerCase() === 'referer')?.[1] },
+    })),
+    console: report.console.filter((c) => c.level === 'error').map((c) => ({ t: c.t, level: c.level })),
+  };
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), STOP_WAIT_MS);
+  try {
+    const res = await fetch(log.uploadUrl + '?' + new URLSearchParams({ action: 'recording-stop', id: log.id, ...Quick.exportParams(meta.options) }),
+      { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: abort.signal });
+    const out = await res.json().catch(() => null);
+    const e = out?.appExport;
+    if (e && report.recording.systemLog) {
+      report.recording.systemLog.appExport = { state: e.state, sampleData: e.sampleData, apps: e.saved?.length };
+    }
+    return true;
+  } catch (e) {
+    // Timed out: the server has the stop and the upload waits for its export. Not sent: the service worker retries
+    console.warn('Could not stop the system log on the server:', e);
+    return e.name === 'AbortError';
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function downloadFiles(id, video, report) {

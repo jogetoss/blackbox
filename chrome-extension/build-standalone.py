@@ -26,6 +26,7 @@ parts = [
     ('  <script src="store.js"></script>\n', ''),
     ('  <script src="server.js"></script>\n', ''),
     ('  <script src="actions.js"></script>\n', ''),
+    ('  <script src="quick.js"></script>\n', ''),
     # replay.js needs the extension: the standalone file only labels where the open recording came from
     ('  <script src="replay.js"></script>\n', '''  <script>
 document.addEventListener('blackbox-files-opened', () => {

@@ -136,6 +136,53 @@ public class SystemLogStore {
         }
         Path dir = root.resolve(id);
         List<JSONObject> entries = new ArrayList<>();
+        boolean truncated = entries(dir, entries);
+        JSONArray list = new JSONArray();
+        for (JSONObject e : entries) {
+            list.put(e);
+        }
+        JSONObject summary;
+        try {
+            JSONObject body = new JSONObject()
+                    .put("startedAt", meta.optLong("startedAt"))
+                    .put("truncated", truncated)
+                    .put("entries", list);
+            if (meta.has("stoppedAt")) {
+                body.put("stoppedAt", meta.optLong("stoppedAt"));
+            }
+            Path tmp = target.resolveSibling(target.getFileName() + ".part");
+            Files.write(tmp, body.toString().getBytes(StandardCharsets.UTF_8));
+            Files.move(tmp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            summary = summary(list, truncated);
+            long now = System.currentTimeMillis();
+            meta.put("recording", target.getParent().getFileName().toString())
+                    .put("expiresAt", now + FORWARD_MS);
+            if (!meta.has("stoppedAt")) {
+                meta.put("stoppedAt", now);
+            }
+            writeMeta(id, meta);
+        } catch (JSONException e) {
+            throw new IOException(e);
+        }
+        TraceStore.moveAll(dir, target.getParent());
+        GaugeStore.moveAll(dir, target.getParent());
+        GlowrootData.moveAll(dir, target.getParent());
+        TraceStore.moveFolder(dir, target.getParent(), AppExport.DIR, name -> true); // exported at stop (BlackBoxPlugin)
+        if (Files.isRegularFile(dir.resolve(ServerInfo.FILE))) {
+            Files.move(dir.resolve(ServerInfo.FILE), target.resolveSibling(ServerInfo.FILE), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
+        try (DirectoryStream<Path> files = Files.newDirectoryStream(dir)) {
+            for (Path f : files) {
+                if (NODE_FILE.matcher(f.getFileName().toString()).matches()) {
+                    Files.deleteIfExists(f);
+                }
+            }
+        }
+        return summary;
+    }
+
+    /** Reads the node files of a capture folder into entries, sorted by time. Returns true when a node's lines were cut off. */
+    private static boolean entries(Path dir, List<JSONObject> entries) throws IOException {
         boolean truncated = false;
         try (DirectoryStream<Path> files = Files.newDirectoryStream(dir)) {
             for (Path f : files) {
@@ -170,48 +217,40 @@ public class SystemLogStore {
             }
         }
         entries.sort(Comparator.comparingLong((JSONObject e) -> e.optLong("ts")));
+        return truncated;
+    }
 
+    /**
+     * The capture's lines so far as a system-log.json body ({entries: [...]}) in target, for the app export at stop.
+     * Nothing moves: the upload still attaches the capture. Lines another node has not flushed yet are missing.
+     */
+    public void writeLines(String id, Path target) throws IOException {
+        List<JSONObject> entries = new ArrayList<>();
+        entries(root.resolve(id), entries);
         JSONArray list = new JSONArray();
         for (JSONObject e : entries) {
             list.put(e);
         }
-        JSONObject summary;
         try {
-            JSONObject body = new JSONObject()
-                    .put("startedAt", meta.optLong("startedAt"))
-                    .put("truncated", truncated)
-                    .put("entries", list);
-            if (meta.has("stoppedAt")) {
-                body.put("stoppedAt", meta.optLong("stoppedAt"));
-            }
-            Path tmp = target.resolveSibling(target.getFileName() + ".part");
-            Files.write(tmp, body.toString().getBytes(StandardCharsets.UTF_8));
-            Files.move(tmp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-            summary = summary(list, truncated);
-            long now = System.currentTimeMillis();
-            meta.put("recording", target.getParent().getFileName().toString())
-                    .put("expiresAt", now + FORWARD_MS);
-            if (!meta.has("stoppedAt")) {
-                meta.put("stoppedAt", now);
-            }
-            writeMeta(id, meta);
+            Files.write(target, new JSONObject().put("entries", list).toString().getBytes(StandardCharsets.UTF_8));
         } catch (JSONException e) {
             throw new IOException(e);
         }
-        TraceStore.moveAll(dir, target.getParent());
-        GaugeStore.moveAll(dir, target.getParent());
-        GlowrootData.moveAll(dir, target.getParent());
-        if (Files.isRegularFile(dir.resolve(ServerInfo.FILE))) {
-            Files.move(dir.resolve(ServerInfo.FILE), target.resolveSibling(ServerInfo.FILE), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    /** Sets one key of the capture's meta.json. Returns false when the capture is missing. */
+    public boolean put(String id, String key, Object value) throws IOException {
+        JSONObject meta = readMeta(id);
+        if (meta == null) {
+            return false;
         }
-        try (DirectoryStream<Path> files = Files.newDirectoryStream(dir)) {
-            for (Path f : files) {
-                if (NODE_FILE.matcher(f.getFileName().toString()).matches()) {
-                    Files.deleteIfExists(f);
-                }
-            }
+        try {
+            meta.put(key, value);
+        } catch (JSONException e) {
+            throw new IOException(e);
         }
-        return summary;
+        writeMeta(id, meta);
+        return true;
     }
 
     /**

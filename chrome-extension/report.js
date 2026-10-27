@@ -18,6 +18,7 @@ function buildReport(meta, consoleEntries, navigations, network, stoppedAt, reas
       tab: meta.tab,
       userAgent: meta.userAgent || navigator.userAgent,
       systemLog: meta.systemLog ? { status: meta.systemLog.status, id: meta.systemLog.id, server: meta.systemLog.server, message: meta.systemLog.message } : undefined,
+      options: meta.options, // { apps, sampleData: none | masked | real }: the popup's app export choices
     },
     summary: {
       console: consoleEntries.length,

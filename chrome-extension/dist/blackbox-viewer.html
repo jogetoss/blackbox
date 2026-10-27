@@ -159,6 +159,38 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 6p
   position: absolute; top: 0; bottom: 0; pointer-events: none;
   background: color-mix(in srgb, var(--accent) 18%, transparent); border: 1px solid var(--accent); border-width: 0 1px;
 }
+/* Apps lane under the timeline (viewer.js): one colour per app, by order of first appearance */
+:root { --app-0: #0072b2; --app-1: #e69f00; --app-2: #009e73; --app-3: #cc79a7; --app-4: #56b4e9; --app-5: #d55e00; }
+.lane { display: flex; flex-direction: column; gap: 3px; }
+.app-lane { position: relative; height: 22px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+.app-segs { position: absolute; inset: 0; overflow: hidden; border-radius: 5px; }
+.app-seg {
+  position: absolute; top: 0; bottom: 0; box-sizing: border-box; padding: 2px 4px 0; border-top: 3px solid var(--c);
+  border-right: 1px solid var(--bg); background: color-mix(in srgb, var(--c) 28%, var(--bg-2));
+  font-size: 11px; line-height: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--fg);
+}
+.app-seg:hover { background: color-mix(in srgb, var(--c) 45%, var(--bg-2)); }
+.app-0 { --c: var(--app-0); } .app-1 { --c: var(--app-1); } .app-2 { --c: var(--app-2); }
+.app-3 { --c: var(--app-3); } .app-4 { --c: var(--app-4); } .app-5 { --c: var(--app-5); }
+.dot.app-0, .dot.app-1, .dot.app-2, .dot.app-3, .dot.app-4, .dot.app-5 { background: var(--c); border-radius: 2px; }
+.app-filter[hidden] { display: none; }
+/* App tab: apps with problems open on top, the others folded */
+.info .apps-head { font-weight: 600; margin: 0 0 4px; }
+.info details.app { border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; margin: 8px 0; }
+.info details.app > summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.info details.app[open] > summary { margin-bottom: 8px; }
+.app-badge { margin-left: auto; color: var(--fg-2); font-size: 12px; }
+.app-badge.bad { color: var(--error); font-weight: 600; }
+.app-problems { display: flex; flex-direction: column; gap: 2px; margin-bottom: 10px; }
+.app-problems h4 { font-size: 12px; margin: 0 0 2px; color: var(--fg-2); }
+.app-problem {
+  display: grid; grid-template-columns: 52px 60px minmax(0, 1fr) max-content; gap: 8px; text-align: left;
+  font: inherit; font-size: 12px; padding: 3px 6px; background: var(--error-bg); border: 0; border-radius: 4px; cursor: pointer;
+}
+.app-problem .t { font-family: var(--mono); }
+.app-problem .text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-problem .go { color: var(--accent); }
+.app-problem:hover .go { text-decoration: underline; }
 /* Server load strip under the timeline (viewer.js) */
 .load { display: flex; flex-direction: column; gap: 3px; }
 .load-strip { height: 48px; cursor: pointer; }
@@ -273,6 +305,8 @@ header > .muted { white-space: nowrap; }
 .upload-box { display: grid; gap: 4px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--bg-2); max-width: 720px; }
 .upload-box label { font-weight: 600; margin-top: 4px; }
 .upload-box input, .upload-box textarea { font: inherit; padding: 6px 8px; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; }
+.upload-box label.check { font-weight: normal; display: flex; gap: 6px; align-items: center; }
+.upload-box label.check input { padding: 0; }
 .upload-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
 .upload-box progress { width: 100%; }
 /* Status bar under the header, the same on every replay page: where this copy is, then its actions */
@@ -321,6 +355,11 @@ button.warn { background: var(--warn-bg); color: var(--warn); border-color: var(
 .fix-url { display: grid; gap: 4px; }
 .fix-url[hidden] { display: none; }
 .fix-url input { width: 100%; box-sizing: border-box; font-family: var(--mono); }
+.info p.note { color: var(--fg-2); margin: 0 0 8px; }
+.info details.process { margin: 8px 0; }
+.info details.process summary { cursor: pointer; font-weight: 600; }
+.info details.process h4 { font-size: 12px; margin: 8px 0 2px; color: var(--fg-2); }
+.row.server.other { opacity: .6; font-style: italic; }
 </style>
 </head>
 <body>
@@ -615,16 +654,20 @@ document.addEventListener('drop', (e) => {
 // extra.traceUrl = (trace) => URL of a saved trace's full page, or null when the page is not available,
 // extra.retryTraces = async (keys) => asks the server to look again for failed traces ([] = all failed ones),
 // extra.gauges = { nodes: { name: [samples] } }: the server load during the recording (shows the Server load strip),
-// extra.serverInfo = { license, system, blackbox }: System Info at recording start (shown in the Info tab).
+// extra.serverInfo = { license, system, blackbox }: System Info at recording start (shown in the Info tab),
+// extra.apps = parsed app/apps.json: the apps exported at upload (shows the App tab),
+// extra.appFileUrl = (file) => URL of an exported .jwa, or null when the files are not available here.
 window.blackboxOpen = (videoSrc, sessionReport, extra) => {
   current = {
     video: videoSrc || null, report: sessionReport, systemLog: extra?.systemLog || null, traces: extra?.traces || null,
     gauges: extra?.gauges || null,
     serverInfo: extra?.serverInfo || null,
+    apps: extra?.apps || null,
     title: extra?.title || '', info: extra?.info || {},
   };
   traceLink = extra?.traceUrl || null;
   traceRetry = extra?.retryTraces || null;
+  appFileUrl = extra?.appFileUrl || null;
   openRecording();
 };
 
@@ -744,19 +787,31 @@ function openRecording() {
   $('consoleCount').textContent = r.console.length;
   $('networkCount').textContent = r.network.length;
   serverItems = prepareSystemLog(current.systemLog, r);
+  // All-server captures add other threads' lines: a filter, the tab's own lines first
+  if (serverItems.some((e) => e.other)) {
+    FILTERS.server = [['tab', 'This tab only'], ['all', 'This tab + other server threads'], ['other', 'Other server threads only']];
+  } else {
+    delete FILTERS.server;
+  }
   if ($('serverTab')) {
     $('serverTab').hidden = !current.systemLog;
-    $('serverCount').textContent = serverItems.filter((e) => e.kind === 'log').length;
+    $('serverCount').textContent = serverItems.filter((e) => e.kind === 'log' && !e.other).length;
   }
   traceItems = prepareTraces(current.traces, r);
   updateTracesTab();
   if (tab === 'server' && !current.systemLog) tab = 'console';
   if (tab === 'traces' && !current.traces) tab = 'console';
+  if ($('appsTab')) $('appsTab').hidden = !current.apps;
+  if (tab === 'apps' && !current.apps) tab = 'console';
   issues = [
     ...r.console.filter((e) => e.level === 'error').map((e) => e.t),
     ...r.network.filter(isBad).map((e) => e.t),
-    ...serverItems.filter(isServerError).map((e) => e.t),
+    ...serverItems.filter((e) => isServerError(e) && !e.other).map((e) => e.t),
   ].sort((a, b) => a - b);
+  buildAppSegments(r);
+  collectAppProblems(r);
+  drawLane();
+  updateAppFilter();
 
   $('empty').hidden = true;
   $('app').hidden = false;
@@ -765,6 +820,7 @@ function openRecording() {
   drawOverview();
   openLoad();
   renderInfo();
+  renderApps();
   setTab(tab);
   startMs = Math.min(timeFromUrl(), durationMs);
   if (startMs) seek(startMs); // before the video loads, this sets where it starts
@@ -846,6 +902,7 @@ function onTime() {
   $('playhead').style.left = pct(now);
   ov.playhead.style.left = pct(now);
   load.playhead.style.left = pct(now);
+  lane.playhead.style.left = pct(now);
   $('clock').textContent = `${fmt(now)} / ${fmt(durationMs)}`;
 
   const n = upperBound(rows, now);
@@ -1178,6 +1235,156 @@ function showReadout(ms) {
   load.readout.textContent = parts.join(' · ');
 }
 
+// ---------- apps ----------
+
+// Which Joget app a URL names, by the plugin's rules (AppExport.appOf): userview, embed, form/datalist, builder and
+// JSON API paths, process definition ids (app#version#process) and appId parameters. App icons and userview
+// screenshots (App Center loads them for every app) name none.
+const APP_ID = '([A-Za-z0-9_-]+)';
+const APP_PATTERNS = [
+  new RegExp(`/web/(?:embed/)?(?:userview|ulogin|mobile|mapp)/${APP_ID}(?:/|$|\\?)`),
+  new RegExp(`/web/(?:client/|console/|json/(?:console/)?)?app/${APP_ID}/`),
+  new RegExp(`/web/json/data/(?:form|list|app)/(?:\\w+/)?${APP_ID}/\\d+/`),
+  new RegExp(`(?:^|[/=&?])${APP_ID}(?:#|%23)(?:\\d+|latest)(?:#|%23)\\w+`),
+  new RegExp(`[?&]appId=${APP_ID}(?:&|$)`),
+];
+const APP_RESOURCE = /\/web\/(?:app\/[A-Za-z0-9_-]+\/(?:\d+\/)?resources\/|userview\/screenshot\/)/;
+const APP_COLORS = 6;      // --app-0 .. --app-5 in viewer.css, by order of first appearance
+
+let appSegments = [];      // [{ app, from, to }]: whose page the tab showed when (null app: a page of no app)
+let appProblems = {};      // app id -> [{ t, kind, item, text }]: failed requests, console and server errors
+let appColor = {};         // app id -> colour index
+const appOfCache = new WeakMap();
+
+function appOf(url) {
+  if (!url) return null;
+  let u = url;
+  try { u = decodeURIComponent(url); } catch (e) { /* keep it as it is */ }
+  if (APP_RESOURCE.test(u)) return null;
+  for (const p of APP_PATTERNS) {
+    const m = p.exec(u);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+// The page the tab showed: a document's own URL, else the request's Referer (only paths under /web/, so a Referer cut
+// to the origin says nothing). Each one says which app's page was on screen from then on.
+function buildAppSegments(r) {
+  const signals = [];
+  for (const n of r.network) {
+    const page = n.type === 'Document' ? n.url : header(n.requestHeaders, 'referer');
+    if (page && page.includes('/web/')) signals.push({ t: n.t, app: appOf(page) });
+  }
+  for (const n of r.navigations || []) signals.push({ t: n.t, app: appOf(n.url) });
+  signals.sort((a, b) => a.t - b.t);
+  let segs = [];
+  for (const s of signals) {
+    const last = segs[segs.length - 1];
+    if (last && last.app === s.app) continue;
+    if (last) last.to = s.t;
+    segs.push({ app: s.app, from: segs.length ? s.t : 0, to: durationMs });
+  }
+  // A late request of the page just left flips back for a moment: under half a second between the same app, merged
+  for (let i = 1; i < segs.length - 1; i++) {
+    if (segs[i].to - segs[i].from < 500 && segs[i - 1].app === segs[i + 1].app) {
+      segs[i - 1].to = segs[i + 1].to;
+      segs.splice(i, 2);
+      i--;
+    }
+  }
+  appSegments = segs;
+  appColor = {};
+  for (const sg of segs) if (sg.app && !(sg.app in appColor)) appColor[sg.app] = Object.keys(appColor).length % APP_COLORS;
+}
+
+function pageAppAt(t) {
+  for (const sg of appSegments) if (t >= sg.from && t < sg.to) return sg.app;
+  return appSegments.length && t >= durationMs ? appSegments[appSegments.length - 1].app : null;
+}
+
+// The app of a list row: the one its URL names, else the one on screen then. Other server threads' lines: none.
+function itemApp(item) {
+  if (appOfCache.has(item)) return appOfCache.get(item);
+  let app;
+  if (item.kind === 'request' || item.kind === 'log') {
+    app = item.other ? null : appOf(item.kind === 'request' ? item.url : String(item.req || '').split(' ')[1]) || pageAppAt(item.t);
+  } else {
+    app = appOf(item.url) || pageAppAt(item.t);
+  }
+  appOfCache.set(item, app);
+  return app;
+}
+
+function collectAppProblems(r) {
+  appProblems = {};
+  const add = (app, p) => { if (app) (appProblems[app] ||= []).push(p); };
+  for (const n of r.network.filter(isBad)) {
+    add(itemApp(n), { t: n.t, kind: 'network', item: n, text: `${statusText(n)} ${n.method} ${safeUrl(n.url)?.pathname || n.url}` });
+  }
+  for (const c of r.console.filter((e) => e.level === 'error')) add(pageAppAt(c.t), { t: c.t, kind: 'console', item: c, text: c.text });
+  for (const e of serverItems.filter((x) => isServerError(x) && !x.other)) add(itemApp(e), { t: e.t, kind: 'server', item: e, text: serverText(e) });
+  for (const list of Object.values(appProblems)) list.sort((a, b) => a.t - b.t);
+}
+
+function appName(id) {
+  const a = (current.apps?.apps || []).find((x) => x.id === id);
+  return a?.name || (id === 'appcenter' ? 'App Center' : id);
+}
+
+// "2 server errors · 1 failed request"
+function problemText(list) {
+  const n = (kind) => list.filter((p) => p.kind === kind).length;
+  const part = (k, one) => (n(k) ? `${n(k)} ${one}${n(k) === 1 ? '' : 's'}` : '');
+  return [part('server', 'server error'), part('network', 'failed request'), part('console', 'console error')].filter(Boolean).join(' · ');
+}
+
+function inUseMs(app) {
+  return appSegments.filter((sg) => sg.app === app).reduce((sum, sg) => sum + sg.to - sg.from, 0);
+}
+
+// Under the Issues timeline, same time axis: which app's page the tab showed. Click a stretch to seek there and list
+// only that app's requests and log lines.
+const lane = buildLane();
+
+function buildLane() {
+  const box = el('div', 'lane');
+  box.hidden = true;
+  const head = el('div', 'ov-head');
+  const strip = el('div', 'app-lane');
+  strip.title = 'Which app\'s page the tab showed. Click to seek.';
+  const segs = el('div', 'app-segs');
+  const playhead = el('div', 'playhead');
+  strip.append(segs, playhead);
+  box.append(head, strip);
+  $('timeline').after(box);
+  strip.addEventListener('click', (e) => { if (report && !e.target.closest('.app-seg')) seek(overviewMsIn(strip, e.clientX)); });
+  return { box, head, segs, playhead };
+}
+
+function drawLane() {
+  const shown = appSegments.filter((sg) => sg.app);
+  lane.box.hidden = !shown.length;
+  lane.head.replaceChildren(el('span', null, 'Apps'), ...Object.keys(appColor).map((id) => {
+    const s = el('span');
+    s.append(el('i', `dot app-${appColor[id]}`), appName(id));
+    return s;
+  }));
+  lane.segs.replaceChildren(...shown.map((sg) => {
+    const probs = (appProblems[sg.app] || []).filter((p) => p.t >= sg.from && p.t < sg.to);
+    const requests = report.network.filter((n) => n.t >= sg.from && n.t < sg.to).length;
+    const d = el('div', `app-seg app-${appColor[sg.app]}`, (probs.length ? '⚠ ' : '') + appName(sg.app));
+    d.style.left = pct(sg.from);
+    d.style.width = pct(sg.to - sg.from);
+    const a = (current.apps?.apps || []).find((x) => x.id === sg.app);
+    d.title = `${appName(sg.app)} (${sg.app})${a?.version != null ? ` v${a.version}` : ''}\n`
+      + `${fmt(sg.from)} – ${fmt(sg.to)} · ${requests} request${requests === 1 ? '' : 's'}`
+      + (probs.length ? `\n⚠ ${problemText(probs)}` : '') + '\nClick: jump here · list only this app';
+    d.onclick = () => { seek(sg.from); pickApp(sg.app); };
+    return d;
+  }));
+}
+
 // ---------- system log ----------
 
 // Entries have ts = server clock (epoch ms). t = ts - recording start, minus the server clock's offset, measured
@@ -1319,17 +1526,43 @@ $('filter').onchange = () => renderList();
 $('hideFuture').onchange = () => $('list').classList.toggle('hide-future', $('hideFuture').checked);
 $('detailClose').onclick = () => closeDetail();
 
+// Network and System logs: only one app's rows (its URLs, or made while its page was on screen)
+const appFilter = el('select', 'app-filter');
+appFilter.title = 'Only the requests and log lines of one app';
+appFilter.onchange = () => renderList();
+$('filter').after(appFilter);
+
+function updateAppFilter() {
+  const ids = [...new Set([...Object.keys(appColor), ...report.network.map(itemApp)].filter(Boolean))];
+  const keep = ids.includes(appFilter.value) ? appFilter.value : '';
+  appFilter.replaceChildren(...[['', 'All apps'], ...ids.map((id) => [id, appName(id)])].map(([v, label]) => {
+    const o = el('option', null, label);
+    o.value = v;
+    return o;
+  }));
+  appFilter.value = keep;
+  appFilter.dataset.count = ids.length;
+}
+
+function pickApp(id) {
+  if (![...appFilter.options].some((o) => o.value === id)) return;
+  appFilter.value = id;
+  if (tab === 'network' || tab === 'server') renderList();
+}
+
 function setTab(name) {
   tab = name;
   document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
-  const isInfo = name === 'info'; // a page of text: no toolbar or list
+  const isInfo = name === 'info' || name === 'apps'; // a page of text: no toolbar or list
   $('toolbar').hidden = isInfo;
   $('list').hidden = isInfo;
   $('info').hidden = name !== 'info';
+  if ($('appsPage')) $('appsPage').hidden = name !== 'apps';
   if (isInfo) tabNote.hidden = true;
   ov.box.hidden = name !== 'network'; // shown: the ResizeObserver draws it
   if (!isInfo) {
     $('filter').hidden = !FILTERS[name];
+    appFilter.hidden = !(name === 'network' || name === 'server') || Number(appFilter.dataset.count || 0) < 2;
     for (const t of Object.keys(LEVEL_BOXES)) levelBoxes(t).hidden = t !== name;
     if (FILTERS[name]) {
       $('filter').replaceChildren(...FILTERS[name].map(([v, label]) => {
@@ -1389,6 +1622,7 @@ function matchesFilter(item, f) {
     return true;
   }
   if (tab === 'server') {
+    if (f === 'other' ? !item.other : f !== 'all' && item.other) return false;
     return item.kind === 'log' && pickedLevels.server.has(String(item.level).toUpperCase());
   }
   if (tab === 'console') {
@@ -1411,6 +1645,7 @@ function renderList() {
     : [...report.network].sort((a, b) => a.t - b.t))
     .filter((it) => matchesFilter(it, f))
     .filter((it) => tab !== 'network' || inNetRange(it))
+    .filter((it) => !appFilter.value || appFilter.hidden || itemApp(it) === appFilter.value)
     .filter((it) => !q || searchText(it).includes(q));
 
   const rowOf = { console: consoleRow, network: networkRow, server: serverRow, traces: traceRow }[tab];
@@ -1449,14 +1684,15 @@ function consoleRow(c) {
 }
 
 function serverRow(e) {
-  const row = el('div', `row server lvl-${e.lvl}`);
+  const row = el('div', `row server lvl-${e.lvl}${e.other ? ' other' : ''}`);
   row.append(
     el('span', 't', fmt(e.t)),
     el('span', null, e.kind === 'request' ? 'request' : e.lvl),
     el('span', null, serverText(e)),
-    el('span', 'muted right', e.kind === 'request' ? '' : String(e.logger || '').split('.').pop()),
+    el('span', 'muted right', e.kind === 'request' ? '' : (e.other ? `${e.thread || 'other thread'} · ` : '') + String(e.logger || '').split('.').pop()),
   );
-  row.title = e.kind === 'request' ? `${e.method} ${e.url}` : String(e.message ?? '');
+  if (e.other) row.title = `Another thread (${e.thread || '?'}), not the recorded tab: `;
+  row.title = (row.title || '') + (e.kind === 'request' ? `${e.method} ${e.url}` : String(e.message ?? ''));
   return row;
 }
 
@@ -1770,21 +2006,50 @@ function renderInfo() {
   if (si) {
     const when = si.takenAt ? ` (snapshot at ${new Date(si.takenAt).toLocaleString()})` : '';
     const body = $('info');
-    const groups = [['host', `Host${when}`], ['process', 'Process'], ['java', 'Java'], ['joget', 'Joget'], ['database', 'Database'],
+    const recent = si.recentChanges?.Period ? `Changed in ${si.recentChanges.Period}` : 'Recent changes';
+    const groups = [['recentChanges', recent], ['host', `Host${when}`], ['cluster', 'Cluster'], ['process', 'Process'], ['java', 'Java'], ['joget', 'Joget'], ['plugins', 'Plugins (app_plugins)'], ['database', 'Database'],
       ['connectionPool', 'Connection pool'], ['license', 'License'], ['systemProperties', 'System properties']];
+    const served = nodesServed(current.systemLog);
     for (const [key, title] of groups) {
-      if (!si[key] || !Object.keys(si[key]).length) continue;
-      const list = kv(infoOrder(key, si[key]));
+      let values = key === 'cluster' && served ? { ...si[key], ...served } : si[key];
+      if (key === 'recentChanges' && values) values = Object.fromEntries(Object.entries(values).filter(([k]) => k !== 'Period'));
+      if (!values || !Object.keys(values).length) continue;
+      const list = kv(infoOrder(key, values));
       list.classList.add('multiline');
       section(body, title, list);
     }
   }
 }
 
+// Which node served the recorded requests (system log request entries carry it). More than one node in one tab
+// usually means the load balancer doesn't keep the session on one node (no sticky sessions), or a node failed over.
+function nodesServed(log) {
+  const reqs = (log?.entries || []).filter((e) => e.kind === 'request' && e.node);
+  if (!reqs.length) return null;
+  const counts = {};
+  let switches = 0;
+  reqs.forEach((e, i) => {
+    counts[e.node] = (counts[e.node] || 0) + 1;
+    if (i && e.node !== reqs[i - 1].node) switches++;
+  });
+  const nodes = Object.keys(counts).sort();
+  const list = nodes.map((n) => `${n}: ${counts[n]} requests`).join('\n');
+  return {
+    'Recorded requests served by': list,
+    'Sticky sessions': nodes.length === 1
+      ? `Yes: all ${reqs.length} requests on ${nodes[0]}`
+      : `⚠ No: the tab's requests moved between ${nodes.length} nodes ${switches} times. Check the load balancer's sticky sessions (or a node failed over).`,
+  };
+}
+
 // The server's JSON keeps no key order: labels first in this order, then file and pool keys A-Z.
 const INFO_LABELS = {
   database: ['Profile', 'JDBC driver', 'JDBC URL', 'User'],
   connectionPool: ['Ignored file keys', 'Pool size', 'Active connections', 'Idle connections', 'Waiting threads'],
+  plugins: [], // jar files A-Z
+  recentChanges: ['Changes', 'App versions', 'Plugins (app_plugins)', 'wflow files', 'Joget started'],
+  cluster: ['Sticky sessions', 'Recorded requests served by', 'Joget node name', 'Cluster mode', 'Registered nodes',
+    'Active nodes', 'Tomcat jvmRoute', 'This session\'s route', 'Session replication'],
 };
 
 function infoOrder(group, obj) {
@@ -1793,6 +2058,135 @@ function infoOrder(group, obj) {
   const rank = (k) => (labels.includes(k) ? labels.indexOf(k) : labels.length);
   const keys = Object.keys(obj).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
   return Object.fromEntries(keys.map((k) => [k, obj[k]]));
+}
+
+// ---------- app tab ----------
+
+let appFileUrl = null;
+
+// The apps the recording used, exported at upload (plugin page and downloaded HTML; the .jwa files only on the server).
+// Apps with problems first and open, each problem a link to its moment; the others folded to one line.
+function renderApps() {
+  const page = $('appsPage');
+  if (!page) return;
+  page.replaceChildren();
+  if (!current.apps) return;
+  const all = current.apps.apps || [];
+  const probs = (a) => appProblems[a.id] || [];
+  const withProblems = all.filter((a) => probs(a).length).sort((a, b) => probs(b).length - probs(a).length);
+  const rest = all.filter((a) => !probs(a).length && a.state === 'saved');
+  const notExported = all.filter((a) => !probs(a).length && a.state !== 'saved');
+  const used = all.length;
+  page.append(el('p', 'apps-head', `${used} app${used === 1 ? '' : 's'} used · `
+    + (withProblems.length ? `⚠ ${withProblems.length} with problems` : 'no problems found in them')));
+  const when = current.apps.exportedAt ? new Date(current.apps.exportedAt).toLocaleString() : '';
+  page.append(el('p', 'note', `Exported at upload${when ? ` (${when})` : ''} with Joget's own app export: the app definition only, `
+    + 'no form data, plugins or groups. Import it on a test server to reproduce the issue.'
+    + (appFileUrl ? '' : ' The .jwa files are in the recording ZIP, not in this file.')));
+  if (!all.length) page.append(el('p', null, 'No apps were found in the recorded URLs.'));
+  for (const a of [...withProblems, ...rest]) page.append(appBlock(a, probs(a)));
+  if (!withProblems.length && rest.length === 1) page.querySelector('details.app').open = true; // the only app: no need to fold it
+  if (notExported.length) {
+    page.append(el('p', 'note muted', 'Not exported: ' + notExported.map((a) => `${a.id} (${a.reason || a.state})`).join(', ')));
+  }
+  // Old -> new record ids: the URLs, logs and traces show the old ones
+  const map = current.apps.idMap;
+  if (map?.ids && Object.keys(map.ids).length) {
+    const d = el('details');
+    d.append(el('summary', null, map.kept ? `Record ids (${Object.keys(map.ids).length}, kept as they are)`
+      : `Record ids: old → new (${Object.keys(map.ids).length}). The recording shows the old ids; the sample data has the new ones.`));
+    const list = kv(map.ids);
+    list.classList.add('multiline');
+    d.append(list);
+    section(page, 'Record ids', d);
+  }
+}
+
+// One app: open with its problems when it had some, else folded to its name, requests and time in use
+function appBlock(a, probs) {
+  const d = el('details', 'app');
+  d.open = probs.length > 0;
+  const summary = el('summary');
+  summary.append(el('strong', null, a.name ? `${a.name} (${a.id})` : a.id), a.version != null ? ` v${a.version}` : '');
+  const ms = inUseMs(a.id);
+  summary.append(el('span', probs.length ? 'app-badge bad' : 'app-badge',
+    probs.length ? `⚠ ${problemText(probs)}` : `${a.requests} request${a.requests === 1 ? '' : 's'}${ms ? ` · ${fmt(ms)} in use` : ''}`));
+  d.append(summary);
+  if (probs.length) {
+    const box = el('div', 'app-problems');
+    box.append(el('h4', null, 'Problems'));
+    for (const p of probs.slice(0, 20)) {
+      const row = el('button', 'app-problem');
+      row.append(el('span', 't', fmt(p.t)), el('span', 'kind', { network: 'request', console: 'console', server: 'server' }[p.kind]),
+        el('span', 'text', p.text), el('span', 'go', '→ jump'));
+      row.title = `Jump to ${fmt(p.t)} and show it in the ${{ network: 'Network', console: 'Console', server: 'System logs' }[p.kind]} tab`;
+      row.onclick = () => { seek(p.t); openRow(p.kind, p.item); };
+      box.append(row);
+    }
+    if (probs.length > 20) box.append(el('div', 'muted', `+${probs.length - 20} more: use ◀ Prev issue / Next issue ▶`));
+    d.append(box);
+  }
+  d.append(kv({
+    'App id': a.id,
+    'Version': a.version != null ? `${a.version}${a.published ? ' (published)' : ' (not published)'}` : undefined,
+    'Version in the URLs': a.urlVersion,
+    'Last modified': a.modified && new Date(a.modified).toLocaleString(),
+    'Requests in the recording': a.requests,
+    'Time in use': ms ? fmt(ms) : undefined,
+    'Size': a.bytes != null ? `${Math.max(1, Math.round(a.bytes / 1024))} KB` : undefined,
+    'Not exported': a.state !== 'saved' ? a.reason || a.state : undefined,
+  }));
+  const sample = a.sample;
+  if (sample?.error) d.append(el('p', 'note', `Sample data could not be added: ${sample.error}`));
+  if (sample?.tables?.length) {
+    const how = sample.mode === 'real' ? 'real values (sensitive columns masked)' : 'masked values (same shape, fake content)';
+    d.append(el('p', 'note', `Sample data in the .jwa, ${how}. Importing the .jwa imports it.`));
+    const PICKED = { touched: 'opened or saved in the recording', linked: 'linked to those records', newest: 'newest rows (the recording touched none)' };
+    const tables = kv(Object.fromEntries(sample.tables.map((t) => [t.table,
+      `${t.rows} row${t.rows === 1 ? '' : 's'}: ${PICKED[t.picked] || t.picked}`
+      + (t.files ? `, ${t.files} file${t.files === 1 ? '' : 's'}` : '')
+      + (t.masked?.length ? `\nMasked: ${t.masked.join(', ')}` : '')])));
+    tables.classList.add('multiline');
+    d.append(tables);
+  } else if (sample) {
+    d.append(el('p', 'note', 'No sample data: the app has no form rows.'));
+  }
+  for (const p of a.processes || []) d.append(processBlock(p));
+  if (a.state === 'saved' && a.file && appFileUrl) {
+    const link = el('a', 'button', 'Download .jwa');
+    link.href = appFileUrl(a.file);
+    link.title = `${a.file}: import it in App Center > Import App`;
+    d.append(link);
+  }
+  return d;
+}
+
+// One process instance (read only: Joget can't import running processes)
+function processBlock(p) {
+  const d = el('details', 'process');
+  const date = (ms) => (ms ? new Date(ms).toLocaleString() : undefined);
+  d.append(el('summary', null, `Process: ${p.name || p.processDefId} · ${p.state || ''} · ${p.id}`));
+  d.append(kv({
+    'Process definition': p.processDefId,
+    'Record id in the sample': p.recordId,
+    'Requester': p.requester,
+    'Started': date(p.started || p.created),
+    'Finished': date(p.finished),
+  }));
+  const vars = p.variables || {};
+  if (Object.keys(vars).length) {
+    d.append(el('h4', null, 'Workflow variables'));
+    d.append(kv(vars));
+  }
+  if (p.activities?.length) {
+    d.append(el('h4', null, `Activities${p.activitiesCut ? ' (first 100)' : ''}`));
+    const list = kv(Object.fromEntries(p.activities.map((x, i) => [`${i + 1}. ${x.name || x.defId}`,
+      [x.state, x.assignees?.length ? `assigned to ${x.assignees.join(', ')}` : '', x.acceptedBy ? `done by ${x.acceptedBy}` : '',
+        date(x.created), x.finished ? `→ ${date(x.finished)}` : ''].filter(Boolean).join(' · ') + `\n${x.id}`])));
+    list.classList.add('multiline');
+    d.append(list);
+  }
+  return d;
 }
 
 // ---------- features drawer ----------
@@ -1843,6 +2237,10 @@ const FEATURES = [
   ['Lists follow the video', 'Rows before the playhead are normal, later rows are faded (Hide future hides them). Follow keeps the latest row in view. Click a row to jump the video there.', ALL],
   ['Issues timeline', 'The strip under the video marks console errors (red), failed requests (orange) and navigations (blue). Click it to seek. ◀ Prev issue / Next issue ▶ jump between the problems.', ALL,
     { server: 'Server errors from the system logs are marked too (purple).', file: 'Server errors are marked too (purple) when the system logs are in the file.' }],
+  ['Apps lane', 'Under the Issues timeline: which app\'s page the tab showed, one colour per app, ⚠ where that app had a problem. Hover for its time, requests and problems; click to jump there and list only that app on the Network and System logs tabs.', ALL],
+  ['App filter', 'On the Network and System logs tabs when the tab used more than one app: list only one app\'s rows (its URLs, or made while its page was on screen).', ALL],
+  ['App tab', 'The apps the recording used, exported at upload as .jwa with sample data and process data. Apps with problems come first and open, each problem a link to its moment; the others are folded to their requests and time in use.', ['server', 'file'],
+    { file: 'The .jwa files themselves are only in the ZIP download.' }],
   ['Requests strip', 'At the top of the Network tab: one bar per request, from start to end, coloured by kind. Drag across it to list only the requests in that time range; double-click or ✕ shows all again.', ALL],
   ['System logs tab', 'The Joget log lines written while serving the recorded requests, lined up with the video and filtered by level. Only for users allowed to view system logs, and only when the plugin captured them.', ['server', 'file'],
     { file: 'Included only when the person who downloaded it was allowed to view system logs.' }],
@@ -1898,8 +2296,11 @@ function soundInfo(a) {
 function systemLogInfo(s) {
   const log = current.systemLog;
   if (log) {
-    const n = serverItems.filter((e) => e.kind === 'log').length;
-    return `${n} log lines, ${serverItems.length - n} requests${log.truncated ? ' (cut off at the size limit)' : ''}`;
+    const n = serverItems.filter((e) => e.kind === 'log' && !e.other).length;
+    const other = serverItems.filter((e) => e.other).length;
+    const requests = serverItems.filter((e) => e.kind === 'request').length;
+    return `${n} log lines, ${requests} requests${other ? `, ${other} lines of other server threads` : ''}`
+      + (log.truncated ? ' (cut off at the size limit)' : '');
   }
   if (!s) return undefined;
   if (s.status === 'on') return `Captured on ${s.server}; shown on the server's replay page after upload`;

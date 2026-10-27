@@ -47,6 +47,9 @@
     <input id="upTitle" type="text" maxlength="200">
     <label for="upNotes">Notes <span class="muted">(steps, what went wrong)</span></label>
     <textarea id="upNotes" maxlength="5000" rows="3"></textarea>
+    <p id="upAtStop" class="muted" hidden></p>
+    <label id="upAppsRow" class="check" hidden title="The server exports the apps the recording used (.jwa), so support can import them">
+      <input type="checkbox" id="upApps" checked> Export the apps used</label>
     <label id="upSampleRow" class="check" hidden title="Added to the exported apps (.jwa) on the server: the records you opened or saved, with fake values of the same shape">
       <input type="checkbox" id="upSample" checked> Include sample form data (masked)</label>
     <label id="upRealRow" class="check" hidden title="Real values instead of masked ones. Columns the server marks as sensitive stay masked.">
@@ -139,6 +142,7 @@
   <script src="viewer.js"></script>
   <script src="store.js"></script>
   <script src="server.js"></script>
+  <script src="quick.js"></script>
   <script src="actions.js"></script>
   <script src="replay.js"></script>
 </body>
