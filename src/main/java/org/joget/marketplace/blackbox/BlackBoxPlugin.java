@@ -115,7 +115,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                         .put("sampleData", new JSONObject() // what the upload form may offer
                                 .put("enabled", !"false".equals(getPropertyString("includeAppExport"))
                                         && !"false".equals(getPropertyString("sampleData")))
-                                .put("real", access.canViewSystemLog()))
+                                .put("real", true)) // Mask data: offered wherever sample data is
                         .put("options", quickSettings(access, user)));
             } else if ("list".equals(action) && !post) {
                 list(response, store, access);
@@ -290,15 +290,15 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
     /**
      * Sample data for this export, or null for none. The sampleData parameter (none, masked, real) picks within what
-     * the settings allow: only for uploaders who may see the recording's server data; real values (Mask data unticked)
-     * only for those allowed by "Who can view system logs" (not the own-recordings rule).
+     * the settings allow: only for uploaders who may see the recording's server data, who may also keep real values
+     * (Mask data unticked).
      */
     private SampleData.Mode sampleMode(HttpServletRequest request, Access access, JSONObject meta) {
         String asked = request.getParameter("sampleData");
         if ("false".equals(getPropertyString("sampleData")) || "none".equals(asked) || !access.canViewSystemLog(meta)) {
             return null;
         }
-        boolean real = "real".equals(asked) && access.canViewSystemLog();
+        boolean real = "real".equals(asked);
         return real ? SampleData.Mode.REAL : SampleData.Mode.MASKED;
     }
 
@@ -644,7 +644,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 .put("systemLog", capture)
                 .put("apps", apps)
                 .put("sample", sample)
-                .put("real", sample && access.canViewSystemLog()) // may untick Mask data
+                .put("real", sample) // Mask data: offered wherever sample data is
                 .put("allServer", capture && "true".equals(getPropertyString("captureAllServerLogs")) && access.canViewSystemLog())
                 .put("glowrootData", capture && "true".equals(getPropertyString("captureGlowrootData")));
     }

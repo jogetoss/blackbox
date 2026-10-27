@@ -182,7 +182,7 @@
         {
             "name" : "sampleData",
             "label" : "Allow capturing form data",
-            "description" : "Added to each .jwa like Joget's own export with data, so importing it imports them: the records the recording opened or saved, rows of the app's other tables that point at them, and the newest rows of tables with none. Values are masked: same length, letters, digits and symbols, but fake (options, yes/no and small numbers kept). Uploaded files become placeholders. Only for uploaders who may see the recording's server data. Users allowed by \"Who can view system logs\" can untick \"Mask data\" in the extension's popup to keep real values; columns matching the always-masked names stay masked.",
+            "description" : "Added to each .jwa like Joget's own export with data, so importing it imports them: the records the recording opened or saved, rows of the app's other tables that point at them, and the newest rows of tables with none. Values are masked: same length, letters, digits and symbols, but fake (options, yes/no and small numbers kept). Uploaded files become placeholders. Only for uploaders who may see the recording's server data. Uploaders can untick \"Mask data\" in the extension's popup to keep real values; columns matching the always-masked names stay masked.",
             "type" : "selectbox",
             "value" : "true",
             "options" : [

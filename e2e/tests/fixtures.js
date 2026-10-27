@@ -42,6 +42,7 @@ async function loginJoget(page) {
   await page.fill('#j_username', USER);
   await page.fill('#j_password', PASSWORD);
   await Promise.all([page.waitForNavigation(), page.press('#j_password', 'Enter')]);
+  await page.waitForLoadState('networkidle'); // the first login may still be redirecting
 }
 
 /** Calls the BlackBox API with the browser's Joget session. POSTs send the page's CSRF token. */

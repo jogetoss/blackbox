@@ -54,7 +54,6 @@ async function uploaded(joget, title) {
 test('popup shows the server options and keeps the choices', async ({ context, extensionId }) => {
   const joget = await context.newPage();
   await loginJoget(joget);
-  await joget.waitForLoadState('networkidle'); // the first login may still be redirecting
   const me = await api(joget, 'me');
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/recordings.html`);
@@ -127,7 +126,6 @@ test('stop exports the apps; the upload keeps that export', async ({ context, ex
 test('Mask data unticked: the stop export keeps real values', async ({ context, extensionId }) => {
   const joget = await context.newPage();
   await loginJoget(joget);
-  await joget.waitForLoadState('networkidle');
   test.skip(!(await api(joget, 'me')).options.real, 'this user may not keep real values');
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/recordings.html`);

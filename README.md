@@ -138,8 +138,7 @@ yes/no/true/false, numbers of up to 5 digits, UUIDs and process ids. Dates keep 
 `user2`… in every column. Uploaded files become small placeholder files with masked names. Columns named like a
 sensitive field (setting) are always masked.
 
-**Real values:** for uploaders in **Who can view system logs**, by unticking **Mask data** in the popup (per
-recording). Sensitive columns stay masked; files over 5 MB (50 MB per app) become placeholders.
+**Real values:** for any uploader who gets sample data, by unticking **Mask data** in the popup (per recording). Sensitive columns stay masked; files over 5 MB (50 MB per app) become placeholders.
 
 **Record ids** get new unique ids everywhere they appear, so importing never overwrites rows of the same id. The App tab
 lists old → new ids, since the URLs, logs and traces show the old ones.
@@ -150,7 +149,7 @@ state, requester, dates, workflow variables, and each activity with its state, a
 the same way (same user pseudonyms; variable values masked unless found in the app definition). At most 20 processes
 per app and 100 activities each; processes already archived out of the running tables are not found.
 
-The popup's **Sample form data** and **Mask data** (ticked by default; shown only to users who may keep real values)
+The popup's **Sample form data** and **Mask data** (ticked by default)
 pick the sample per recording. When the export ran at stop, the upload form says what it made; otherwise it offers
 **Export the apps used**, **Include sample form data** and, where allowed, **Mask data**, ticked as chosen in the popup. Automatic uploads use the popup's
 choices.
