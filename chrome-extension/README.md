@@ -29,13 +29,6 @@ Popup → **Settings**:
 - **Open recordings on the server when you are logged in** (on by default) — when a recording stops and you are
   logged in to the Upload URL's server, it is uploaded and the server's replay page opens. Otherwise it replays in the
   extension and the button shows **⚠ Upload** (hover for the reason).
-- **Record the page's sound** (on by default) — the sound of the tab you start from, also when you record a window or
-  the screen. You still hear the tab while it records.
-- **Record the microphone** (off by default) — to talk through the problem. Chrome asks for the microphone on the
-  first recording; if you blocked it, set **Microphone** to **Allow** at
-  `chrome://settings/content/siteDetails?site=chrome-extension://<extension id>`.
-- Both sounds go into one sound track. `session.json` says what the recording has: `recording.audio` =
-  `{ page, pageSource: "tab" | "system", mic, message }`, where `message` says why a sound is missing.
 - **Text size** and **Theme** — for all extension pages and the BlackBox pages of the Upload URL's server
   (`<context>/blackbox/`); the pages themselves have no pickers. Downloaded HTML files and the standalone viewer
   follow the system theme; use the browser's zoom there.
@@ -44,9 +37,19 @@ Popup → **Settings**:
 
 1. Open the page to debug, click the extension icon and pick **Record this tab** (no picker, no URL bar), **Record a
    window** (pick the Chrome window to get the URL bar) or **Record the screen**. Logs always come from the tab you
-   started from.
+   started from. Under the buttons, **Next recording** sets the choices for it (remembered for the next one):
+   - **Page sound** (on by default) — the sound of the tab you start from, also when you record a window or the
+     screen. You still hear the tab while it records.
+   - **Microphone** (off by default) — to talk through the problem. Chrome asks for the microphone on the first
+     recording; if you blocked it, set **Microphone** to **Allow** at
+     `chrome://settings/content/siteDetails?site=chrome-extension://<extension id>`.
+   - The server's options, as far as its BlackBox settings and your rights allow: **Export the apps used**,
+     **Sample form data**, **Mask data**, **All server log lines**, **Glowroot data**.
+
+   Both sounds go into one sound track. `session.json` says what the recording has: `recording.audio` =
+   `{ page, pageSource: "tab" | "system", mic, message }`, where `message` says why a sound is missing.
 2. For a window or the screen, pick it in the small recorder window (not the recorder window itself). Chrome shows a
-   "started debugging this browser" banner; that is expected. With **Record the microphone** on, allow the microphone
+   "started debugging this browser" banner; that is expected. With **Microphone** on, allow the microphone
    when Chrome asks. The recorder window shows what is recorded, e.g. `sound: page + microphone`.
 3. Stop with the extension icon → **Stop & save**, the recorder window's button, or Chrome's **Stop sharing** bar.
    Cancelling the debugging banner or closing the tab also stops and saves. If the extension can't keep the

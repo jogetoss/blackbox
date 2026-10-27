@@ -43,7 +43,7 @@ function linkify(text) {
 }
 
 // ---------- quick settings ----------
-// Sound: this browser's settings (the same as in Settings). Server options: only those the server offers
+// Sound: this browser's settings. Server options: only those the server offers
 // (me.options), remembered as quickOffer so they show at once the next time the popup opens.
 
 // [checkbox, Quick key, ticked = !value]: Mask data is the inverse of the real key

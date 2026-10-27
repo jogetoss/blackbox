@@ -8,18 +8,14 @@ Server.getSettings().then((saved) => {
   if (saved.uploadUrl) check(saved.uploadUrl);
 });
 
-chrome.storage.local.get(['theme', 'openOnServer', 'textSize', 'recordPageAudio', 'recordMic']).then(({ theme, openOnServer, textSize, recordPageAudio, recordMic }) => {
+chrome.storage.local.get(['theme', 'openOnServer', 'textSize']).then(({ theme, openOnServer, textSize }) => {
   $('theme').value = theme || '';
   $('textSize').value = textSize || '1';
   $('openOnServer').checked = openOnServer !== false; // on unless turned off
-  $('recordPageAudio').checked = recordPageAudio !== false; // on unless turned off
-  $('recordMic').checked = !!recordMic;
 });
 $('theme').onchange = () => chrome.storage.local.set({ theme: $('theme').value });
 $('textSize').onchange = () => chrome.storage.local.set({ textSize: $('textSize').value });
 $('openOnServer').onchange = () => chrome.storage.local.set({ openOnServer: $('openOnServer').checked });
-$('recordPageAudio').onchange = () => chrome.storage.local.set({ recordPageAudio: $('recordPageAudio').checked });
-$('recordMic').onchange = () => chrome.storage.local.set({ recordMic: $('recordMic').checked });
 
 for (const id of ['url', 'viewUrl']) $(id).onkeydown = (e) => { if (e.key === 'Enter') $('save').click(); };
 
