@@ -170,12 +170,13 @@ Java, Database, DB pool, License, System properties; the JVM start from Recent c
   forms use one of their tables (`SampleData.tables`), one line per app: its latest change and how many versions
   changed, plus `shares <tables>` for the others.
 - **Cluster**: `ServerUtil` (this node's `wflow.name`, the shared `servers.json` nodes, the active nodes, each with its
-  `serversIP.properties` address), `wflow.cluster` (set by the wflow-cluster agent), Tomcat's Engine `jvmRoute`, whether
-  a `Catalina:type=Cluster` MBean exists (session replication), and the requested session id's route suffix. The viewer
+  `serversIP.properties` address), `wflow.cluster` (set by the wflow-cluster agent), Tomcat's Engine `jvmRoute` and
+  the requested session id's route suffix. No session replication row: Joget's `web.xml` has no `<distributable/>`, so
+  Tomcat never copies its sessions between nodes and logins need sticky sessions. The viewer
   shows **Cluster** (`Yes: N nodes` or `No: one node`) and **Nodes**: the registered and active nodes in one list, each
   with its address, the recorded requests it served, and with several nodes `this node` (where the snapshot was taken)
   and `not active`; this node alone when Joget lists none (the wflow-cluster agent alone isn't a cluster). **Node
-  switches** counts how often the next recorded request went to another node. The served counts come from the system
+  switches** (only when it happened) counts how often the next recorded request went to another node. The served counts come from the system
   log: each node names its files by Joget's node name (`wflow.name`, else the hostname), and `attach` puts the `node` (from the
   `system-log.<node>.jsonl` file name) on each request entry.
 - **Plugins**: one entry per jar in `app_plugins` (`PluginManager.getBaseDirectory()`): modified date, size, then each

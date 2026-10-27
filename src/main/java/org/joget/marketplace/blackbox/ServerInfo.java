@@ -30,7 +30,7 @@ import org.json.JSONObject;
  * <li>systemProperties: its system table (SysInfo.getSystemProperties(): all Java system properties plus JVM memory
  * and processors; on Community the same values read directly)</li>
  * </ul>
- * Cluster holds Joget's node name and node lists (ServerUtil) and Tomcat's jvmRoute and session replication.
+ * Cluster holds Joget's node name and node lists (ServerUtil) and Tomcat's jvmRoute.
  * Plugins lists every jar in app_plugins with its date and size, marking jars that loaded no plugin.
  * Database and connectionPool hold the current profile's app_datasource file and the pool settings Joget really uses.
  * Apart from the database password (left out, and masked in JDBC URLs), nothing is left out or masked, so it can hold
@@ -237,7 +237,8 @@ final class ServerInfo {
     /**
      * Joget's cluster view (ServerUtil: this node's wflow.name, the nodes in the shared servers.json and the licensed
      * active nodes, with their serversIP.properties address) and Tomcat's: the Engine's jvmRoute (the suffix load
-     * balancers use for sticky sessions) and whether session replication (a Catalina Cluster) is on.
+     * balancers use for sticky sessions). No session replication check: Joget's web.xml isn't distributable, so Tomcat
+     * never copies its sessions between nodes, even with a Catalina Cluster set up.
      */
     static JSONObject cluster(HttpServletRequest request) throws JSONException {
         JSONObject c = new JSONObject();
@@ -248,7 +249,6 @@ final class ServerInfo {
         put(c, "Active nodes", nodes(org.joget.commons.util.ServerUtil.getActiveServerList()));
         Object route = mbean("Catalina:type=Engine", "jvmRoute");
         put(c, "Tomcat jvmRoute", route != null ? String.valueOf(route) : "(not set)");
-        put(c, "Session replication", replication());
         String session = request.getRequestedSessionId();
         if (session != null && session.contains(".")) {
             put(c, "This session's route", session.substring(session.indexOf('.') + 1));
@@ -273,16 +273,6 @@ final class ServerInfo {
     private static Object mbean(String name, String attribute) {
         try {
             return ManagementFactory.getPlatformMBeanServer().getAttribute(new javax.management.ObjectName(name), attribute);
-        } catch (Exception | LinkageError e) {
-            return null;
-        }
-    }
-
-    private static String replication() {
-        try {
-            java.util.Set<javax.management.ObjectName> found = ManagementFactory.getPlatformMBeanServer()
-                    .queryNames(new javax.management.ObjectName("Catalina:type=Cluster,*"), null);
-            return found.isEmpty() ? "Off" : "On (Tomcat cluster)";
         } catch (Exception | LinkageError e) {
             return null;
         }

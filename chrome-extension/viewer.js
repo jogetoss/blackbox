@@ -1505,7 +1505,9 @@ function clusterRows(c, served) {
   if (self && !nodes.has(self)) nodes.set(self, { name: self });
   const several = nodes.size > 1; // Joget's nodes only: older recordings name served nodes by hostname
   for (const name of Object.keys(served?.counts || {})) if (!nodes.has(name)) nodes.set(name, { name });
-  const rows = Object.fromEntries(Object.entries(c).filter(([k]) => !['Joget node name', 'Cluster mode', 'Registered nodes', 'Active nodes'].includes(k)));
+  // Session replication (older recordings): Joget's sessions are never shared, whatever Tomcat's cluster says
+  const rows = Object.fromEntries(Object.entries(c).filter(([k]) => !['Joget node name', 'Cluster mode', 'Registered nodes',
+    'Active nodes', 'Session replication'].includes(k)));
   rows['Cluster'] = several ? `Yes: ${nodes.size} nodes` : 'No: one node';
   rows['Nodes'] = [...nodes.values()].sort((a, b) => a.name.localeCompare(b.name)).map((n) => {
     const count = served?.counts[n.name];
@@ -1516,10 +1518,7 @@ function clusterRows(c, served) {
       several && active.length && !active.some((a) => a.name === n.name) ? 'not active' : null,
     ].filter(Boolean).join(' · ');
   }).join('\n') || undefined;
-  if (served?.switches) {
-    rows['Node switches'] = `⚠ The tab's requests moved between nodes ${served.switches} time${served.switches === 1 ? '' : 's'}. `
-      + 'Check the load balancer\'s sticky sessions (or a node failed over).';
-  }
+  if (served?.switches) rows['Node switches'] = served.switches;
   return rows;
 }
 
@@ -1545,7 +1544,7 @@ const INFO_LABELS = {
   recentChanges: ['App versions', 'wflow files'],
   host: ['OS', 'Node', 'Hostname', 'Processors', 'Total RAM', 'Free RAM'],
   joget: ['Version', 'Edition', 'Application server', 'Started', 'Uptime', 'Process id', 'Time zone', 'Glowroot', 'Glowroot version'],
-  cluster: ['Cluster', 'Nodes', 'Node switches', 'Tomcat jvmRoute', 'This session\'s route', 'Session replication'],
+  cluster: ['Cluster', 'Nodes', 'Node switches', 'Tomcat jvmRoute', 'This session\'s route'],
 };
 
 function infoOrder(group, obj) {

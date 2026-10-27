@@ -86,8 +86,8 @@ All of it needs **Capture system logs**, is shown only on this plugin's replay p
   wflow files (such as `app_datasource-*.properties`) changed; **Joget**, with its start time and uptime. Then
   **Plugin**, host (total and free RAM), cluster, Java, database settings, **DB pool**, license and system properties
   (without the heap and processor values Java and Host already show). **Cluster** says whether Joget runs as a cluster and lists its
-  nodes, each with the recorded requests it served; **Node switches** warns when the tab's requests moved between
-  nodes (no sticky sessions, or a node failed over). Then Tomcat's `jvmRoute` and session replication. **Plugin** lists every jar in `app_plugins` with its date and size;
+  nodes, each with the recorded requests it served; **Node switches** counts how often the tab's requests moved
+  between nodes: Joget's logins don't follow, so the load balancer needs sticky sessions. Then Tomcat's `jvmRoute`. **Plugin** lists every jar in `app_plugins` with its date and size;
   "not loaded" means the jar failed to load (the Joget log says why).
 
 **Sensitive data:** traces and Glowroot data hold SQL with its parameter values and request details; System Info holds
