@@ -2001,19 +2001,40 @@ function renderInfo() {
   if (si) {
     const when = si.takenAt ? ` (snapshot at ${new Date(si.takenAt).toLocaleString()})` : '';
     const body = $('info');
-    const recent = si.recentChanges?.Period ? `Changed in ${si.recentChanges.Period}` : 'Recent changes';
-    const groups = [['recentChanges', recent], ['host', `Host${when}`], ['cluster', 'Cluster'], ['process', 'Process'], ['java', 'Java'], ['joget', 'Joget'], ['plugins', 'Plugins (app_plugins)'], ['database', 'Database'],
+    const period = si.recentChanges?.Period;
+    // Sections whose changes we can track first: Changes, Joget (with its start), Plugin (changed jars marked)
+    const groups = [['recentChanges', period ? `Changes in ${period}` : 'Changes'], ['joget', 'Joget'], ['plugins', 'Plugin'],
+      ['host', `Host${when}`], ['cluster', 'Cluster'], ['java', 'Java'], ['database', 'Database'],
       ['connectionPool', 'Connection pool'], ['license', 'License'], ['systemProperties', 'System properties']];
     const served = nodesServed(current.systemLog);
     for (const [key, title] of groups) {
       let values = key === 'cluster' && served ? { ...si[key], ...served } : si[key];
-      if (key === 'recentChanges' && values) values = Object.fromEntries(Object.entries(values).filter(([k]) => k !== 'Period'));
+      if (key === 'joget') values = { ...si.joget, ...si.process }; // the process start is Joget's start
+      if (key === 'recentChanges') values = recentChanges(si.recentChanges);
+      if (key === 'plugins' && values) values = pluginRows(values, si.recentChanges, period);
       if (!values || !Object.keys(values).length) continue;
-      const list = kv(infoOrder(key, values));
+      const list = kv(key === 'plugins' ? values : infoOrder(key, values));
       list.classList.add('multiline');
       section(body, title, list);
     }
   }
+}
+
+// Recent changes as shown: app versions and wflow files. Plugin jars are marked in the Plugin section, Joget's start
+// is in the Joget section; nothing left (or "None found") hides the section.
+function recentChanges(c) {
+  const shown = Object.fromEntries(Object.entries(c || {}).filter(([k]) => ['App versions', 'wflow files'].includes(k)));
+  return Object.keys(shown).length ? shown : null;
+}
+
+// The Plugin section: jars changed in the period first (newest first, as Recent changes lists them), marked, then A-Z
+function pluginRows(plugins, changes, period) {
+  const changed = String(changes?.['Plugins (app_plugins)'] || '').split('\n')
+    .map((line) => line.trim().split(/\s+/).slice(2).join(' ')).filter((jar) => jar in plugins);
+  const rows = {};
+  for (const jar of changed) rows[jar] = `${plugins[jar]} · changed in ${period}`;
+  for (const jar of Object.keys(plugins).sort((a, b) => a.localeCompare(b))) if (!(jar in rows)) rows[jar] = plugins[jar];
+  return rows;
 }
 
 // Which node served the recorded requests (system log request entries carry it). More than one node in one tab
@@ -2042,7 +2063,8 @@ const INFO_LABELS = {
   database: ['Profile', 'JDBC driver', 'JDBC URL', 'User'],
   connectionPool: ['Ignored file keys', 'Pool size', 'Active connections', 'Idle connections', 'Waiting threads'],
   plugins: [], // jar files A-Z
-  recentChanges: ['Changes', 'App versions', 'Plugins (app_plugins)', 'wflow files', 'Joget started'],
+  recentChanges: ['App versions', 'wflow files'],
+  joget: ['Version', 'Edition', 'Application server', 'Started', 'Uptime', 'Process id', 'Time zone', 'Glowroot', 'Glowroot version'],
   cluster: ['Sticky sessions', 'Recorded requests served by', 'Joget node name', 'Cluster mode', 'Registered nodes',
     'Active nodes', 'Tomcat jvmRoute', 'This session\'s route', 'Session replication'],
 };
@@ -2060,7 +2082,7 @@ function infoOrder(group, obj) {
 let appFileUrl = null;
 
 // The apps the recording used, exported at upload (plugin page and downloaded HTML; the .jwa files only on the server).
-// Apps with problems first and open, each problem a link to its moment; the others folded to one line.
+// One folded block per app, apps with problems first; apps not exported are one grey line.
 function renderApps() {
   const page = $('appsPage');
   if (!page) return;

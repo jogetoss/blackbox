@@ -53,7 +53,7 @@ The permission settings take a Joget permission plugin (user, group, role, depar
 | Also capture all other server log lines during recordings | No | Other threads and users; only for "Who can view system logs" recorders |
 | Copy Glowroot data for the recording | No | Needs Glowroot 0.14 |
 | Glowroot address | empty | Empty = this Joget's own Glowroot agent (usually `http://localhost:4000`) |
-| Recent changes period (days) | 7 | The Info tab's first section: app versions (only the recording's apps and apps sharing their form tables, one line each), plugin jars, wflow files, restart |
+| Recent changes period (days) | 7 | The Info tab's first section: app versions (only the recording's apps and apps sharing their form tables, one line each) and wflow files; changed plugin jars are marked in **Plugin** |
 | Export the apps used in the recording | Yes | When the recording stops; shown like server data |
 | Allow capturing form data | Yes | Sample form data in the exported apps, masked unless **Mask data** is unticked; only for uploaders who may see the recording's server data |
 | Newest rows per table when the recording touched none | 20 | |
@@ -81,12 +81,13 @@ All of it needs **Capture system logs**, is shown only on this plugin's replay p
   servers before turning it on.
 - **Server load** (strip under the timeline): CPU, heap, busy request threads, DB connections and GC time, sampled
   every second on each node. No Glowroot needed.
-- **System Info** (**Info** tab): the server at recording start: host, Java, Joget, plugins, database settings,
-  connection pool, license and system properties. It starts with **Changed in the last 7 days** (setting): app
-  versions edited or published, plugin jars and wflow files (such as `app_datasource-*.properties`) changed, and a Joget
-  restart. **Cluster** shows Joget's node name and node lists, Tomcat's
+- **System Info** (**Info** tab): the server at recording start. The sections whose changes can be tracked come
+  first: **Changes in the last 7 days** (setting; hidden when there are none): app versions edited or published and
+  wflow files (such as `app_datasource-*.properties`) changed; **Joget**, with its start time and uptime; **Plugin**, the
+  jars changed in the period first and marked. Then host, cluster, Java, database settings, connection pool, license and
+  system properties. **Cluster** shows Joget's node name and node lists, Tomcat's
   `jvmRoute` and session replication, and which node served each recorded request: **Sticky sessions** warns when the
-  tab's requests moved between nodes. **Plugins** lists every jar in `app_plugins` with its date and size;
+  tab's requests moved between nodes. **Plugin** lists every jar in `app_plugins` with its date and size;
   "not loaded" means the jar failed to load (the Joget log says why).
 
 **Sensitive data:** traces and Glowroot data hold SQL with its parameter values and request details; System Info holds

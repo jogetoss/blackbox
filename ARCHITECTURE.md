@@ -153,7 +153,9 @@ starts at `recording-start` (or the node's first recorded request) and ends at s
 ## System Info snapshot
 
 `recording-start` saves `server-info.json`, grouped like Glowroot's **JVM > Environment** page, then everything
-**Settings > System Info** shows:
+**Settings > System Info** shows (the viewer's order: Recent changes, Joget with Process, Plugin, then Host, Cluster,
+Java, Database, Connection pool, License, System properties; changed plugin jars and the JVM start from Recent changes
+are shown in Plugin and Joget instead):
 
 - **Host**: hostname, node, processors, physical memory, OS. **Process**: id, start time, uptime.
 - **Java**: version, vendor, VM, heap used/committed/max, every JVM argument (one per line).
