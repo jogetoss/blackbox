@@ -173,8 +173,10 @@ Java, Database, DB pool, License, System properties; the JVM start from Recent c
   `serversIP.properties` address), `wflow.cluster` (set by the wflow-cluster agent), Tomcat's Engine `jvmRoute`, whether
   a `Catalina:type=Cluster` MBean exists (session replication), and the requested session id's route suffix. The viewer
   shows **Cluster** (`Yes: N nodes` or `No: one node`) and **Nodes**: the registered and active nodes in one list, each
-  with its address, `this node` and `not active` marks, or this node alone when Joget lists none (the wflow-cluster agent
-  alone isn't a cluster). It adds **Sticky sessions**, and **Recorded requests served by** when more than one node served them, from the system log: `attach` puts the `node` (from the
+  with its address, the recorded requests it served, and with several nodes `this node` (where the snapshot was taken)
+  and `not active`; this node alone when Joget lists none (the wflow-cluster agent alone isn't a cluster). **Node
+  switches** counts how often the next recorded request went to another node. The served counts come from the system
+  log: each node names its files by Joget's node name (`wflow.name`, else the hostname), and `attach` puts the `node` (from the
   `system-log.<node>.jsonl` file name) on each request entry.
 - **Plugins**: one entry per jar in `app_plugins` (`PluginManager.getBaseDirectory()`): modified date, size, then each
   plugin it loaded (name, version, class) from `listOsgiPlugin` + `getJarFileName`. A jar with none failed to load or

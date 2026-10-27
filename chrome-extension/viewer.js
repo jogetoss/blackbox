@@ -1434,7 +1434,7 @@ function renderInfo() {
       ['connectionPool', 'DB pool'], ['license', 'License'], ['systemProperties', 'System properties']];
     const served = nodesServed(current.systemLog);
     for (const [key, title] of groups) {
-      let values = key === 'cluster' && si.cluster ? { ...clusterRows(si.cluster), ...served } : si[key];
+      let values = key === 'cluster' && si.cluster ? clusterRows(si.cluster, served) : si[key];
       if (key === 'joget') values = { ...si.joget, ...si.process }; // the process start is Joget's start
       if (key === 'recentChanges') values = recentChanges(si.recentChanges);
       if (key === 'plugins' && values) values = pluginRows(values);
@@ -1490,8 +1490,9 @@ function withoutKeys(obj, keys) {
 
 // Cluster and Nodes from Joget's node lists: the registered nodes (servers.json) and the active ones (the license's
 // node:: entries), each "name (ip)". With neither (one node, or a license without nodes) this node alone. The
-// wflow-cluster agent alone doesn't make a cluster (it's in Java Arguments).
-function clusterRows(c) {
+// wflow-cluster agent alone doesn't make a cluster (it's in Java Arguments). Each node gets the recorded requests it
+// served; "this node" (where the Info snapshot was taken) only matters when there are several.
+function clusterRows(c, served) {
   const parse = (list) => String(list || '').split('\n').filter(Boolean).map((line) => {
     const m = line.match(/^(.*?)(?: \((.*)\))?$/);
     return { name: m[1], ip: m[2] };
@@ -1502,19 +1503,28 @@ function clusterRows(c) {
   const nodes = new Map();
   for (const n of [...registered, ...active]) nodes.set(n.name, { ...nodes.get(n.name), ...n });
   if (self && !nodes.has(self)) nodes.set(self, { name: self });
-  const several = nodes.size > 1;
+  const several = nodes.size > 1; // Joget's nodes only: older recordings name served nodes by hostname
+  for (const name of Object.keys(served?.counts || {})) if (!nodes.has(name)) nodes.set(name, { name });
   const rows = Object.fromEntries(Object.entries(c).filter(([k]) => !['Joget node name', 'Cluster mode', 'Registered nodes', 'Active nodes'].includes(k)));
   rows['Cluster'] = several ? `Yes: ${nodes.size} nodes` : 'No: one node';
-  rows['Nodes'] = [...nodes.values()].sort((a, b) => a.name.localeCompare(b.name)).map((n) => [
-    n.ip ? `${n.name} (${n.ip})` : n.name,
-    n.name === self ? 'this node' : null,
-    several && active.length && !active.some((a) => a.name === n.name) ? 'not active' : null,
-  ].filter(Boolean).join(' · ')).join('\n') || undefined;
+  rows['Nodes'] = [...nodes.values()].sort((a, b) => a.name.localeCompare(b.name)).map((n) => {
+    const count = served?.counts[n.name];
+    return [
+      n.ip ? `${n.name} (${n.ip})` : n.name,
+      several && n.name === self ? 'this node' : null,
+      count ? `${count} request${count === 1 ? '' : 's'}` : null,
+      several && active.length && !active.some((a) => a.name === n.name) ? 'not active' : null,
+    ].filter(Boolean).join(' · ');
+  }).join('\n') || undefined;
+  if (served?.switches) {
+    rows['Node switches'] = `⚠ The tab's requests moved between nodes ${served.switches} time${served.switches === 1 ? '' : 's'}. `
+      + 'Check the load balancer\'s sticky sessions (or a node failed over).';
+  }
   return rows;
 }
 
-// Which node served the recorded requests (system log request entries carry it). More than one node in one tab
-// usually means the load balancer doesn't keep the session on one node (no sticky sessions), or a node failed over.
+// Which node served each recorded request (system log request entries carry it), in order: the requests per node and
+// how often the next request went to another node. Switches usually mean no sticky sessions, or a node failed over.
 function nodesServed(log) {
   const reqs = (log?.entries || []).filter((e) => e.kind === 'request' && e.node);
   if (!reqs.length) return null;
@@ -1524,14 +1534,7 @@ function nodesServed(log) {
     counts[e.node] = (counts[e.node] || 0) + 1;
     if (i && e.node !== reqs[i - 1].node) switches++;
   });
-  const nodes = Object.keys(counts).sort();
-  const list = nodes.map((n) => `${n}: ${counts[n]} requests`).join('\n');
-  return {
-    'Recorded requests served by': nodes.length > 1 ? list : undefined, // one node: Sticky sessions says it
-    'Sticky sessions': nodes.length === 1
-      ? `Yes: all ${reqs.length} requests on ${nodes[0]}`
-      : `⚠ No: the tab's requests moved between ${nodes.length} nodes ${switches} times. Check the load balancer's sticky sessions (or a node failed over).`,
-  };
+  return { counts, switches };
 }
 
 // The server's JSON keeps no key order: labels first in this order, then file and pool keys A-Z.
@@ -1542,8 +1545,7 @@ const INFO_LABELS = {
   recentChanges: ['App versions', 'wflow files'],
   host: ['OS', 'Node', 'Hostname', 'Processors', 'Total RAM', 'Free RAM'],
   joget: ['Version', 'Edition', 'Application server', 'Started', 'Uptime', 'Process id', 'Time zone', 'Glowroot', 'Glowroot version'],
-  cluster: ['Cluster', 'Nodes', 'Sticky sessions', 'Recorded requests served by', 'Tomcat jvmRoute', 'This session\'s route',
-    'Session replication'],
+  cluster: ['Cluster', 'Nodes', 'Node switches', 'Tomcat jvmRoute', 'This session\'s route', 'Session replication'],
 };
 
 function infoOrder(group, obj) {

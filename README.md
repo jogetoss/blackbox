@@ -85,9 +85,9 @@ All of it needs **Capture system logs**, is shown only on this plugin's replay p
   first: **Changes in the last 7 days** (setting; hidden when there are none): app versions edited or published and
   wflow files (such as `app_datasource-*.properties`) changed; **Joget**, with its start time and uptime. Then
   **Plugin**, host (total and free RAM), cluster, Java, database settings, **DB pool**, license and system properties
-  (without the heap and processor values Java and Host already show). **Cluster** shows Joget's node name and node lists, Tomcat's
-  `jvmRoute` and session replication, and which node served each recorded request: **Sticky sessions** warns when the
-  tab's requests moved between nodes. **Plugin** lists every jar in `app_plugins` with its date and size;
+  (without the heap and processor values Java and Host already show). **Cluster** says whether Joget runs as a cluster and lists its
+  nodes, each with the recorded requests it served; **Node switches** warns when the tab's requests moved between
+  nodes (no sticky sessions, or a node failed over). Then Tomcat's `jvmRoute` and session replication. **Plugin** lists every jar in `app_plugins` with its date and size;
   "not loaded" means the jar failed to load (the Joget log says why).
 
 **Sensitive data:** traces and Glowroot data hold SQL with its parameter values and request details; System Info holds

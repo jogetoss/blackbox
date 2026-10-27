@@ -140,4 +140,12 @@ public class SystemLogStoreTest {
         assertFalse(SystemLogStore.isValidId("0F8FAD5B-D9CB-469F-A165-70867728950E")); // the extension sends lower case
         assertNull(store.readMeta("../../etc"));
     }
+
+    @Test
+    public void nodeNameIsJogetsNameElseTheHost() {
+        assertEquals("n1", SystemLogCapture.nodeName("n1", "host-a"));
+        assertEquals("host-a", SystemLogCapture.nodeName("", "host-a"));
+        assertEquals("my-node", SystemLogCapture.nodeName("my node", null)); // safe for the file name
+        assertEquals("node", SystemLogCapture.nodeName(null, null));
+    }
 }

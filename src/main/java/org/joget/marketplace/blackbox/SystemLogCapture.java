@@ -196,13 +196,19 @@ final class SystemLogCapture {
         }
     }
 
+    /** Joget's node name (wflow.name, as in the Info tab's Nodes), else the hostname. */
     static String nodeName() {
-        String name;
+        String host;
         try {
-            name = InetAddress.getLocalHost().getHostName();
+            host = InetAddress.getLocalHost().getHostName();
         } catch (Exception e) {
-            name = "node";
+            host = null;
         }
+        return nodeName(org.joget.commons.util.ServerUtil.getServerName(), host);
+    }
+
+    static String nodeName(String jogetName, String host) {
+        String name = jogetName != null && !jogetName.isEmpty() ? jogetName : host != null ? host : "";
         name = name.replaceAll("[^A-Za-z0-9.-]", "-");
         return name.isEmpty() ? "node" : name;
     }
