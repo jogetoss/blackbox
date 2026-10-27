@@ -1434,12 +1434,12 @@ function renderInfo() {
       ['connectionPool', 'DB pool'], ['license', 'License'], ['systemProperties', 'System properties']];
     const served = nodesServed(current.systemLog);
     for (const [key, title] of groups) {
-      let values = key === 'cluster' && served ? { ...si[key], ...served } : si[key];
+      let values = key === 'cluster' && si.cluster ? { ...clusterRows(si.cluster), ...served } : si[key];
       if (key === 'joget') values = { ...si.joget, ...si.process }; // the process start is Joget's start
       if (key === 'recentChanges') values = recentChanges(si.recentChanges);
       if (key === 'plugins' && values) values = pluginRows(values);
       if (key === 'host' && values) values = renameKeys(values, { 'Physical memory': 'Total RAM' }); // older recordings
-      if (key === 'host' && values && si.cluster?.['Joget node name']) values = withoutKeys(values, ['Node']);
+      if (key === 'host' && values && clusterRows(si.cluster || {}).Nodes) values = withoutKeys(values, ['Node']); // in Cluster > Nodes
       if (key === 'license' && values) values = withoutKeys(values, LICENSE_SHOWN_ELSEWHERE);
       if (key === 'systemProperties' && values) values = withoutKeys(values, [...SHOWN_ELSEWHERE, ...setByArguments(si.java?.Arguments, values)]);
       if (!values || !Object.keys(values).length) continue;
@@ -1488,6 +1488,31 @@ function withoutKeys(obj, keys) {
   return Object.fromEntries(Object.entries(obj).filter(([k]) => !keys.includes(k)));
 }
 
+// Cluster and Nodes from Joget's node lists: the registered nodes (servers.json) and the active ones (the license's
+// node:: entries), each "name (ip)". With neither (one node, or a license without nodes) this node alone. The
+// wflow-cluster agent alone doesn't make a cluster (it's in Java Arguments).
+function clusterRows(c) {
+  const parse = (list) => String(list || '').split('\n').filter(Boolean).map((line) => {
+    const m = line.match(/^(.*?)(?: \((.*)\))?$/);
+    return { name: m[1], ip: m[2] };
+  });
+  const registered = parse(c['Registered nodes']);
+  const active = parse(c['Active nodes']);
+  const self = c['Joget node name'] && !c['Joget node name'].startsWith('(') ? c['Joget node name'] : null;
+  const nodes = new Map();
+  for (const n of [...registered, ...active]) nodes.set(n.name, { ...nodes.get(n.name), ...n });
+  if (self && !nodes.has(self)) nodes.set(self, { name: self });
+  const several = nodes.size > 1;
+  const rows = Object.fromEntries(Object.entries(c).filter(([k]) => !['Joget node name', 'Cluster mode', 'Registered nodes', 'Active nodes'].includes(k)));
+  rows['Cluster'] = several ? `Yes: ${nodes.size} nodes` : 'No: one node';
+  rows['Nodes'] = [...nodes.values()].sort((a, b) => a.name.localeCompare(b.name)).map((n) => [
+    n.ip ? `${n.name} (${n.ip})` : n.name,
+    n.name === self ? 'this node' : null,
+    several && active.length && !active.some((a) => a.name === n.name) ? 'not active' : null,
+  ].filter(Boolean).join(' · ')).join('\n') || undefined;
+  return rows;
+}
+
 // Which node served the recorded requests (system log request entries carry it). More than one node in one tab
 // usually means the load balancer doesn't keep the session on one node (no sticky sessions), or a node failed over.
 function nodesServed(log) {
@@ -1517,8 +1542,8 @@ const INFO_LABELS = {
   recentChanges: ['App versions', 'wflow files'],
   host: ['OS', 'Node', 'Hostname', 'Processors', 'Total RAM', 'Free RAM'],
   joget: ['Version', 'Edition', 'Application server', 'Started', 'Uptime', 'Process id', 'Time zone', 'Glowroot', 'Glowroot version'],
-  cluster: ['Sticky sessions', 'Recorded requests served by', 'Joget node name', 'Cluster mode', 'Registered nodes',
-    'Active nodes', 'Tomcat jvmRoute', 'This session\'s route', 'Session replication'],
+  cluster: ['Cluster', 'Nodes', 'Sticky sessions', 'Recorded requests served by', 'Tomcat jvmRoute', 'This session\'s route',
+    'Session replication'],
 };
 
 function infoOrder(group, obj) {
