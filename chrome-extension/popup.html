@@ -22,7 +22,7 @@
     #quick label input { margin: 0; }
     #quick .sub { margin-left: 18px; }
     #quick .sub2 { margin-left: 36px; }
-    #qRealWarn { margin: 2px 0 0 36px; color: var(--warn); }
+    #qMaskWarn { margin: 2px 0 0 36px; color: var(--warn); }
     #qNote { margin-top: 4px; color: var(--muted); }
     [hidden] { display: none !important; }
   </style>
@@ -43,8 +43,8 @@
     <div id="qServer" hidden>
       <label id="qAppsRow" hidden title="When the recording stops, the server exports the apps it used (.jwa), so support can import them"><input type="checkbox" id="qApps"> Export the apps used</label>
       <label id="qSampleRow" class="sub" hidden title="The records you opened or saved, added to the exported apps with fake values of the same shape"><input type="checkbox" id="qSample"> Sample form data</label>
-      <label id="qRealRow" class="sub2" hidden title="Real values instead of masked ones. Columns the server marks as sensitive stay masked."><input type="checkbox" id="qReal"> Real values</label>
-      <div id="qRealWarn" hidden>Customer data: share the recording only with people who may see it.</div>
+      <label id="qMaskRow" class="sub2" hidden title="Fake values of the same shape. Unticked: real values, except columns the server marks as sensitive."><input type="checkbox" id="qMask"> Mask data</label>
+      <div id="qMaskWarn" hidden>Real customer data: share the recording only with people who may see it.</div>
       <label id="qAllServerRow" hidden title="Every log line the server writes while recording (scheduler jobs, other users), not only this tab's"><input type="checkbox" id="qAllServer"> All server log lines</label>
       <label id="qGlowrootRow" hidden title="Glowroot's data for the recording's time, about a minute after it stops"><input type="checkbox" id="qGlowroot"> Glowroot data</label>
     </div>

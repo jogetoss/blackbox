@@ -64,7 +64,14 @@ test('popup shows the server options and keeps the choices', async ({ context, e
   await expect(page.locator('#qPage')).toBeChecked();
   await expect(page.locator('#qAppsRow')).toBeVisible({ visible: !!me.options.apps });
   await expect(page.locator('#qSampleRow')).toBeVisible({ visible: !!me.options.sample });
-  await expect(page.locator('#qRealRow')).toBeVisible({ visible: !!me.options.real });
+  await expect(page.locator('#qMaskRow')).toBeVisible({ visible: !!me.options.real });
+  if (me.options.real) {
+    await expect(page.locator('#qMask')).toBeChecked(); // masked unless unticked
+    await page.uncheck('#qMask');
+    await expect(page.locator('#qMaskWarn')).toBeVisible();
+    expect((await page.evaluate(() => Quick.get())).real).toBe(true);
+    await page.check('#qMask');
+  }
   await expect(page.locator('#qAllServerRow')).toBeVisible({ visible: !!me.options.allServer });
   await expect(page.locator('#qGlowrootRow')).toBeVisible({ visible: !!me.options.glowrootData });
 
@@ -115,6 +122,18 @@ test('stop exports the apps; the upload keeps that export', async ({ context, ex
   } finally {
     await api(joget, 'delete', { id: rec.id }, 'POST');
   }
+});
+
+test('Mask data unticked: the stop export keeps real values', async ({ context, extensionId }) => {
+  const joget = await context.newPage();
+  await loginJoget(joget);
+  await joget.waitForLoadState('networkidle');
+  test.skip(!(await api(joget, 'me')).options.real, 'this user may not keep real values');
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/recordings.html`);
+  const { stop } = await captureAndStop(page, { sampleData: 'real' });
+  expect(stop.appExport.state).toBe('done');
+  expect(stop.appExport.sampleData).toBe('real');
 });
 
 test('apps turned off at stop: the upload exports nothing', async ({ context, extensionId }) => {

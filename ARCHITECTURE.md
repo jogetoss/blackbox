@@ -194,7 +194,7 @@ never arrived, or `failed`), `create` exports as below from the uploaded files, 
 upload (the upload form, or `recording.options` for automatic uploads).
 
 `me.options` says what the popup may offer: `systemLog`, `apps`, `sample` (also needs the server data of one's own
-recordings), `real`, `allServer` and `glowrootData`. Each only turns a setting off: `recording-start` takes
+recordings), `real` (may untick Mask data: users in "Who can view system logs"), `allServer` and `glowrootData`. The others only turn a setting off: `recording-start` takes
 `allServer=false` and `glowrootData=false`.
 
 The export (`exportApps`) runs `AppExport`: `hits` reads `session.json` (each request with its page:

@@ -22,7 +22,7 @@ const Actions = (() => {
     $('upSend').onclick = () => send();
     $('upApps').onchange = $('upSample').onchange = () => {
       $('upSample').disabled = !$('upApps').checked;
-      $('upReal').disabled = !$('upApps').checked || !$('upSample').checked;
+      $('upMask').disabled = !$('upApps').checked || !$('upSample').checked;
     };
   }
 
@@ -32,7 +32,7 @@ const Actions = (() => {
     $('upHeading').textContent = 'Upload: ' + (title || 'recording');
     $('upTitle').value = title;
     $('upNotes').value = '';
-    for (const id of ['upAtStop', 'upAppsRow', 'upSampleRow', 'upRealRow']) $(id).hidden = true;
+    for (const id of ['upAtStop', 'upAppsRow', 'upSampleRow', 'upMaskRow']) $(id).hidden = true;
     form.options = null;
     form.ready = sampleOptions(row).catch(() => { /* not reachable or not logged in: the upload says so */ });
     status('');
@@ -56,14 +56,14 @@ const Actions = (() => {
     const o = form.options = recording?.options || null;
     $('upApps').checked = o?.apps !== false;
     $('upSample').checked = !o || o.sampleData !== 'none';
-    $('upReal').checked = o?.sampleData === 'real';
+    $('upMask').checked = o?.sampleData !== 'real';
     $('upApps').onchange?.();
     if (!settings.uploadUrl) settings = await Server.getSettings();
     if (!settings.uploadUrl || !(await Server.hasPermission(settings.uploadUrl))) return;
     const me = await Server.me(settings.uploadUrl);
     $('upAppsRow').hidden = !me.options?.apps;
     $('upSampleRow').hidden = !me.sampleData?.enabled;
-    $('upRealRow').hidden = !me.sampleData?.enabled || !me.sampleData?.real;
+    $('upMaskRow').hidden = !me.sampleData?.enabled || !me.sampleData?.real;
   }
 
   // The upload's apps / sampleData parameters: from the form when it offered the choice, else as saved with the
@@ -73,7 +73,7 @@ const Actions = (() => {
     if (!$('upAppsRow').hidden && !$('upApps').checked) return { apps: 'false' };
     if ($('upSampleRow').hidden) return {}; // the server adds none
     if (!$('upSample').checked) return { sampleData: 'none' };
-    return { sampleData: !$('upRealRow').hidden && $('upReal').checked ? 'real' : 'masked' };
+    return { sampleData: !$('upMaskRow').hidden && !$('upMask').checked ? 'real' : 'masked' };
   }
 
   function closeUpload() {

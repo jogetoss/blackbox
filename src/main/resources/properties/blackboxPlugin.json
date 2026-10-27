@@ -181,12 +181,12 @@
         },
         {
             "name" : "sampleData",
-            "label" : "Add sample form data to the exported apps",
-            "description" : "Added to each .jwa like Joget's own export with data, so importing it imports them: the records the recording opened or saved, rows of the app's other tables that point at them, and the newest rows of tables with none. Values are masked: same length, letters, digits and symbols, but fake (options, yes/no and small numbers kept). Uploaded files become placeholders. Only for uploaders who may see the recording's server data.",
+            "label" : "Allow capturing form data",
+            "description" : "Added to each .jwa like Joget's own export with data, so importing it imports them: the records the recording opened or saved, rows of the app's other tables that point at them, and the newest rows of tables with none. Values are masked: same length, letters, digits and symbols, but fake (options, yes/no and small numbers kept). Uploaded files become placeholders. Only for uploaders who may see the recording's server data. Users allowed by \"Who can view system logs\" can untick \"Mask data\" in the extension's popup to keep real values; columns matching the always-masked names stay masked.",
             "type" : "selectbox",
             "value" : "true",
             "options" : [
-                {"value" : "true", "label" : "Yes (masked)"},
+                {"value" : "true", "label" : "Yes"},
                 {"value" : "false", "label" : "No"}
             ]
         },
@@ -205,17 +205,6 @@
             "options" : [
                 {"value" : "false", "label" : "New unique ids"},
                 {"value" : "true", "label" : "Keep the original ids"}
-            ]
-        },
-        {
-            "name" : "allowRealSampleData",
-            "label" : "Allow real values in sample data",
-            "description" : "When Yes, users allowed by \"Who can view system logs\" can tick \"Use real values\" when they upload. Columns matching the always-masked names stay masked.",
-            "type" : "selectbox",
-            "value" : "false",
-            "options" : [
-                {"value" : "false", "label" : "No"},
-                {"value" : "true", "label" : "Yes"}
             ]
         },
         {

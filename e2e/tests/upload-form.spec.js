@@ -41,7 +41,8 @@ test('upload form offers masked sample data and the server builds it', async ({ 
   await expect(page.locator('#upSampleRow')).toBeVisible();
   await expect(page.locator('#upSample')).toBeChecked();
   const me = await api(joget, 'me');
-  await expect(page.locator('#upRealRow')).toBeVisible({ visible: !!me.sampleData.real });
+  await expect(page.locator('#upMaskRow')).toBeVisible({ visible: !!me.sampleData.real });
+  if (me.sampleData.real) await expect(page.locator('#upMask')).toBeChecked();
 
   const create = page.waitForResponse((r) => r.url().includes('action=create'), { timeout: 30_000 });
   await page.click('#upSend');

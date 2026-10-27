@@ -46,7 +46,8 @@ function linkify(text) {
 // Sound: this browser's settings (the same as in Settings). Server options: only those the server offers
 // (me.options), remembered as quickOffer so they show at once the next time the popup opens.
 
-const QUICK_BOXES = [['qApps', 'apps'], ['qSample', 'sample'], ['qReal', 'real'], ['qAllServer', 'allServer'], ['qGlowroot', 'glowrootData']];
+// [checkbox, Quick key, ticked = !value]: Mask data is the inverse of the real key
+const QUICK_BOXES = [['qApps', 'apps'], ['qSample', 'sample'], ['qMask', 'real', true], ['qAllServer', 'allServer'], ['qGlowroot', 'glowrootData']];
 let offer = null;
 
 async function initQuick() {
@@ -56,9 +57,9 @@ async function initQuick() {
   $('qPage').onchange = () => chrome.storage.local.set({ recordPageAudio: $('qPage').checked });
   $('qMic').onchange = () => chrome.storage.local.set({ recordMic: $('qMic').checked });
   const q = await Quick.get();
-  for (const [box, key] of QUICK_BOXES) {
-    $(box).checked = q[key];
-    $(box).onchange = () => { Quick.set({ [key]: $(box).checked }); showQuick(offer); };
+  for (const [box, key, inverse] of QUICK_BOXES) {
+    $(box).checked = inverse ? !q[key] : q[key];
+    $(box).onchange = () => { Quick.set({ [key]: inverse ? !$(box).checked : $(box).checked }); showQuick(offer); };
   }
   showQuick(s.quickOffer || null);
   const fresh = await serverOffer().catch(() => undefined); // not reachable: keep what was known
@@ -84,15 +85,15 @@ async function serverOffer() {
   }
 }
 
-// Sample data needs the app export, real values need sample data
+// Sample data needs the app export, Mask data needs sample data
 function showQuick(o) {
   offer = o;
   $('qAppsRow').hidden = !o?.apps;
   $('qSampleRow').hidden = !o?.sample;
-  $('qRealRow').hidden = !o?.real;
+  $('qMaskRow').hidden = !o?.real; // only users who may keep real values get the choice; for the rest it is masked
   $('qSample').disabled = !$('qApps').checked;
-  $('qReal').disabled = !$('qApps').checked || !$('qSample').checked;
-  $('qRealWarn').hidden = $('qRealRow').hidden || $('qReal').disabled || !$('qReal').checked;
+  $('qMask').disabled = !$('qApps').checked || !$('qSample').checked;
+  $('qMaskWarn').hidden = $('qMaskRow').hidden || $('qMask').disabled || $('qMask').checked;
   $('qAllServerRow').hidden = !o?.allServer;
   $('qGlowrootRow').hidden = !o?.glowrootData;
   $('qServer').hidden = !(o?.apps || o?.allServer || o?.glowrootData);
