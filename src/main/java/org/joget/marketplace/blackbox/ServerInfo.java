@@ -1,6 +1,7 @@
 package org.joget.marketplace.blackbox;
 
 import java.lang.management.ManagementFactory;
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -16,6 +17,7 @@ import org.joget.commons.util.LogUtil;
 import org.joget.commons.util.ResourceBundleUtil;
 import org.joget.plugin.base.Plugin;
 import org.joget.plugin.base.PluginManager;
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -131,7 +133,9 @@ final class ServerInfo {
         }
         if (recentDays > 0) {
             try {
-                result.put("recentChanges", recentChanges(recentDays, now));
+                JSONArray recentApps = new JSONArray();
+                result.put("recentChanges", recentChanges(recentDays, now, recentApps));
+                result.put(RECENT_APPS, recentApps); // all of them; the page shows the recording's (summarizeApps)
             } catch (Exception | LinkageError e) {
                 // outside a running Joget
             }
@@ -283,8 +287,11 @@ final class ServerInfo {
         }
     }
 
-    /** What changed on this server lately: app versions (any edit updates their date), plugin jars, wflow files. */
-    private static JSONObject recentChanges(int days, long now) throws JSONException {
+    /**
+     * What changed on this server lately: app versions (any edit updates their date), plugin jars, wflow files.
+     * recentApps gets every app version changed in the period: {id, version, published, name, modified}.
+     */
+    private static JSONObject recentChanges(int days, long now, JSONArray recentApps) throws JSONException {
         long since = now - days * 24L * 3600 * 1000;
         org.joget.apps.app.dao.AppDefinitionDao dao = (org.joget.apps.app.dao.AppDefinitionDao) AppUtil.getApplicationContext()
                 .getBean("appDefinitionDao");
@@ -294,6 +301,10 @@ final class ServerInfo {
             if (a.getDateModified() != null) {
                 apps.add(new Object[]{a.getDateModified().getTime(), a.getAppId() + " v" + a.getVersion()
                         + (a.isPublished() ? " (published)" : "") + " " + a.getName()});
+                if (a.getDateModified().getTime() >= since) {
+                    recentApps.put(new JSONObject().put("id", a.getAppId()).put("version", a.getVersion())
+                            .put("published", a.isPublished()).put("name", a.getName()).put("modified", a.getDateModified().getTime()));
+                }
             }
         }
         PluginManager pm = (PluginManager) AppUtil.getApplicationContext().getBean("pluginManager");
@@ -469,6 +480,89 @@ final class ServerInfo {
     }
 
     /** Writes the snapshot into the capture's pending folder; it moves into the recording with the system log. */
+    static final String RECENT_APPS = "recentApps";
+
+    /** The form tables of an app version (null: latest), or null when there is no such app. */
+    interface AppTables {
+        java.util.Set<String> of(String appId, String version);
+    }
+
+    /** Joget's app definitions: the tables of their forms. */
+    static AppTables jogetTables() {
+        org.joget.apps.app.service.AppService appService = (org.joget.apps.app.service.AppService) AppUtil.getApplicationContext()
+                .getBean("appService");
+        return (appId, version) -> {
+            org.joget.apps.app.model.AppDefinition def = appService.loadAppDefinition(appId, version);
+            return def != null ? SampleData.tables(def).keySet() : null;
+        };
+    }
+
+    /**
+     * Narrows Recent changes' "App versions" to the recording: the apps it used and other apps whose forms use one of
+     * their tables, one line per app (latest change, how many versions changed). The full list stays in recentApps.
+     * Does nothing when infoFile is missing or has no recentApps.
+     */
+    static void summarizeApps(Path infoFile, java.util.Collection<String> used, AppTables tables) throws IOException {
+        if (infoFile == null || !Files.isRegularFile(infoFile)) {
+            return;
+        }
+        try {
+            JSONObject info = new JSONObject(new String(Files.readAllBytes(infoFile), StandardCharsets.UTF_8));
+            JSONArray all = info.optJSONArray(RECENT_APPS);
+            JSONObject changes = info.optJSONObject("recentChanges");
+            if (all == null || changes == null) {
+                return;
+            }
+            java.util.Set<String> usedTables = new java.util.HashSet<>();
+            for (String id : used) {
+                java.util.Set<String> t = tables.of(id, null);
+                if (t != null) {
+                    usedTables.addAll(t);
+                }
+            }
+            Map<String, java.util.List<JSONObject>> byApp = new java.util.LinkedHashMap<>(); // newest first, as listed
+            for (int i = 0; i < all.length(); i++) {
+                JSONObject a = all.getJSONObject(i);
+                byApp.computeIfAbsent(a.getString("id"), k -> new java.util.ArrayList<>()).add(a);
+            }
+            java.text.SimpleDateFormat date = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm");
+            java.util.List<String> lines = new java.util.ArrayList<>();
+            for (Map.Entry<String, java.util.List<JSONObject>> e : byApp.entrySet()) {
+                String shares = "";
+                if (!used.contains(e.getKey())) {
+                    java.util.Set<String> common = new java.util.TreeSet<>();
+                    for (JSONObject v : e.getValue()) {
+                        java.util.Set<String> t = tables.of(e.getKey(), String.valueOf(v.optLong("version")));
+                        if (t != null) {
+                            for (String table : t) {
+                                if (usedTables.contains(table)) {
+                                    common.add(table);
+                                }
+                            }
+                        }
+                    }
+                    if (common.isEmpty()) {
+                        continue; // not related to the recording
+                    }
+                    shares = " · shares " + String.join(", ", common);
+                }
+                JSONObject latest = e.getValue().get(0);
+                int n = e.getValue().size();
+                lines.add(date.format(new java.util.Date(latest.optLong("modified"))) + "  " + e.getKey() + " v" + latest.optLong("version")
+                        + (latest.optBoolean("published") ? " (published)" : "") + " " + latest.optString("name")
+                        + " · " + n + " version" + (n == 1 ? "" : "s") + " changed" + shares);
+            }
+            if (lines.isEmpty()) {
+                changes.remove("App versions");
+            } else {
+                changes.put("App versions", String.join("\n", lines));
+            }
+            Files.write(infoFile, info.toString().getBytes(StandardCharsets.UTF_8));
+        } catch (RuntimeException e) { // JSONException included
+            throw new IOException(e);
+        }
+    }
+
     static void save(Path captureDir, HttpServletRequest request) {
         save(captureDir, request, 0);
     }

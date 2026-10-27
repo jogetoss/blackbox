@@ -1571,11 +1571,23 @@ function processBlock(p) {
   }
   if (p.activities?.length) {
     d.append(el('h4', null, `Activities${p.activitiesCut ? ' (first 100)' : ''}`));
-    const list = kv(Object.fromEntries(p.activities.map((x, i) => [`${i + 1}. ${x.name || x.defId}`,
-      [x.state, x.assignees?.length ? `assigned to ${x.assignees.join(', ')}` : '', x.acceptedBy ? `done by ${x.acceptedBy}` : '',
-        date(x.created), x.finished ? `→ ${date(x.finished)}` : ''].filter(Boolean).join(' · ') + `\n${x.id}`])));
-    list.classList.add('multiline');
-    d.append(list);
+    // One row per activity; its id is in the name's tooltip
+    const table = el('table', 'act-table');
+    const head = el('tr');
+    const finished = p.activities.some((x) => x.finished); // no column when none has finished
+    for (const h of ['#', 'Activity', 'State', 'User', 'Created', ...(finished ? ['Finished'] : [])]) head.append(el('th', null, h));
+    table.append(head);
+    p.activities.forEach((x, i) => {
+      const row = el('tr');
+      const name = el('td', null, x.name || x.defId);
+      name.title = x.id;
+      row.append(el('td', 'num', String(i + 1)), name, el('td', null, x.state || ''),
+        el('td', null, x.acceptedBy ? `done by ${x.acceptedBy}` : x.assignees?.length ? `assigned to ${x.assignees.join(', ')}` : ''),
+        el('td', 'date', date(x.created) || ''));
+      if (finished) row.append(el('td', 'date', date(x.finished) || ''));
+      table.append(row);
+    });
+    d.append(table);
   }
   return d;
 }

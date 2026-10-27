@@ -141,4 +141,37 @@ public class ServerInfoTest {
         JSONObject none = ServerInfo.recentChanges(1, now + day, java.util.Collections.<Object[]>emptyList(), plugins, wflow, 0);
         assertTrue(none.getString("Changes").startsWith("None found"));
     }
+
+    @Test
+    public void summarizeAppsKeepsTheRecordingsAppsAndThoseSharingTheirTables() throws Exception {
+        java.nio.file.Path f = java.nio.file.Files.createTempFile("bb-info", ".json");
+        org.json.JSONArray all = new org.json.JSONArray();
+        long t = 1_800_000_000_000L;
+        all.put(app("leaveDemo", 12, true, "Leave Request", t)).put(app("agreesign", 1, true, "SigningDoc", t - 1))
+                .put(app("leaveDemo", 11, false, "Leave Request", t - 2)).put(app("hr", 3, false, "HR", t - 3));
+        java.nio.file.Files.write(f, new JSONObject().put("recentApps", all)
+                .put("recentChanges", new JSONObject().put("Period", "the last 7 days").put("App versions", "all of them"))
+                .toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        java.util.Map<String, java.util.Set<String>> tables = new java.util.HashMap<>();
+        tables.put("leaveDemo", new java.util.HashSet<>(java.util.Arrays.asList("leave", "employee")));
+        tables.put("hr", new java.util.HashSet<>(java.util.Arrays.asList("employee", "payroll")));
+        tables.put("agreesign", new java.util.HashSet<>(java.util.Arrays.asList("doc")));
+
+        ServerInfo.summarizeApps(f, java.util.Collections.singletonList("leaveDemo"), (id, v) -> tables.get(id));
+
+        JSONObject info = new JSONObject(new String(java.nio.file.Files.readAllBytes(f), java.nio.charset.StandardCharsets.UTF_8));
+        String[] lines = info.getJSONObject("recentChanges").getString("App versions").split("\n");
+        assertEquals("one line per related app; agreesign shares no table", 2, lines.length);
+        assertTrue(lines[0], lines[0].contains("leaveDemo v12 (published) Leave Request · 2 versions changed"));
+        assertTrue(lines[1], lines[1].contains("hr v3 HR · 1 version changed · shares employee"));
+        assertEquals("the full list stays in the file", 4, info.getJSONArray("recentApps").length());
+
+        ServerInfo.summarizeApps(f, java.util.Collections.singletonList("other"), (id, v) -> tables.get(id));
+        info = new JSONObject(new String(java.nio.file.Files.readAllBytes(f), java.nio.charset.StandardCharsets.UTF_8));
+        assertFalse("none related: no row", info.getJSONObject("recentChanges").has("App versions"));
+    }
+
+    private static JSONObject app(String id, int version, boolean published, String name, long modified) throws Exception {
+        return new JSONObject().put("id", id).put("version", version).put("published", published).put("name", name).put("modified", modified);
+    }
 }

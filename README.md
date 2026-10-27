@@ -53,7 +53,7 @@ The permission settings take a Joget permission plugin (user, group, role, depar
 | Also capture all other server log lines during recordings | No | Other threads and users; only for "Who can view system logs" recorders |
 | Copy Glowroot data for the recording | No | Needs Glowroot 0.14 |
 | Glowroot address | empty | Empty = this Joget's own Glowroot agent (usually `http://localhost:4000`) |
-| Recent changes period (days) | 7 | The Info tab's first section |
+| Recent changes period (days) | 7 | The Info tab's first section: app versions (only the recording's apps and apps sharing their form tables, one line each), plugin jars, wflow files, restart |
 | Export the apps used in the recording | Yes | When the recording stops; shown like server data |
 | Allow capturing form data | Yes | Sample form data in the exported apps, masked unless **Mask data** is unticked; only for uploaders who may see the recording's server data |
 | Newest rows per table when the recording touched none | 20 | |

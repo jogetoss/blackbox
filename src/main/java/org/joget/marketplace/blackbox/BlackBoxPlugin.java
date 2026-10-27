@@ -270,6 +270,10 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             store.updateMeta(recId, meta);
         }
         String done = atStop != null ? atStop.optString("state") : "";
+        if (!"done".equals(done) && !"off".equals(done)) {
+            summarizeRecentApps(store.file(recId, ServerInfo.FILE), store.file(recId, RecordingStore.SESSION),
+                    store.file(recId, RecordingStore.SYSTEM_LOG), recId);
+        }
         JSONArray saved = null;
         if ("done".equals(done)) {
             saved = atStop.optJSONArray("saved");
@@ -554,6 +558,19 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         json(response, result);
     }
 
+    /** Recent changes' app versions narrowed to the apps the recording used and those sharing their form tables. */
+    private void summarizeRecentApps(Path info, Path session, Path systemLog, String label) {
+        try {
+            List<String> ids = new java.util.ArrayList<>();
+            for (AppExport.Seen s : AppExport.find(AppExport.hits(session, systemLog))) {
+                ids.add(s.appId);
+            }
+            ServerInfo.summarizeApps(info, ids, ServerInfo.jogetTables());
+        } catch (IOException | RuntimeException | LinkageError e) {
+            LogUtil.warn(getClassName(), "Could not narrow the recent app changes of " + label + ": " + e);
+        }
+    }
+
     /** How long an upload waits for the app export its recording's stop started. */
     private static final long STOP_EXPORT_WAIT_MS = 120 * 1000L;
 
@@ -572,11 +589,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         if (pending.has("appExport") || pending.has("recording")) {
             return pending.optJSONObject("appExport") != null ? pending.getJSONObject("appExport") : new JSONObject().put("state", "off");
         }
-        if ("false".equals(getPropertyString("includeAppExport")) || "false".equals(request.getParameter("apps"))) {
-            JSONObject off = new JSONObject().put("state", "off");
-            logs.put(id, "appExport", off);
-            return off;
-        }
+        boolean off = "false".equals(getPropertyString("includeAppExport")) || "false".equals(request.getParameter("apps"));
         Path dir = logs.dir(id);
         Path session = dir.resolve("stop-session.json");
         Path systemLog = dir.resolve("stop-system-log.json");
@@ -592,6 +605,11 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             new JSONObject(new String(body, StandardCharsets.UTF_8)); // only JSON goes on to AppExport
             Files.write(session, body);
             logs.writeLines(id, systemLog);
+            summarizeRecentApps(dir.resolve(ServerInfo.FILE), session, systemLog, id);
+            if (off) {
+                state = new JSONObject().put("state", "off");
+                return state;
+            }
             SampleData.Mode sample = sampleMode(request, access, pending);
             JSONArray saved = exportApps(dir, session, systemLog, sample, id);
             state = new JSONObject().put("state", "done").put("saved", saved)
