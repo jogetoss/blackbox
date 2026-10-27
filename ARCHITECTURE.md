@@ -154,14 +154,15 @@ starts at `recording-start` (or the node's first recorded request) and ends at s
 
 `recording-start` saves `server-info.json`, grouped like Glowroot's **JVM > Environment** page, then everything
 **Settings > System Info** shows (the viewer's order: Recent changes, Joget with Process, Plugin, then Host, Cluster,
-Java, Database, Connection pool, License, System properties; changed plugin jars and the JVM start from Recent changes
-are shown in Plugin and Joget instead):
+Java, Database, DB pool, License, System properties; the JVM start from Recent changes is shown in Joget, and
+`platform.jvm.total/max/processors` only in Java and Host):
 
-- **Host**: hostname, node, processors, physical memory, OS. **Process**: id, start time, uptime.
+- **Host**: hostname, node, processors, total and free RAM (`TotalPhysicalMemorySize`, `FreePhysicalMemorySize`: the
+  OS's free memory, page cache not counted), OS. **Process**: id, start time, uptime.
 - **Java**: version, vendor, VM, heap used/committed/max, every JVM argument (one per line).
 - **Joget**: version, edition, application server, time zone, Glowroot address and version.
 - **Recent changes** (first in the Info tab): app versions by `dateModified` (`AppDefinitionDao.findByVersion`, newest
-  50; saving a form, list or userview updates it), jars in `app_plugins` and top-level files of the wflow folder modified
+  50; saving a form, list or userview updates it), top-level files of the wflow folder modified
   in the period (not logs, not `servers.json` / `serversIP.properties` / `app_presence.json`, which Joget rewrites), and
   the JVM start when it is in the period. Every changed app version goes into `server-info.json` as `recentApps`
   (`{id, version, published, name, modified}`); with the app export (at stop, or at upload without one)
@@ -178,7 +179,7 @@ are shown in Plugin and Joget instead):
   holds no plugin; a loaded jar not in the folder says so.
 - **Database**: the current profile's `app_datasource-<profile>.properties`: profile, JDBC driver, URL and user, then
   every other key in the file. The password is left out, and `password=` values in the URL are masked.
-- **Connection pool**: the pool state at recording start (size, active, idle, waiting), then every Tomcat JDBC pool
+- **DB pool** (`connectionPool`): the pool state at recording start (size, active, idle, waiting), then every Tomcat JDBC pool
   setting as the pool really uses it. A value that differs from the file shows `(file says x)`. **Ignored file keys**
   lists keys the pool has no setting for: Joget skips them silently, usually because of a typo (`maxactive`).
 - **License**: Enterprise's license table (`SysInfo.getLicenseProperties()`), including the license signature, system

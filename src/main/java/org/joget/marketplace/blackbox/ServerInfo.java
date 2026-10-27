@@ -58,7 +58,8 @@ final class ServerInfo {
         put(host, "Hostname", hostname());
         put(host, "Node", SystemLogCapture.nodeName());
         put(host, "Processors", String.valueOf(rt.availableProcessors()));
-        put(host, "Physical memory", mb(osAttribute("TotalPhysicalMemorySize")));
+        put(host, "Total RAM", mb(osAttribute("TotalPhysicalMemorySize")));
+        put(host, "Free RAM", mb(osAttribute("FreePhysicalMemorySize"))); // the OS's free memory, page cache not counted
         put(host, "OS", System.getProperty("os.name") + " " + System.getProperty("os.version") + " (" + System.getProperty("os.arch") + ")");
 
         JSONObject process = new JSONObject();
@@ -307,16 +308,14 @@ final class ServerInfo {
                 }
             }
         }
-        PluginManager pm = (PluginManager) AppUtil.getApplicationContext().getBean("pluginManager");
-        return recentChanges(days, since, apps, new java.io.File(pm.getBaseDirectory()),
-                new java.io.File(org.joget.commons.util.SetupManager.getBaseDirectory()), ManagementFactory.getRuntimeMXBean().getStartTime());
+        return recentChanges(days, since, apps, new java.io.File(org.joget.commons.util.SetupManager.getBaseDirectory()), ManagementFactory.getRuntimeMXBean().getStartTime());
     }
 
     /**
-     * apps: [modified ms, text], newest first. Lists app versions, plugin jars and files at the top of the wflow folder
+     * apps: [modified ms, text], newest first. Lists app versions and files at the top of the wflow folder
      * (app_datasource files and the like; not logs) changed since then, and Joget's start when it is that recent.
      */
-    static JSONObject recentChanges(int days, long since, java.util.List<Object[]> apps, java.io.File pluginDir, java.io.File wflowDir,
+    static JSONObject recentChanges(int days, long since, java.util.List<Object[]> apps, java.io.File wflowDir,
             long started) throws JSONException {
         JSONObject c = new JSONObject();
         java.text.SimpleDateFormat date = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm");
@@ -328,13 +327,12 @@ final class ServerInfo {
             }
         }
         put(c, "App versions", lines.isEmpty() ? null : String.join("\n", lines));
-        put(c, "Plugins (app_plugins)", files(pluginDir, since, date, ".jar"));
         put(c, "wflow files", files(wflowDir, since, date, null));
         if (started >= since) {
             put(c, "Joget started", date.format(new java.util.Date(started)));
         }
         if (c.length() == 1) {
-            put(c, "Changes", "None found (apps, plugins, wflow files, restarts)");
+            put(c, "Changes", "None found (apps, wflow files, restarts)");
         }
         return c;
     }
@@ -387,7 +385,7 @@ final class ServerInfo {
             String size = jar.length() >= MB ? String.format(java.util.Locale.ROOT, "%.1f MB", jar.length() / (double) MB)
                     : Math.max(1, jar.length() / 1024) + " KB";
             entries.put(jar.getName(), date.format(new java.util.Date(jar.lastModified())) + " · " + size
-                    + (loaded.containsKey(jar.getName()) ? "" : " · not loaded (check the Joget log)"));
+                    + (loaded.containsKey(jar.getName()) ? "" : " · not loaded"));
         }
         for (String jar : loaded.keySet()) {
             if (!entries.containsKey(jar)) {

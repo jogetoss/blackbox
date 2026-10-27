@@ -25,7 +25,7 @@ public class ServerInfoTest {
         assertEquals("Community", s.getJSONObject("joget").getString("Edition"));
         assertEquals("Apache Tomcat/9.0.test", s.getJSONObject("joget").getString("Application server"));
         assertEquals(String.valueOf(Runtime.getRuntime().availableProcessors()), s.getJSONObject("host").getString("Processors"));
-        assertTrue(s.getJSONObject("host").getString("Physical memory").endsWith(" MB"));
+        assertTrue(s.getJSONObject("host").getString("Total RAM").endsWith(" MB"));
         assertTrue(s.getJSONObject("process").has("Process id"));
         assertEquals("one argument per line", java.lang.management.ManagementFactory.getRuntimeMXBean().getInputArguments().size(),
                 s.getJSONObject("java").optString("Arguments").isEmpty() ? 0 : s.getJSONObject("java").getString("Arguments").split("\n").length);
@@ -107,7 +107,7 @@ public class ServerInfoTest {
         JSONObject p = ServerInfo.plugins(dir, loaded);
         assertEquals(3, p.length());
         assertTrue(p.getString("b-plugin.jar"), p.getString("b-plugin.jar").matches("\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d · 2 KB"));
-        assertTrue(p.getString("A-broken.jar").endsWith(" · 1 KB · not loaded (check the Joget log)"));
+        assertTrue(p.getString("A-broken.jar").endsWith(" · 1 KB · not loaded"));
         assertEquals("Not in the plugin folder", p.getString("elsewhere.jar"));
         assertFalse(p.has("notes.txt"));
     }
@@ -127,18 +127,17 @@ public class ServerInfoTest {
         java.nio.file.Files.write(new java.io.File(wflow, "servers.json").toPath(), new byte[1]);
         java.util.List<Object[]> apps = java.util.Arrays.asList(new Object[]{now - day, "leave v3 (published) Leave"},
                 new Object[]{now - 20 * day, "crm v1 CRM"});
-        JSONObject c = ServerInfo.recentChanges(7, now - 7 * day, apps, plugins, wflow, now - 2 * day);
+        JSONObject c = ServerInfo.recentChanges(7, now - 7 * day, apps, wflow, now - 2 * day);
         assertEquals("the last 7 days", c.getString("Period"));
         assertTrue(c.getString("App versions").endsWith("  leave v3 (published) Leave"));
         assertFalse(c.getString("App versions").contains("crm"));
-        assertTrue(c.getString("Plugins (app_plugins)").endsWith("  new.jar"));
-        assertFalse(c.getString("Plugins (app_plugins)").contains("old.jar"));
+        assertFalse("plugin jars are not tracked", c.has("Plugins (app_plugins)"));
         assertTrue(c.getString("wflow files").endsWith("app_datasource-x.properties"));
         assertFalse("no logs", c.getString("wflow files").contains("joget.log"));
         assertFalse("not Joget's own runtime files", c.getString("wflow files").contains("servers.json"));
         assertTrue(c.has("Joget started"));
 
-        JSONObject none = ServerInfo.recentChanges(1, now + day, java.util.Collections.<Object[]>emptyList(), plugins, wflow, 0);
+        JSONObject none = ServerInfo.recentChanges(1, now + day, java.util.Collections.<Object[]>emptyList(), wflow, 0);
         assertTrue(none.getString("Changes").startsWith("None found"));
     }
 

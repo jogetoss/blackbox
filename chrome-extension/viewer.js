@@ -1429,42 +1429,49 @@ function renderInfo() {
   // Settings > System Info shows. JVM arguments keep one per line.
   const si = current.serverInfo;
   if (si) {
-    const when = si.takenAt ? ` (snapshot at ${new Date(si.takenAt).toLocaleString()})` : '';
     const body = $('info');
     const period = si.recentChanges?.Period;
-    // Sections whose changes we can track first: Changes, Joget (with its start), Plugin (changed jars marked)
+    // Sections whose changes we can track first: Changes, Joget (with its start); then the rest
     const groups = [['recentChanges', period ? `Changes in ${period}` : 'Changes'], ['joget', 'Joget'], ['plugins', 'Plugin'],
-      ['host', `Host${when}`], ['cluster', 'Cluster'], ['java', 'Java'], ['database', 'Database'],
-      ['connectionPool', 'Connection pool'], ['license', 'License'], ['systemProperties', 'System properties']];
+      ['host', 'Host'], ['cluster', 'Cluster'], ['java', 'Java'], ['database', 'Database'],
+      ['connectionPool', 'DB pool'], ['license', 'License'], ['systemProperties', 'System properties']];
     const served = nodesServed(current.systemLog);
     for (const [key, title] of groups) {
       let values = key === 'cluster' && served ? { ...si[key], ...served } : si[key];
       if (key === 'joget') values = { ...si.joget, ...si.process }; // the process start is Joget's start
       if (key === 'recentChanges') values = recentChanges(si.recentChanges);
-      if (key === 'plugins' && values) values = pluginRows(values, si.recentChanges, period);
+      if (key === 'plugins' && values) values = pluginRows(values);
+      if (key === 'host' && values) values = renameKeys(values, { 'Physical memory': 'Total RAM' }); // older recordings
+      if (key === 'systemProperties' && values) values = withoutKeys(values, SHOWN_ELSEWHERE);
       if (!values || !Object.keys(values).length) continue;
-      const list = kv(key === 'plugins' ? values : infoOrder(key, values));
+      const list = kv(infoOrder(key, values));
       list.classList.add('multiline');
       section(body, title, list);
     }
   }
 }
 
-// Recent changes as shown: app versions and wflow files. Plugin jars are marked in the Plugin section, Joget's start
-// is in the Joget section; nothing left (or "None found") hides the section.
+// Recent changes as shown: app versions and wflow files (Joget's start is in the Joget section); nothing left (or
+// "None found") hides the section.
 function recentChanges(c) {
   const shown = Object.fromEntries(Object.entries(c || {}).filter(([k]) => ['App versions', 'wflow files'].includes(k)));
   return Object.keys(shown).length ? shown : null;
 }
 
-// The Plugin section: jars changed in the period first (newest first, as Recent changes lists them), marked, then A-Z
-function pluginRows(plugins, changes, period) {
-  const changed = String(changes?.['Plugins (app_plugins)'] || '').split('\n')
-    .map((line) => line.trim().split(/\s+/).slice(2).join(' ')).filter((jar) => jar in plugins);
-  const rows = {};
-  for (const jar of changed) rows[jar] = `${plugins[jar]} · changed in ${period}`;
-  for (const jar of Object.keys(plugins).sort((a, b) => a.localeCompare(b))) if (!(jar in rows)) rows[jar] = plugins[jar];
-  return rows;
+// The Plugin section: each jar's date and size, " · not loaded" when it holds no loaded plugin
+function pluginRows(plugins) {
+  return Object.fromEntries(Object.entries(plugins).map(([jar, v]) => [jar, String(v).replace(' (check the Joget log)', '')]));
+}
+
+// System properties also in the Java and Host sections (Enterprise's SysInfo adds them)
+const SHOWN_ELSEWHERE = ['platform.jvm.total', 'platform.jvm.max', 'platform.jvm.processors'];
+
+function renameKeys(obj, names) {
+  return Object.fromEntries(Object.entries(obj).map(([k, v]) => [names[k] || k, v]));
+}
+
+function withoutKeys(obj, keys) {
+  return Object.fromEntries(Object.entries(obj).filter(([k]) => !keys.includes(k)));
 }
 
 // Which node served the recorded requests (system log request entries carry it). More than one node in one tab
@@ -1494,6 +1501,7 @@ const INFO_LABELS = {
   connectionPool: ['Ignored file keys', 'Pool size', 'Active connections', 'Idle connections', 'Waiting threads'],
   plugins: [], // jar files A-Z
   recentChanges: ['App versions', 'wflow files'],
+  host: ['OS', 'Node', 'Hostname', 'Processors', 'Total RAM', 'Free RAM'],
   joget: ['Version', 'Edition', 'Application server', 'Started', 'Uptime', 'Process id', 'Time zone', 'Glowroot', 'Glowroot version'],
   cluster: ['Sticky sessions', 'Recorded requests served by', 'Joget node name', 'Cluster mode', 'Registered nodes',
     'Active nodes', 'Tomcat jvmRoute', 'This session\'s route', 'Session replication'],
@@ -1712,8 +1720,8 @@ function renderFeatures() {
 // recording.audio = { page, pageSource?: 'tab' | 'system', mic, message? }; absent before the extension recorded sound
 function soundInfo(a) {
   if (!a) return 'not recorded (made before BlackBox recorded sound)';
-  const page = a.pageSource === 'system' ? 'system sound' : a.pageSource === 'tab' ? 'sound of the recorded tab' : 'page sound';
-  const parts = [a.page ? page : '', a.mic ? 'microphone' : ''].filter(Boolean);
+  const page = a.pageSource === 'system' ? 'computer audio' : a.pageSource === 'tab' ? 'tab audio' : 'page audio';
+  const parts = [a.mic ? 'mic' : '', a.page ? page : ''].filter(Boolean);
   return (parts.join(' + ') || 'none') + (a.message ? ` (${a.message})` : '');
 }
 
