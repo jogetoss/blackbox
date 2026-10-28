@@ -67,7 +67,8 @@ This section is the single place for what each setting does, who gets what, and 
 |---|---|---|---|
 | Recent changes period (days) | 7 | Info tab: changed app versions and wflow files | |
 | Export the apps used in the recording | Yes | | **Export the apps used** |
-| Most apps to export | 5 | 0 = no limit | |
+| Most apps to export | 5 | 0 = no limit; apps not allowed don't count | |
+| Who can export apps they don't administer | nobody | Users chosen here get only apps Joget lets them access | |
 | Allow capturing form data | Yes | Needs **Export the apps used** | **Sample form data**, **Mask data** |
 | Newest rows per table when the recording touched none | 20 | | |
 | Record ids in sample data | New unique ids | New ids: importing never overwrites rows. Or **Keep the original ids** | |
@@ -82,8 +83,8 @@ Admins can always do everything.
 | Upload | **Who can upload** (others get **Upload selected** disabled in the extension) |
 | View a recording | **Who can view all recordings**, or its uploader (**Uploaders can view and delete…**) |
 | Delete a recording | **Who can delete any recording** (if they can view it), or its uploader (same setting) |
-| A recording's server data: system logs, traces, server load, Glowroot data, Info, exported apps | **Who can view system logs** (if they can view the recording), or its uploader with **Uploaders can view the server data…** |
-| Sample form data in their recordings | Users who can see their own recordings' server data |
+| See a recording's server data: system logs, traces, server load, Glowroot data, Info, exported apps | **Who can view system logs** (if they can view the recording), or its uploader with **Uploaders can view the server data…** |
+| Have an app exported (definition and sample rows, masked or real) | The app's own admins (its App Composer admins), or **Who can export apps they don't administer** for apps Joget lets them access (one of the app's userviews allows them). Other apps are listed as not exported |
 | Capture all server log lines | **Who can view system logs** only: the lines hold other users' data |
 | Import a ZIP's server data | **Who can view system logs** only: a ZIP can hold another user's recording. The list page says when it was left out |
 | Downloads (ZIP, HTML) | Anyone who can view the recording; server data only for those who may see it |
@@ -95,8 +96,8 @@ must be logged in to the Upload URL's server). All are ticked by default.
 
 | Popup checkbox | Shown when |
 |---|---|
-| **Export the apps used** | **Export the apps used in the recording** is on, and the user can upload |
-| **Sample form data**, **Mask data** | **Allow capturing form data** is on, and the user can see their own recordings' server data |
+| **Export the apps used** | **Export the apps used in the recording** is on, the user can upload, and they may have some app exported (see above) |
+| **Sample form data**, **Mask data** | **Allow capturing form data** is on, and **Export the apps used** is shown |
 | **All server log lines** | **Capture system logs** + **Also capture all other server log lines** are on, and the user is in **Who can view system logs** and can upload |
 | **Glowroot data** | **Capture system logs** + **Copy Glowroot data** are on, and the user can upload |
 

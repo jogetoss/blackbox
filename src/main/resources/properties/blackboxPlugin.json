@@ -73,7 +73,7 @@
         {
             "name" : "ownServerData",
             "label" : "Uploaders can view the server data of their own recordings",
-            "description" : "System logs, traces, server load and System Info (license key, system properties). No = only the users above.",
+            "description" : "System logs, traces, server load, System Info (license key, system properties) and the exported apps. It never lets them export apps: see \"Who can export apps they don't administer\". No = only the users above.",
             "type" : "selectbox",
             "value" : "false",
             "options" : [
@@ -180,9 +180,17 @@
             "value" : "5"
         },
         {
+            "name" : "appExportPermission",
+            "label" : "Who can export apps they don't administer",
+            "description" : "Empty = nobody: only admins and each app's own admins get an app (its definition and sample form data) exported. Users chosen here get only the apps Joget lets them access (one of the app's userviews allows them); other apps are listed as not exported.",
+            "type" : "elementselect",
+            "options_ajax" : "[CONTEXT_PATH]/web/property/json/getElements?classname=org.joget.apps.form.model.FormPermission",
+            "url" : "[CONTEXT_PATH]/web/property/json[APP_PATH]/getPropertyOptions"
+        },
+        {
             "name" : "sampleData",
             "label" : "Allow capturing form data",
-            "description" : "Added to each .jwa like Joget's own export with data, so importing it imports them: the records the recording opened or saved, rows of the app's other tables that point at them, and the newest rows of tables with none. Values are masked: same length, letters, digits and symbols, but fake (options, yes/no and small numbers kept). Uploaded files become placeholders. Only for uploaders who may see the recording's server data. Uploaders can untick \"Mask data\" in the extension's popup to keep real values; columns matching the always-masked names stay masked.",
+            "description" : "Added to each .jwa like Joget's own export with data, so importing it imports them: the records the recording opened or saved, rows of the app's other tables that point at them, and the newest rows of tables with none. Values are masked: same length, letters, digits and symbols, but fake (options, yes/no and small numbers kept). Uploaded files become placeholders. Only in apps the uploader may have exported (admins, the app's own admins, \"Who can export apps they don't administer\"). They can untick \"Mask data\" in the extension's popup to keep real values; columns matching the always-masked names stay masked.",
             "type" : "selectbox",
             "value" : "true",
             "options" : [

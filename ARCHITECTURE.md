@@ -252,8 +252,8 @@ Sections:
    running finishes there) and is deleted with it.
 
 `me.options` (`quickSettings`) says what this user may get, for the popup and the upload form alike: `systemLog`,
-`apps` (also needs upload rights), `sample` (also needs the server data of one's own recordings), `real` (Mask data:
-the same as `sample`), `allServer` and `glowrootData`. `me.sampleData: {enabled, real}` repeats `sample` and `real`
+`apps` (upload rights and `Access.mayExportApps`: admin, an app admin of some app, or **Who can export apps they
+don't administer**), `sample` (`apps` + **Allow capturing form data**), `real` (Mask data: the same as `sample`), `allServer` and `glowrootData`. `me.sampleData: {enabled, real}` repeats `sample` and `real`
 for older extensions. Apart from Mask data, a choice can only turn a setting off: `recording-start` takes
 `allServer=false` and `glowrootData=false`.
 
@@ -263,13 +263,29 @@ then) and the system log (requests, 5xx or an `error` = a problem; error lines =
 URL-decoded. `find` matches them against Joget's app URL patterns (`appOf`; app icons and screenshots name none). The
 browser's requests name the apps; system log hits only add to those (it also gets other tabs' service worker
 requests, which carry no tab id), unless the browser named none. App Center is dropped unless it had problems or was
-alone. Apps rank by problems, then requests; the top `maxApps` (default 5, 0 = all) are exported with
-`AppService.exportApp` (reads the current request's parameters, which carry no `tablenames`, `usergroups` or
+alone. Apps rank by problems, then requests; the top `maxApps` (default 5, 0 = all) that the user may have exported
+are exported with `AppService.exportApp` (reads the current request's parameters, which carry no `tablenames`, `usergroups` or
 `exportplugins`, so no data, groups or plugins go in). `apps.json` records each app's state: `saved`, `missing`,
-`failed` or `skipped` (beyond the cap), the last three with a `reason`, and `problems`; a failing sample hook leaves
+`denied`, `failed` or `skipped` (beyond the cap), all but `saved` with a `reason`, and `problems`; a failing sample hook leaves
 `sample: {error}`. `meta.apps` keeps `[{id, name, version,
 problems}]` for the list (hidden by `hideServerData`, see the API). `appfile` serves only names
 matching `<id>-<n>.jwa`.
+
+**Who may have an app exported** (`Access.canExportApp`, checked per app inside the export, so it holds at stop and at
+upload; a refused app throws `AppExport.Denied`, is listed as `denied` and doesn't use up `maxApps`; its sample rows
+are never read):
+
+- Joget admins;
+- the app's own admins, read as Joget 8.2's App Composer does (`EnhancedWorkflowUserManager.checkCustomAppAdmin`):
+  `ROLE_ADMIN` (usernames) and `ROLE_ADMIN_GROUP` (group ids, the user's groups from `directoryManager`) in
+  `app_src/<appId>/app.properties`, split on `;` or `,` (`AppAdmins`; read directly, since
+  `AppDevUtil.getAppDevProperties` creates the folder when missing);
+- users allowed by **Who can export apps they don't administer** (`appExportPermission`, empty = nobody), only for apps
+  Joget lets them access: one of the app's userviews authorizes them by Joget's own check
+  (`UserviewService.getUserviewSetting(...).isIsAuthorize()`: `permission` and `permission_rules`). An app with no
+  userview is never theirs.
+
+**Uploaders can view the server data…** never grants an export; it only lets owners see what was exported.
 
 `viewer.js` repeats `appOf` to draw the Apps lane (segments from the same page signals, flips under 0.5 s merged), the
 App filter and the App tab's problem lists, so the lane works for local recordings too.

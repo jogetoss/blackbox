@@ -15,8 +15,14 @@ import java.util.regex.Pattern;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import org.joget.apps.app.model.AppDefinition;
+import org.joget.apps.app.model.UserviewDefinition;
 import org.joget.apps.app.service.AppUtil;
 import org.joget.apps.userview.model.Permission;
+import org.joget.apps.userview.model.UserviewSetting;
+import org.joget.apps.userview.service.UserviewService;
+import org.joget.directory.model.Group;
+import org.joget.directory.model.service.DirectoryManager;
 import org.joget.commons.util.LogUtil;
 import org.joget.commons.util.SecurityUtil;
 import org.joget.commons.util.SetupManager;
@@ -286,7 +292,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         } else if (!"off".equals(done) && !"false".equals(getPropertyString("includeAppExport")) && !"false".equals(request.getParameter("apps"))) {
             // No export at stop (no system log capture, or the stop's export failed): the apps as they are now
             saved = exportApps(store.dir(recId), store.file(recId, RecordingStore.SESSION), store.file(recId, RecordingStore.SYSTEM_LOG),
-                    sampleMode(request, access, meta), recId);
+                    sampleMode(request), recId, access);
         }
         if (saved != null && saved.length() > 0) {
             meta.put("apps", saved);
@@ -300,12 +306,11 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
     /**
      * Sample data for this export, or null for none. The sampleData parameter (none, masked, real) picks within what
-     * the settings allow: only for uploaders who may see the recording's server data, who may also keep real values
-     * (Mask data unticked).
+     * the settings allow. Rows only go into apps the user may have exported (Access.canExportApp, per app).
      */
-    private SampleData.Mode sampleMode(HttpServletRequest request, Access access, JSONObject meta) {
+    private SampleData.Mode sampleMode(HttpServletRequest request) {
         String asked = request.getParameter("sampleData");
-        if ("false".equals(getPropertyString("sampleData")) || "none".equals(asked) || !access.canViewSystemLog(meta)) {
+        if ("false".equals(getPropertyString("sampleData")) || "none".equals(asked)) {
             return null;
         }
         boolean real = "real".equals(asked);
@@ -316,7 +321,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
      * The apps the recording used, exported into dir/app/ (AppExport) with their sample and process data. Returns the
      * summary meta.apps keeps for the recordings list (empty when none or on failure). label names it in the log.
      */
-    private JSONArray exportApps(Path dir, Path session, Path systemLog, SampleData.Mode sample, String label) {
+    private JSONArray exportApps(Path dir, Path session, Path systemLog, SampleData.Mode sample, String label, Access access) {
         try {
             List<String> urls = AppExport.urls(session, systemLog);
             List<AppExport.Seen> apps = AppExport.find(AppExport.hits(session, systemLog));
@@ -355,7 +360,11 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             }
             String max = getPropertyString("maxApps");
             int maxApps = max != null && max.trim().matches("\\d{1,4}") ? Integer.parseInt(max.trim()) : AppExport.MAX_APPS;
-            JSONArray saved = AppExport.save(dir, apps, AppExport.joget(), after, maxApps);
+            // Only apps this user may have exported (Access.canExportApp); the rest are listed as denied
+            AppExport.Exporter exporter = AppExport.joget(def -> access.canExportApp(def) ? null
+                    : "Not exported: you are not an admin of this app, and \"Who can export apps they don't administer\" "
+                    + "doesn't allow you or Joget doesn't let you access it.");
+            JSONArray saved = AppExport.save(dir, apps, exporter, after, maxApps);
             SampleData.writeIdMap(dir, ids, keepIds);
             return saved;
         } catch (IOException | RuntimeException | LinkageError e) {
@@ -618,8 +627,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 state = new JSONObject().put("state", "off");
                 return state;
             }
-            SampleData.Mode sample = sampleMode(request, access, pending);
-            JSONArray saved = exportApps(dir, session, systemLog, sample, id);
+            SampleData.Mode sample = sampleMode(request);
+            JSONArray saved = exportApps(dir, session, systemLog, sample, id, access);
             state = new JSONObject().put("state", "done").put("saved", saved)
                     .put("sampleData", sample == null ? "none" : sample.name().toLowerCase());
         } catch (IOException | RuntimeException e) {
@@ -659,13 +668,12 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
     /**
      * What the popup's quick settings may offer this user: each one can only turn a plugin setting off for one
-     * recording. sample: also needs the server data of their own recordings.
+     * recording. apps: also needs Access.mayExportApps (the export itself then checks each app).
      */
     private JSONObject quickSettings(Access access, User user) throws JSONException {
         boolean capture = "true".equals(getPropertyString("captureSystemLogs")) && access.canUpload();
-        boolean apps = !"false".equals(getPropertyString("includeAppExport")) && access.canUpload();
-        boolean sample = apps && !"false".equals(getPropertyString("sampleData"))
-                && access.canViewSystemLog(new JSONObject().put("owner", user.getUsername()));
+        boolean apps = !"false".equals(getPropertyString("includeAppExport")) && access.canUpload() && access.mayExportApps();
+        boolean sample = apps && !"false".equals(getPropertyString("sampleData"));
         return new JSONObject()
                 .put("systemLog", capture)
                 .put("apps", apps)
@@ -988,6 +996,61 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
         boolean canDelete(JSONObject meta) {
             return admin || (ownerAccess && isOwner(meta)) || allowed("deletePermission", false);
+        }
+
+        /**
+         * May this user have the app exported (definition and sample rows)? Joget admins and the app's own admins
+         * (as App Composer decides); other users only when "Who can export apps they don't administer" allows them
+         * and Joget lets them access the app (one of its userviews authorizes them).
+         */
+        boolean canExportApp(AppDefinition def) {
+            if (admin || AppAdmins.admits(AppAdmins.read(appSrc(), SecurityUtil.normalizedFileName(def.getAppId())),
+                    user.getUsername(), groupIds())) {
+                return true;
+            }
+            return allowed("appExportPermission", false) && canAccessApp(def);
+        }
+
+        /** Before the apps are known (the popup): could this user have any app exported? */
+        boolean mayExportApps() {
+            return admin || allowed("appExportPermission", false) || AppAdmins.anyAdmits(appSrc(), user.getUsername(), groupIds());
+        }
+
+        /** Joget's own userview check (permission and permission_rules) for the current user, on each userview. */
+        private boolean canAccessApp(AppDefinition def) {
+            if (def.getUserviewDefinitionList() == null) {
+                return false;
+            }
+            UserviewService userviews = (UserviewService) AppUtil.getApplicationContext().getBean("userviewService");
+            for (UserviewDefinition uv : def.getUserviewDefinitionList()) {
+                try {
+                    UserviewSetting setting = userviews.getUserviewSetting(def, uv.getJson());
+                    if (setting != null && setting.isIsAuthorize()) {
+                        return true;
+                    }
+                } catch (RuntimeException e) {
+                    LogUtil.warn(getClassName(), "Could not check userview " + uv.getId() + " of app " + def.getAppId() + ": " + e);
+                }
+            }
+            return false;
+        }
+
+        private java.util.Set<String> groupIds;
+
+        private java.util.Set<String> groupIds() {
+            if (groupIds == null) {
+                groupIds = new java.util.HashSet<>();
+                DirectoryManager dm = (DirectoryManager) AppUtil.getApplicationContext().getBean("directoryManager");
+                java.util.Collection<Group> groups = dm.getGroupByUsername(user.getUsername());
+                for (Group g : groups != null ? groups : java.util.Collections.<Group>emptyList()) {
+                    groupIds.add(g.getId());
+                }
+            }
+            return groupIds;
+        }
+
+        private Path appSrc() {
+            return Paths.get(SetupManager.getBaseDirectory(), "app_src");
         }
 
         private boolean isOwner(JSONObject meta) {

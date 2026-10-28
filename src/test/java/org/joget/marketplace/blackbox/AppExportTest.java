@@ -187,6 +187,36 @@ public class AppExportTest {
     }
 
     @Test
+    public void deniedAppsAreListedNotExportedAndDontUseTheCap() throws Exception {
+        List<AppExport.Seen> apps = AppExport.find(Arrays.asList("/jw/web/userview/a1/v", "/jw/web/userview/a2/v", "/jw/web/userview/a3/v"));
+        AppExport.Exporter exporter = (appId, version, out) -> {
+            if (!"a3".equals(appId)) {
+                throw new AppExport.Denied("not an admin of " + appId);
+            }
+            out.write(1);
+            AppDefinition d = new AppDefinition();
+            d.setAppId(appId);
+            d.setVersion(1L);
+            return d;
+        };
+        Path rec = Files.createTempDirectory("rec");
+        JSONArray summary = AppExport.save(rec, apps, exporter, null, 1);
+        assertEquals("the one allowed app, though two denied ones came first", 1, summary.length());
+        assertEquals("a3", summary.getJSONObject(0).getString("id"));
+        JSONArray list = new JSONObject(new String(Files.readAllBytes(AppExport.list(rec)), StandardCharsets.UTF_8)).getJSONArray("apps");
+        int denied = 0;
+        for (int i = 0; i < list.length(); i++) {
+            JSONObject a = list.getJSONObject(i);
+            if ("denied".equals(a.getString("state"))) {
+                denied++;
+                assertTrue(a.getString("reason").startsWith("not an admin"));
+                assertFalse("nothing written for it", Files.exists(rec.resolve("app").resolve(a.getString("id") + "-1.jwa")));
+            }
+        }
+        assertEquals(2, denied);
+    }
+
+    @Test
     public void noAppsNoFolder() throws Exception {
         Path rec = Files.createTempDirectory("rec");
         assertEquals(0, AppExport.save(rec, AppExport.find(Arrays.asList("/jw/web/console/home")), (a, v, o) -> null).length());

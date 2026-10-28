@@ -263,8 +263,20 @@ final class AppExport {
         AppDefinition export(String appId, String version, OutputStream out) throws IOException;
     }
 
+    /** An app the user may not have exported: listed as denied with the reason, and not counted against the cap. */
+    static class Denied extends IOException {
+        Denied(String reason) {
+            super(reason);
+        }
+    }
+
     /** Joget's own export: the published version when the URLs named none, else the latest. */
     static Exporter joget() {
+        return joget(null);
+    }
+
+    /** As {@link #joget()}; deny gives the reason an app's definition may not be exported (null: allowed). */
+    static Exporter joget(java.util.function.Function<AppDefinition, String> deny) {
         AppService appService = (AppService) AppUtil.getApplicationContext().getBean("appService");
         return (appId, version, out) -> {
             AppDefinition def = version != null ? appService.loadAppDefinition(appId, version) : appService.getPublishedAppDefinition(appId);
@@ -273,6 +285,10 @@ final class AppExport {
             }
             if (def == null) {
                 return null;
+            }
+            String why = deny != null ? deny.apply(def) : null;
+            if (why != null) {
+                throw new Denied(why);
             }
             appService.exportApp(def.getAppId(), String.valueOf(def.getVersion()), out);
             return def;
@@ -301,6 +317,7 @@ final class AppExport {
         Path dir = recordingDir.resolve(DIR);
         Files.createDirectories(dir);
         try {
+            int taken = 0; // apps tried, against the cap: denied ones don't count
             for (int i = 0; i < apps.size(); i++) {
                 Seen s = apps.get(i);
                 JSONObject a = new JSONObject().put("id", s.appId).put("requests", s.count);
@@ -310,12 +327,13 @@ final class AppExport {
                 if (s.problems > 0) {
                     a.put("problems", s.problems);
                 }
-                if (max > 0 && i >= max) {
+                if (max > 0 && taken >= max) {
                     list.put(a.put("state", "skipped").put("reason", "Only " + max + " apps are exported (apps with problems first, "
                             + "then the most used): plugin setting \"Most apps to export\"."));
                     continue;
                 }
                 Path tmp = dir.resolve(s.appId + ".part");
+                taken++;
                 try {
                     AppDefinition def;
                     try (OutputStream out = Files.newOutputStream(tmp)) {
@@ -350,6 +368,9 @@ final class AppExport {
                         one.put("problems", s.problems);
                     }
                     summary.put(one);
+                } catch (Denied e) {
+                    taken--;
+                    list.put(a.put("state", "denied").put("reason", e.getMessage()));
                 } catch (Exception | LinkageError e) {
                     LogUtil.warn(AppExport.class.getName(), "Could not export app " + s.appId + ": " + e);
                     list.put(a.put("state", "failed").put("reason", String.valueOf(e.getMessage())));
