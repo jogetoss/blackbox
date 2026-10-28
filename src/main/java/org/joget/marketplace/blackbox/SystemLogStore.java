@@ -130,6 +130,14 @@ public class SystemLogStore {
      * Returns a summary for the recording's meta, or null when the capture is missing, expired, attached or not owner's.
      */
     public JSONObject attach(String id, String owner, Path target) throws IOException {
+        return attach(id, owner, target, true);
+    }
+
+    /**
+     * withApps: also move the apps exported at stop. False when the upload exports them itself (the stop's export
+     * failed, or is still running after the wait): a late export then stays here and goes with the pending folder.
+     */
+    public JSONObject attach(String id, String owner, Path target, boolean withApps) throws IOException {
         JSONObject meta = readMeta(id);
         if (meta == null || !owner.equals(meta.optString("owner")) || meta.has("recording")) {
             return null;
@@ -167,7 +175,9 @@ public class SystemLogStore {
         TraceStore.moveAll(dir, target.getParent());
         GaugeStore.moveAll(dir, target.getParent());
         GlowrootData.moveAll(dir, target.getParent());
-        TraceStore.moveFolder(dir, target.getParent(), AppExport.DIR, name -> true); // exported at stop (BlackBoxPlugin)
+        if (withApps) {
+            TraceStore.moveFolder(dir, target.getParent(), AppExport.DIR, name -> true); // exported at stop (BlackBoxPlugin)
+        }
         if (Files.isRegularFile(dir.resolve(ServerInfo.FILE))) {
             Files.move(dir.resolve(ServerInfo.FILE), target.resolveSibling(ServerInfo.FILE), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
         }
@@ -281,6 +291,23 @@ public class SystemLogStore {
                 .put("requests", requests)
                 .put("errors", errors)
                 .put("truncated", truncated);
+    }
+
+    /** The ids of all capture folders: waiting for an upload, or kept after it to forward late files. */
+    public List<String> ids() throws IOException {
+        List<String> ids = new ArrayList<>();
+        if (!Files.isDirectory(root)) {
+            return ids;
+        }
+        try (DirectoryStream<Path> dirs = Files.newDirectoryStream(root)) {
+            for (Path dir : dirs) {
+                String id = dir.getFileName().toString();
+                if (isValidId(id) && Files.isDirectory(dir)) {
+                    ids.add(id);
+                }
+            }
+        }
+        return ids;
     }
 
     /** Deletes captures past their expiry time (never uploaded). Returns how many were deleted. */

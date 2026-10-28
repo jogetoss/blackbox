@@ -116,6 +116,17 @@ public class SystemLogStoreTest {
     }
 
     @Test
+    public void attachLeavesAnUnusedStopExportBehind() throws Exception {
+        assertTrue(store.start(ID, "admin", 1024, DAY));
+        Path app = Files.createDirectories(store.dir(ID).resolve(AppExport.DIR));
+        Files.write(app.resolve("crm-3.jwa"), new byte[] {1}); // a stop export still running when the upload gave up
+        Path rec = Files.createDirectories(root.resolve("rec"));
+        assertNotNull(store.attach(ID, "admin", rec.resolve(SystemLogStore.FILE), false));
+        assertFalse("the upload exports the apps itself", Files.exists(rec.resolve(AppExport.DIR)));
+        assertTrue("left in the pending folder, deleted with it", Files.exists(app.resolve("crm-3.jwa")));
+    }
+
+    @Test
     public void onlyTheOwnerCanUseACapture() throws Exception {
         assertTrue(store.start(ID, "alice", 1024, DAY));
         assertFalse(store.start(ID, "bob", 1024, DAY));

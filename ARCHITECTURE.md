@@ -145,9 +145,10 @@ so `SystemLogCapture` reaches it through Joget's classloader by reflection; the 
   where the capture is open builds `glowroot/<node>.zip`: the node that took `recording-start` and every node that
   served a recorded request. It goes in the pending folder, or in the recording once uploaded. `glowroot/<node>.json`
   holds the state (waiting, building, saved, failed) and the reason. A capture never stopped fails after 3 hours.
-- **Restart:** only an in-memory list (`GlowrootPackager.WATCHED`) tracks packages, so one not built when Joget stops
-  is never built, and its state stays `waiting` or `building`. The recording then counts as building for good: Download
-  ZIP answers 409, the replay page keeps polling, and the list keeps **Glowroot ⏳**.
+- **Restart:** an in-memory list (`GlowrootPackager.WATCHED`) tracks what to build, so on start `recover` checks this
+  node's status files left `waiting` or `building`: while the capture's pending `meta.json` exists, it is watched again
+  and built as usual (blocks Glowroot overwrote meanwhile count as lost); in a recording whose capture is gone, it is
+  marked failed. Otherwise the recording would count as building for good (Download ZIP 409, **Glowroot ⏳**).
 - **How:** `GlowrootData` copies `data.h2.db` (Glowroot keeps it locked; the copy is not), deletes every row outside
   the recording with Glowroot's own shaded H2 driver (`lib/glowroot-embedded-collector.jar`, H2 1.3), reads only the
   blocks the kept rows point to straight from the live `*.capped.db` ring files, writes them into new capped files of
@@ -246,8 +247,9 @@ Sections:
    takes `saved`; `off` exports nothing.
 5. Fallback: unless the state is `done` or `off`, `create` exports as below from the uploaded files, with `apps` /
    `sampleData` from the upload (the form, or `recording.options` when automatic). That covers no capture, a body that
-   never arrived, `failed`, a capture of another user, and the 120 s wait running out. In the last case the stop's
-   export may still be running: `attach` moves its unfinished `app/`, and the export at upload rewrites `apps.json`.
+   never arrived, `failed`, a capture of another user, and the 120 s wait running out. `attach` moves the stop's
+   `app/` only when its state is `done` (`withApps`); otherwise it stays in the pending folder (a stop export still
+   running finishes there) and is deleted with it.
 
 `me.options` (`quickSettings`) says what this user may get, for the popup and the upload form alike: `systemLog`,
 `apps` (also needs upload rights), `sample` (also needs the server data of one's own recordings), `real` (Mask data:

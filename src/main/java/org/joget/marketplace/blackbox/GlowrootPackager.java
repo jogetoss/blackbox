@@ -30,7 +30,8 @@ import org.json.JSONObject;
  * folder, or into the recording once uploaded. One package at a time, on one background thread.
  *
  * The H2 work uses Glowroot's own H2 driver (shaded in lib/glowroot-embedded-collector.jar), so the copy stays in the
- * exact H2 version Glowroot reads. A package not built when Joget stops is not built after a restart.
+ * exact H2 version Glowroot reads. Only memory tracks what to build, so after a restart {@link #recover} picks up this
+ * node's unfinished packages again, or marks them failed when their capture is gone.
  */
 final class GlowrootPackager {
 
@@ -57,7 +58,52 @@ final class GlowrootPackager {
             t.setPriority(Thread.MIN_PRIORITY); // background work: requests come first
             return t;
         });
+        jobs.schedule(() -> {
+            try {
+                recover(SystemLogCapture.store(), BlackBoxPlugin.store(), NODE, System.currentTimeMillis());
+            } catch (IOException | RuntimeException e) { // JSONException is a RuntimeException
+                LogUtil.warn(GlowrootPackager.class.getName(), "Could not check for unfinished Glowroot data packages: " + e);
+            }
+        }, 1, TimeUnit.SECONDS);
         jobs.scheduleWithFixedDelay(GlowrootPackager::tick, TICK_S, TICK_S, TimeUnit.SECONDS);
+    }
+
+    /**
+     * After a restart: this node's packages left waiting or building are watched again while their capture exists (the
+     * build runs as usual; blocks Glowroot overwrote meanwhile are counted as lost). Those in a recording whose capture
+     * is gone are marked failed, so the recording doesn't stay "building" for good. Returns the capture ids watched.
+     */
+    static List<String> recover(SystemLogStore logs, RecordingStore recordings, String node, long now)
+            throws IOException, JSONException {
+        List<String> watched = new ArrayList<>();
+        java.util.Set<String> covered = new java.util.HashSet<>();
+        for (String id : logs.ids()) {
+            JSONObject meta = logs.readMeta(id);
+            if (meta == null || !meta.optBoolean("glowrootData")) {
+                continue;
+            }
+            String rec = meta.optString("recording");
+            Path dir = rec.isEmpty() ? logs.dir(id) : recordings.dir(rec);
+            if (!GlowrootData.unfinished(dir, node)) {
+                continue;
+            }
+            WATCHED.putIfAbsent(id, now);
+            watched.add(id);
+            if (!rec.isEmpty()) {
+                covered.add(rec);
+            }
+        }
+        for (JSONObject meta : recordings.list()) {
+            String rec = meta.optString("id");
+            Path dir = recordings.dir(rec);
+            if (covered.contains(rec) || !GlowrootData.unfinished(dir, node)) {
+                continue;
+            }
+            GlowrootData.writeStatus(dir, node, new JSONObject().put("node", node).put("state", "failed").put("updated", now)
+                    .put("reason", "Joget restarted before the package was built, and the capture's data is gone"));
+            ServerData.refreshGlowroot(recordings, rec);
+        }
+        return watched;
     }
 
     static synchronized void stop() {

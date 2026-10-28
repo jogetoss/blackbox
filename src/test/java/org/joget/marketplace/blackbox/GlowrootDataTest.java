@@ -306,4 +306,40 @@ public class GlowrootDataTest {
         assertEquals(0, GlowrootData.statuses(pending).length());
         assertFalse("the empty folder is removed", Files.exists(pending.resolve(GlowrootData.DIR)));
     }
+
+    @Test
+    public void recoverAfterRestart() throws Exception {
+        SystemLogStore logs = new SystemLogStore(dir.resolve("pending"));
+        RecordingStore recordings = new RecordingStore(dir.resolve("recordings"));
+        String session = "{\"recording\":{\"tab\":{\"title\":\"T\"}},\"console\":[],\"network\":[]}";
+        long now = System.currentTimeMillis();
+
+        // A capture still on disk with this node's package unfinished: watched again
+        String open = "0f8fad5b-d9cb-469f-a165-70867728950e";
+        assertTrue(logs.start(open, "admin", 1024, 3600_000L, false, "", false, true));
+        GlowrootData.writeStatus(logs.dir(open), "n1", new JSONObject().put("node", "n1").put("state", "building"));
+        // Another node's unfinished package: not this node's business
+        GlowrootData.writeStatus(logs.dir(open), "n2", new JSONObject().put("node", "n2").put("state", "waiting"));
+
+        // A recording whose capture is gone: failed, so it doesn't count as building for good
+        String gone = recordings.create(new java.io.ByteArrayInputStream(session.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                1 << 20, "admin", "Admin", "t", "").getString("id");
+        GlowrootData.writeStatus(recordings.dir(gone), "n1", new JSONObject().put("node", "n1").put("state", "waiting"));
+        // A finished one is left alone
+        String saved = recordings.create(new java.io.ByteArrayInputStream(session.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                1 << 20, "admin", "Admin", "t2", "").getString("id");
+        GlowrootData.writeStatus(recordings.dir(saved), "n1", new JSONObject().put("node", "n1").put("state", "saved"));
+
+        try {
+            assertEquals(Arrays.asList(open), GlowrootPackager.recover(logs, recordings, "n1", now));
+        } finally {
+            GlowrootPackager.stop(); // clears the watch list
+        }
+        assertTrue("still to build", GlowrootData.unfinished(logs.dir(open), "n1"));
+        JSONObject failed = GlowrootData.statuses(recordings.dir(gone)).getJSONObject(0);
+        assertEquals("failed", failed.getString("state"));
+        assertTrue(failed.getString("reason").contains("restarted"));
+        assertEquals("failed", recordings.readMeta(gone).getJSONObject("serverData").getString("glowroot"));
+        assertEquals("saved", GlowrootData.statuses(recordings.dir(saved)).getJSONObject(0).getString("state"));
+    }
 }

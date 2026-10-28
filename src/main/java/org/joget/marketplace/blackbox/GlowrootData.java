@@ -433,6 +433,20 @@ final class GlowrootData {
         Files.move(tmp, dir.resolve(node + ".json"), StandardCopyOption.REPLACE_EXISTING);
     }
 
+    /** True when a node's status says waiting or building (not finished yet). */
+    static boolean unfinished(Path outer, String node) {
+        Path f = outer == null ? null : outer.resolve(DIR).resolve(node + ".json");
+        if (f == null || !Files.isRegularFile(f)) {
+            return false;
+        }
+        try {
+            String state = new JSONObject(new String(Files.readAllBytes(f), StandardCharsets.UTF_8)).optString("state");
+            return "waiting".equals(state) || "building".equals(state);
+        } catch (IOException | JSONException e) {
+            return false;
+        }
+    }
+
     /** Every node's status, sorted by node, or an empty list. */
     static JSONArray statuses(Path outer) throws IOException {
         Path dir = outer == null ? null : outer.resolve(DIR);

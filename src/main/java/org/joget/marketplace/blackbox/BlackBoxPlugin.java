@@ -264,7 +264,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         JSONObject atStop = null;
         if (systemLogId != null) {
             atStop = appExportAtStop(systemLogId, access.user.getUsername()); // before attach, which moves its app/ folder
-            meta.put("systemLog", attachSystemLog(store, recId, systemLogId, access.user.getUsername()));
+            boolean appsAtStop = atStop != null && "done".equals(atStop.optString("state"));
+            meta.put("systemLog", attachSystemLog(store, recId, systemLogId, access.user.getUsername(), appsAtStop));
             if ("attached".equals(meta.getJSONObject("systemLog").optString("status"))) {
                 try {
                     meta.put("serverData", ServerData.of(store.dir(recId), slowMs()));
@@ -783,10 +784,12 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     }
 
     /** Moves the system log captured under systemLogId into the recording. Returns the summary for meta.json. */
-    private JSONObject attachSystemLog(RecordingStore store, String recId, String systemLogId, String owner) throws JSONException {
+    /** withApps: take the apps exported at stop (only when that export is the one the recording uses). */
+    private JSONObject attachSystemLog(RecordingStore store, String recId, String systemLogId, String owner, boolean withApps)
+            throws JSONException {
         SystemLogCapture.close(systemLogId); // flush this node's file
         try {
-            JSONObject summary = SystemLogCapture.store().attach(systemLogId, owner, store.path(recId, RecordingStore.SYSTEM_LOG));
+            JSONObject summary = SystemLogCapture.store().attach(systemLogId, owner, store.path(recId, RecordingStore.SYSTEM_LOG), withApps);
             if (summary != null) {
                 return summary;
             }
