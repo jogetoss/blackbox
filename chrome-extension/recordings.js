@@ -82,7 +82,9 @@
       sel.append(box);
       tr.append(sel);
 
-      tr.append(td(r.startedAt ? new Date(r.startedAt).toLocaleString() : r.id));
+      const started = td(utc(r.startedAt) || r.id);
+      if (r.startedAt) started.title = new Date(r.startedAt).toLocaleString(); // the reporter's own clock time
+      tr.append(started);
       const page = td('');
       page.className = 'page';
       page.title = r.tab?.url || '';
@@ -210,6 +212,13 @@
   }
 
   // ---------- helpers ----------
+
+  // Same as utc() in viewer.js (the standalone viewer can't load a shared file)
+  function utc(v) {
+    if (v == null || v === '') return undefined;
+    const d = new Date(v);
+    return isNaN(d) ? String(v) : d.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+  }
 
   function td(text) {
     const c = document.createElement('td');

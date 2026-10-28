@@ -1824,7 +1824,7 @@ function traceDetail(item, body, actions) {
     Status: item.status,
     Duration: item.ms != null ? `${item.ms} ms` : 'still running',
     'Started at': fmt(item.t),
-    'Server time': new Date(item.ts).toISOString(),
+    'Server time': utc(item.ts),
     Node: item.node,
     'Glowroot trace id': item.traceId,
   }));
@@ -1886,7 +1886,7 @@ function showDetail(item) {
       Error: item.error,
       Duration: `${item.ms} ms`,
       'Arrived at': fmt(item.t),
-      'Server time': new Date(item.ts).toISOString(),
+      'Server time': utc(item.ts),
     }));
     const lines = requestLines(item);
     section(body, 'Log lines of this request', lines.length ? serverList(lines) : el('div', 'muted', 'None.'));
@@ -1901,7 +1901,7 @@ function showDetail(item) {
       Thread: item.thread,
       Request: item.req,
       Time: fmt(item.t),
-      'Server time': new Date(item.ts).toISOString(),
+      'Server time': utc(item.ts),
     }));
   } else if ('method' in item) {
     $('detailTitle').textContent = `${item.method} ${statusText(item)}  ${item.url}`;
@@ -1977,8 +1977,8 @@ function renderInfo() {
     kv({
       ...current.info,
       'Tab URL': rec.tab?.url,
-      'Started': rec.startedAt && new Date(rec.startedAt).toLocaleString(),
-      'Stopped': rec.stoppedAt && new Date(rec.stoppedAt).toLocaleString(),
+      'Started': utc(rec.startedAt),
+      'Stopped': utc(rec.stoppedAt),
       'Stop reason': rec.stopReason,
       'Captured surface': rec.capturedSurface,
       'Sound': soundInfo(rec.audio),
@@ -2143,9 +2143,8 @@ function renderApps() {
   const notExported = all.filter((a) => !probs(a).length && a.state !== 'saved');
   const used = all.length;
   page.append(el('p', 'apps-head', `${used} app${used === 1 ? '' : 's'} used`));
-  const when = current.apps.exportedAt ? new Date(current.apps.exportedAt).toLocaleString() : '';
-  page.append(el('p', 'note', `Exported${when ? ` ${when}` : ''} with Joget's own app export: the app definition only, `
-    + 'no form data, plugins or groups. Import it on a test server to reproduce the issue.'
+  const when = utc(current.apps.exportedAt);
+  page.append(el('p', 'note', `Exported at${when ? ` ${when}` : ''}.`
     + (appFileUrl ? '' : ' The .jwa files are in the recording ZIP, not in this file.')));
   if (!all.length) page.append(el('p', null, 'No apps were found in the recorded URLs.'));
   for (const a of [...withProblems, ...rest]) page.append(appBlock(a));
@@ -2175,7 +2174,7 @@ function appBlock(a) {
     'App id': a.id,
     'Version': a.version != null ? `${a.version}${a.published ? ' (published)' : ' (not published)'}` : undefined,
     'Version in the URLs': a.urlVersion,
-    'Last modified': a.modified && new Date(a.modified).toLocaleString(),
+    'Last modified': utc(a.modified),
     'Size': a.bytes != null ? `${Math.max(1, Math.round(a.bytes / 1024))} KB` : undefined,
     'Not exported': a.state !== 'saved' ? a.reason || a.state : undefined,
     'Sample data': sample?.error ? `could not be added: ${sample.error}`
@@ -2192,14 +2191,13 @@ function appBlock(a) {
 // One process instance (read only: Joget can't import running processes)
 function processBlock(p) {
   const d = el('details', 'process');
-  const date = (ms) => (ms ? new Date(ms).toLocaleString() : undefined);
   d.append(el('summary', null, `Process: ${p.name || p.processDefId} · ${p.state || ''} · ${p.id}`));
   d.append(kv({
     'Process definition': p.processDefId,
     'Record id in the sample': p.recordId,
     'Requester': p.requester,
-    'Started': date(p.started || p.created),
-    'Finished': date(p.finished),
+    'Started': utc(p.started || p.created),
+    'Finished': utc(p.finished),
   }));
   const vars = p.variables || {};
   if (Object.keys(vars).length) {
@@ -2220,8 +2218,8 @@ function processBlock(p) {
       name.title = x.id;
       row.append(el('td', 'num', String(i + 1)), name, el('td', null, x.state || ''),
         el('td', null, x.acceptedBy ? `done by ${x.acceptedBy}` : x.assignees?.length ? `assigned to ${x.assignees.join(', ')}` : ''),
-        el('td', 'date', date(x.created) || ''));
-      if (finished) row.append(el('td', 'date', date(x.finished) || ''));
+        el('td', 'date', utc(x.created) || ''));
+      if (finished) row.append(el('td', 'date', utc(x.finished) || ''));
       table.append(row);
     });
     d.append(table);
@@ -2414,6 +2412,14 @@ function pct(ms) {
 function fmt(ms) {
   const s = Math.max(0, ms) / 1000;
   return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
+}
+
+// One date/time format for the reporter and the investigator: UTC, whatever their timezone.
+// A missing value gives undefined (kv() skips it); a bad one is shown as it is instead of throwing.
+function utc(v) {
+  if (v == null || v === '') return undefined;
+  const d = new Date(v);
+  return isNaN(d) ? String(v) : d.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
 }
 
 function showError(e) {
