@@ -1,5 +1,5 @@
 // Popup quick settings and the app export at recording stop: the choices made before recording reach the server
-// at stop (recording-stop) or, without a system log capture, at the upload, also when nobody clicks Send.
+// at stop (recording-stop) or, without a server data capture, at the upload, also when nobody clicks Send.
 const { test, expect, JOGET, loginJoget, api, appsWhenExported } = require('./fixtures');
 
 const ASSIGNMENT = `${JOGET}/web/client/app/iService/2/assignment/82809_70801_iService_supportRequest_requestAcceptByDepartment`;

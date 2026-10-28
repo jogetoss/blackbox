@@ -64,7 +64,7 @@ Range), `systemlog`, `download` (`format=zip` or `html`), `import`, `delete`, `r
 - Server data in `meta.json` (`systemLog`, `serverData`, `apps`) is removed by `hideServerData` for users who may not
   see it, in `list`, `meta` and `download&format=html` (whose page carries the meta as JSON). The ZIP keeps only a
   fixed list of meta keys (`RecordingZip.META_KEYS`).
-- `import` keeps a ZIP's server data only for **Who can view system logs** (`canViewSystemLog()`, without the
+- `import` keeps a ZIP's server data only for **Who can view server data** (`canViewServerData()`, without the
   uploader rule: a ZIP can hold another user's recording). When it drops some, the response (not `meta.json`) has
   `serverDataSkipped: true`, and the list page says so instead of opening the copy.
 
@@ -73,7 +73,7 @@ Range), `systemlog`, `download` (`format=zip` or `html`), `import`, `delete`, `r
 One folder per recording under `<wflow>/blackbox/<id>/`:
 
 - always: `meta.json`, `session.json`, `recording.webm`;
-- with a system log capture: `system-log.json`, `server-info.json`, and (when their settings are on) `traces/`,
+- with a server data capture: `system-log.json`, `server-info.json`, and (when their settings are on) `traces/`,
   `gauges/` (server load) and `glowroot/` (Glowroot data);
 - `app/` with the exported apps (`apps.json` + `<appId>-<version>.jwa`; `apps.json` also holds the sample's
   `idMap`), exported at stop, or at upload without a capture.
@@ -87,7 +87,7 @@ The extension keeps recordings in IndexedDB (newest 10), or reads them from a li
 ## System logs
 
 1. When recording starts, the extension calls `recording-start` with a random UUID (lower case). The server refuses
-   with 403 when **Capture system logs** (`captureSystemLogs`, off by default) is off or the user may not upload, and
+   with 403 when **Capture server data** (`captureServerData`, off by default) is off or the user may not upload, and
    with 409 when the id belongs to another user's capture (the same user may start it again). The extension then adds `X-BlackBox-Id: <id>` to the recorded tab's requests to the Upload URL's server
    (`declarativeNetRequest` session rule). Requests made by a service worker carry no tab id, and Joget's PWA service
    worker re-fetches almost every userview request, so those are tagged too; while recording, other tabs on the same
@@ -370,7 +370,7 @@ in its rows (activity ids resolved with `getActivityById`), kept when the proces
 |---|---|
 | `popup.js` | Record this tab / a window / the screen, Stop; gets the tab-capture stream id (the video for "this tab", the tab's sound for a window or the screen); system logs warning; quick settings (from `me.options`, cached as `quickOffer`) |
 | `recorder.js` | Shows the `desktopCapture` picker (window/screen) or uses the tab stream, mixes page sound and microphone into one track, records with `MediaRecorder`, saves progress every 5 s, sends `recording-stop` with the app export's input, keeps the recording in IndexedDB |
-| `background.js` | Attaches the debugger (Network, Runtime, Log, Page), fetches response bodies, forwards events to the recorder; starts/stops system log capture; REC badge |
+| `background.js` | Attaches the debugger (Network, Runtime, Log, Page), fetches response bodies, forwards events to the recorder; starts/stops server data capture; REC badge |
 | `viewer.js` | Replay UI shared by every replay page: video + synced lists, timeline, request details, Features drawer |
 | `recordings.js` | Recordings page: list with Browser issues; batch Upload, Download ZIP, Delete for ticked rows (Upload off when `me.canUpload` is false) |
 | `actions.js` | Upload (with its form), Move to folder, Download ZIP and Delete of one recording; links in messages |

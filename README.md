@@ -17,6 +17,21 @@ cp target/blackbox-8.2-SNAPSHOT.jar <wflow>/app_plugins/ # or upload in Settings
 Built against `wflow-core` 8.2-SNAPSHOT (javax.servlet). The jar includes the extension's replay viewer: rebuild it
 after changing `chrome-extension/viewer.js` or `viewer.css`.
 
+## Upgrading
+
+**Breaking in the next release (after 8.2.1): three settings were renamed.** Their old values are not read, so after
+the upgrade they fall back to their defaults. Open the plugin's settings and set them again:
+
+| Old setting (key) | New setting (key) | Default after upgrade |
+|---|---|---|
+| Capture system logs during recordings (`captureSystemLogs`) | Capture server data during recordings (`captureServerData`) | No: server data stops being captured |
+| Who can view system logs (`systemLogPermission`) | Who can view server data (`serverDataPermission`) | admins only |
+| Delete system logs not uploaded after (days) (`systemLogKeepDays`) | Delete server data not uploaded after (days) (`serverDataKeepDays`) | 7 |
+
+The old names said "system logs", but these settings cover all server data: logs, traces, server load, Glowroot data,
+Info (license key, system properties) and the exported apps. Also renamed: the `canViewSystemLog` flag in the API's
+recording JSON is now `canViewServerData`. Recordings, ZIPs and the extension are not affected.
+
 ## Use
 
 - **Recordings list:** `<context>/blackbox/` (server columns only for users who may see server data). Tick rows to **Download ZIP** or **Delete selected**. **Import ZIP…**
@@ -46,15 +61,15 @@ This section is the single place for what each setting does, who gets what, and 
 | Uploaders can view and delete their own recordings | Yes | |
 | Max file size (MB) | 500 | Video and session.json each |
 
-**System logs** (all need **Capture system logs**)
+**Server data** (all need **Capture server data**)
 
 | Setting | Default | Notes | Popup checkbox |
 |---|---|---|---|
-| Capture system logs during recordings | No | Also needed by the Info tab | |
-| Who can view system logs | admins only | See [Who sees what](#who-sees-what) | |
+| Capture server data during recordings | No | Logs, Info tab, and the settings below; apps exported at stop | |
+| Who can view server data | admins only | See [Who sees what](#who-sees-what) | |
 | Uploaders can view the server data of their own recordings | No | See [Who sees what](#who-sees-what) | |
 | Max size of system logs per recording (MB) | 20 | Later lines are dropped; the viewer says so | |
-| Delete system logs not uploaded after (days) | 7 | Also app exports never uploaded | |
+| Delete server data not uploaded after (days) | 7 | Logs, load, traces, Info and app exports never uploaded | |
 | Sample server load during recordings | Yes | | |
 | Copy Glowroot traces of slow and failed requests | Yes | | |
 | Copy Glowroot data for the recording | No | Needs Glowroot 0.14 | **Glowroot data** |
@@ -83,10 +98,10 @@ Admins can always do everything.
 | Upload | **Who can upload** (others get **Upload selected** disabled in the extension) |
 | View a recording | **Who can view all recordings**, or its uploader (**Uploaders can view and delete…**) |
 | Delete a recording | **Who can delete any recording** (if they can view it), or its uploader (same setting) |
-| See a recording's server data: system logs, traces, server load, Glowroot data, Info, exported apps | **Who can view system logs** (if they can view the recording), or its uploader with **Uploaders can view the server data…** |
+| See a recording's server data: system logs, traces, server load, Glowroot data, Info, exported apps | **Who can view server data** (if they can view the recording), or its uploader with **Uploaders can view the server data…** |
 | Have an app exported (definition and sample rows, masked or real) | The app's own admins (its App Composer admins), or **Who can export apps they don't administer** for apps Joget lets them access (one of the app's userviews allows them). Other apps are listed as not exported |
-| Capture all server log lines | **Who can view system logs** only: the lines hold other users' data |
-| Import a ZIP's server data | **Who can view system logs** only: a ZIP can hold another user's recording. The list page says when it was left out |
+| Capture all server log lines | **Who can view server data** only: the lines hold other users' data |
+| Import a ZIP's server data | **Who can view server data** only: a ZIP can hold another user's recording. The list page says when it was left out |
 | Downloads (ZIP, HTML) | Anyone who can view the recording; server data only for those who may see it |
 
 ### Per-recording choices (popup)
@@ -98,8 +113,8 @@ must be logged in to the Upload URL's server). All are ticked by default.
 |---|---|
 | **Export the apps used** | **Export the apps used in the recording** is on, the user can upload, and they may have some app exported (see above) |
 | **Sample form data**, **Mask data** | **Allow capturing form data** is on, and **Export the apps used** is shown |
-| **All server log lines** | **Capture system logs** + **Also capture all other server log lines** are on, and the user is in **Who can view system logs** and can upload |
-| **Glowroot data** | **Capture system logs** + **Copy Glowroot data** are on, and the user can upload |
+| **All server log lines** | **Capture server data** + **Also capture all other server log lines** are on, and the user is in **Who can view server data** and can upload |
+| **Glowroot data** | **Capture server data** + **Copy Glowroot data** are on, and the user can upload |
 
 - Each choice can only turn a setting off for one recording, except **Mask data**: unticking it keeps real values.
 - **Sample form data** needs **Export the apps used**; **Mask data** needs both.

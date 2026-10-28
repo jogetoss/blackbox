@@ -49,12 +49,13 @@
             "validation_message" : "Enter a whole number of MB."
         },
         {
-            "label" : "System logs: the extension tags the recorded tab's requests, and their Joget log lines are kept with the recording.",
+            "label" : "Server data: what the server records while a recording runs (the extension tags the recorded tab's requests), kept with the recording.",
             "type" : "header"
         },
         {
-            "name" : "captureSystemLogs",
-            "label" : "Capture system logs during recordings",
+            "name" : "captureServerData",
+            "label" : "Capture server data during recordings",
+            "description" : "The recorded tab's Joget log lines, a System Info snapshot (the Info tab) and, by the settings below, server load, Glowroot traces and Glowroot data. Also exports the apps when the recording stops (without it, at upload).",
             "type" : "selectbox",
             "value" : "false",
             "options" : [
@@ -63,9 +64,9 @@
             ]
         },
         {
-            "name" : "systemLogPermission",
-            "label" : "Who can view system logs",
-            "description" : "Empty = admins only. They must also be able to view the recording.",
+            "name" : "serverDataPermission",
+            "label" : "Who can view server data",
+            "description" : "Empty = admins only. They must also be able to view the recording. Server data: system logs, traces, server load, Glowroot data, Info (license key, system properties) and the exported apps. Also decides who may capture all server log lines and import a ZIP's server data.",
             "type" : "elementselect",
             "options_ajax" : "[CONTEXT_PATH]/web/property/json/getElements?classname=org.joget.apps.form.model.FormPermission",
             "url" : "[CONTEXT_PATH]/web/property/json[APP_PATH]/getPropertyOptions"
@@ -91,9 +92,9 @@
             "validation_message" : "Enter a whole number of MB."
         },
         {
-            "name" : "systemLogKeepDays",
-            "label" : "Delete system logs not uploaded after (days)",
-            "description" : "Captured lines wait on the server until the recording is uploaded.",
+            "name" : "serverDataKeepDays",
+            "label" : "Delete server data not uploaded after (days)",
+            "description" : "Captured server data (log lines, server load, traces, Info, app exports) waits on the server until the recording is uploaded.",
             "type" : "textfield",
             "value" : "7",
             "regex_validation" : "^[1-9][0-9]*$",
@@ -102,7 +103,7 @@
         {
             "name" : "captureGauges",
             "label" : "Sample server load during recordings",
-            "description" : "Needs \"Capture system logs during recordings\". Every second: heap, GC time, CPU, busy request threads and database connections, shown as the Server load strip.",
+            "description" : "Needs \"Capture server data during recordings\". Every second: heap, GC time, CPU, busy request threads and database connections, shown as the Server load strip.",
             "type" : "selectbox",
             "value" : "true",
             "options" : [
@@ -113,7 +114,7 @@
         {
             "name" : "captureTraces",
             "label" : "Copy Glowroot traces of slow and failed requests",
-            "description" : "Needs \"Capture system logs during recordings\". Glowroot's own slow threshold decides which requests have a trace; it is not changed.",
+            "description" : "Needs \"Capture server data during recordings\". Glowroot's own slow threshold decides which requests have a trace; it is not changed.",
             "type" : "selectbox",
             "value" : "true",
             "options" : [
@@ -124,7 +125,7 @@
         {
             "name" : "captureGlowrootData",
             "label" : "Copy Glowroot data for the recording",
-            "description" : "Needs \"Capture system logs during recordings\" and Glowroot 0.14 on each node. About a minute after a recording stops, each node cuts the recording out of its Glowroot data, in Glowroot's own format: the traces of the recorded requests, plus the aggregates and gauges of all traffic during the recording. Download it on the replay page and open it in a standalone Glowroot. Each build needs free disk space in Joget's temp folder of about the size of Glowroot's data.h2.db (it is skipped, with the reason, when there is not enough).",
+            "description" : "Needs \"Capture server data during recordings\" and Glowroot 0.14 on each node. About a minute after a recording stops, each node cuts the recording out of its Glowroot data, in Glowroot's own format: the traces of the recorded requests, plus the aggregates and gauges of all traffic during the recording. Download it on the replay page and open it in a standalone Glowroot. Each build needs free disk space in Joget's temp folder of about the size of Glowroot's data.h2.db (it is skipped, with the reason, when there is not enough).",
             "type" : "selectbox",
             "value" : "false",
             "options" : [
@@ -135,7 +136,7 @@
         {
             "name" : "captureAllServerLogs",
             "label" : "Also capture all other server log lines during recordings",
-            "description" : "Needs \"Capture system logs during recordings\". Keeps every log line written while a recording runs, not only those of the recorded tab's requests: scheduler jobs, email, background threads and other users' requests (shown greyed, under a filter). Only for recordings started by users allowed by \"Who can view system logs\", since the lines can hold other users' data. Busy servers fill the max size faster.",
+            "description" : "Needs \"Capture server data during recordings\". Keeps every log line written while a recording runs, not only those of the recorded tab's requests: scheduler jobs, email, background threads and other users' requests (shown greyed, under a filter). Only for recordings started by users allowed by \"Who can view server data\", since the lines can hold other users' data. Busy servers fill the max size faster.",
             "type" : "selectbox",
             "value" : "false",
             "options" : [
@@ -151,7 +152,7 @@
             "value" : ""
         },
         {
-            "label" : "Support data: what a support engineer needs besides the recording. Shown only to users who may view system logs.",
+            "label" : "Support data: what a support engineer needs besides the recording. Shown only to users who may view server data.",
             "type" : "header"
         },
         {

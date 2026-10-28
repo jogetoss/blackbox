@@ -42,7 +42,7 @@ Popup → **Settings** (this browser only; server options are in the plugin READ
    cancelling the banner also stops and saves. If the extension can't keep the recording (e.g. disk full), it
    downloads it.
 
-- **System logs:** with the plugin's **Capture system logs** on, the server keeps its log lines for the tab. The popup
+- **Server data:** with the plugin's **Capture server data** on, the server keeps its log lines (and the other server data) for the tab. The popup
   warns when there is no Upload URL or the tab is on another server. While recording, an orange **REC** badge means
   the server isn't capturing (the tooltip says why).
 - **Crash safety:** saved to browser storage every 5 s. After a crash, the recording is listed as **Recovered**.

@@ -32,7 +32,7 @@ BB_HEADED=1 npx playwright test  # watch it in a window
   recording needs Chrome's screen picker.
 - `tests/quick-settings.spec.js`: the popup's quick settings (shown as `me.options` allows, remembered), the app export
   at `recording-stop` kept by the upload, apps turned off at stop, and the automatic upload sending the choices saved
-  with the recording (needs "Capture system logs" on).
+  with the recording (needs "Capture server data" on).
 - `tests/upload-form.spec.js`: the sample data choice on the upload form, the `sampleData` parameter it sends, and the
   App data the server builds (needs j8213's iService app).
 

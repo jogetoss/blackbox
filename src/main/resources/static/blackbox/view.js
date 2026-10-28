@@ -32,7 +32,7 @@ window.blackboxPage = 'server'; // for the Features list
     }
     $('dlZip').href = BB.url('download', { id, format: 'zip' });
     $('dlHtml').href = BB.url('download', { id, format: 'html' });
-    if (meta.canViewSystemLog && meta.systemLog && meta.systemLog.status === 'attached') {
+    if (meta.canViewServerData && meta.systemLog && meta.systemLog.status === 'attached') {
       $('dlHtml').title += ' (includes the system logs: share it only with people who may see it)';
       $('dlZip').title += ' (includes the system logs)';
     }
@@ -48,13 +48,13 @@ window.blackboxPage = 'server'; // for the Features list
     let gauges = null;
     let serverInfo = null;
     let apps = null;
-    if (meta.systemLog && meta.systemLog.status === 'attached' && meta.canViewSystemLog) {
+    if (meta.systemLog && meta.systemLog.status === 'attached' && meta.canViewServerData) {
       systemLog = await BB.getJson('systemlog', { id }).catch((e) => { systemLogError = e; return null; });
       traces = await BB.getJson('traces', { id }).catch(() => null);
       gauges = await BB.getJson('gauges', { id }).catch(() => null);
       serverInfo = await BB.getJson('serverinfo', { id }).catch(() => null); // missing in older recordings
     }
-    if (meta.apps && meta.canViewSystemLog) apps = await BB.getJson('apps', { id }).catch(() => null);
+    if (meta.apps && meta.canViewServerData) apps = await BB.getJson('apps', { id }).catch(() => null);
     $('serverLegend').hidden = !systemLog;
     window.blackboxOpen(meta.videoSize ? BB.url('video', { id }) : null, report, {
       systemLog,
@@ -73,8 +73,8 @@ window.blackboxPage = 'server'; // for the Features list
       info: BB.uploadInfo(meta),
     });
     if (traces) followTraces(traces);
-    if (meta.systemLog && meta.systemLog.status === 'attached' && meta.canViewSystemLog) glowrootData().catch(() => { /* no button */ });
-    if (meta.canViewSystemLog && meta.appExport && meta.appExport.state === 'exporting') appsPending();
+    if (meta.systemLog && meta.systemLog.status === 'attached' && meta.canViewServerData) glowrootData().catch(() => { /* no button */ });
+    if (meta.canViewServerData && meta.appExport && meta.appExport.state === 'exporting') appsPending();
     $('recStatus').hidden = false;
     neighbours().catch(() => { /* no Older / Newer, the recording still plays */ });
     if (systemLogError) window.blackboxShowError('Could not load the system logs: ' + (systemLogError.message || systemLogError));

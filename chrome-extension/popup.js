@@ -7,18 +7,18 @@ async function bg(msg) {
   return res;
 }
 
-// Warns about the system log before and during a recording ('' = nothing to say).
-// Before: the system log comes only from the Upload URL's server, so a tab on another server gets none.
+// Warns about the server data capture before and during a recording ('' = nothing to say).
+// Before: server data comes only from the Upload URL's server, so a tab on another server gets none.
 // During: why the server didn't start capturing (background saves rec.systemLog = { status: 'off', message }).
 async function systemLogNote(rec) {
-  if (rec) return rec.systemLog?.status === 'off' ? `System logs off: ${rec.systemLog.message}` : '';
+  if (rec) return rec.systemLog?.status === 'off' ? `Server data off: ${rec.systemLog.message}` : '';
   const { uploadUrl } = await chrome.storage.local.get('uploadUrl');
-  if (!uploadUrl) return 'No Upload URL in Settings: no system logs.';
+  if (!uploadUrl) return 'No Upload URL in Settings: no server data.';
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   if (!/^https?:/.test(tab?.url || '')) return '';
   const server = new URL(uploadUrl).origin;
   const here = new URL(tab.url).origin;
-  return server === here ? '' : `System logs come only from ${server}, but this tab is on ${here}. Change the Upload URL in Settings if needed.`;
+  return server === here ? '' : `Server data comes only from ${server}, but this tab is on ${here}. Change the Upload URL in Settings if needed.`;
 }
 
 // Like Actions.linkify on the replay page: addresses open in a new tab, "Settings" opens Settings

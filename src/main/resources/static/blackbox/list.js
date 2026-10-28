@@ -42,7 +42,7 @@
       open.href = url;
       open.textContent = 'Open it';
       $('notice').replaceChildren(`Imported "${meta.title || meta.id}" without its server data (system logs, traces, `
-        + 'apps): importing it needs "Who can view system logs" in the BlackBox settings. ', open);
+        + 'apps): importing it needs "Who can view server data" in the BlackBox settings. ', open);
       $('notice').hidden = false;
       await load();
     } catch (e) {
@@ -72,7 +72,7 @@
       .some((v) => (v || '').toLowerCase().includes(q)));
     for (const id of [...selected]) if (!recordings.some((r) => r.id === id)) selected.delete(id);
     // The server columns only when the user may see server data of at least one recording
-    const server = recordings.some((r) => r.canViewSystemLog);
+    const server = recordings.some((r) => r.canViewServerData);
     document.querySelectorAll('.server-col').forEach((th) => { th.hidden = !server; });
     $('rows').replaceChildren(...shown.map((r) => row(r, server)));
     $('table').hidden = shown.length === 0;
@@ -88,7 +88,7 @@
     const deletable = rows.filter((r) => r.canDelete).length;
     $('selCount').textContent = rows.length ? `${rows.length} selected` : 'Tick recordings to download or delete several at once';
     // A ZIP carries the Glowroot data for users who see server data: wait until it is built
-    const building = rows.filter((r) => r.canViewSystemLog && r.serverData?.glowroot === 'building').length;
+    const building = rows.filter((r) => r.canViewServerData && r.serverData?.glowroot === 'building').length;
     $('batchZip').disabled = !rows.length || building > 0;
     $('batchZip').title = building ? `${building} of the selected ${building === 1 ? 'is' : 'are'} still building Glowroot data: reload in a minute` : '';
     $('batchDelete').disabled = !deletable;
@@ -115,7 +115,7 @@
     title.append(a);
     if (r.recording?.tab?.url) title.append(el('div', 'muted small', r.recording.tab.url));
     if (r.notes) title.append(el('div', 'muted small', r.notes.length > 140 ? r.notes.slice(0, 140) + '…' : r.notes));
-    if (r.canViewSystemLog && r.apps?.length) {
+    if (r.canViewServerData && r.apps?.length) {
       // Apps with problems first (the server lists them so), marked ⚠; at most 3 named
       const names = r.apps.map((x) => `${x.problems ? '⚠ ' : ''}${x.name || x.id} v${x.version}`);
       const apps = el('div', 'muted small', 'App: ' + names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3}` : ''));
@@ -145,7 +145,7 @@
   // System log errors, slow requests and peak load (only shown to users who may see server data)
   function serverIssues(r) {
     const td = el('td');
-    if (!r.canViewSystemLog) return td;
+    if (!r.canViewServerData) return td;
     if (r.systemLog?.status !== 'attached') {
       td.append(el('span', 'muted', '–'));
       td.title = 'No server data: the system logs were not captured for this recording';
@@ -176,7 +176,7 @@
 
   function serverTags(r) {
     const td = el('td', 'hide-sm');
-    if (!r.canViewSystemLog || r.systemLog?.status !== 'attached') return td;
+    if (!r.canViewServerData || r.systemLog?.status !== 'attached') return td;
     const d = r.serverData || {};
     td.append(badge('System logs', 'yes'));
     if (d.traces?.total) td.append(' ', badge(`Traces ${d.traces.total}`, 'yes'));

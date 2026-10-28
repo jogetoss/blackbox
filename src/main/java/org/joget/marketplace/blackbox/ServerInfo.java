@@ -34,7 +34,7 @@ import org.json.JSONObject;
  * Plugins lists every jar in app_plugins with its date and size, marking jars that loaded no plugin.
  * Database and connectionPool hold the current profile's app_datasource file and the pool settings Joget really uses.
  * Apart from the database password (left out, and masked in JDBC URLs), nothing is left out or masked, so it can hold
- * secrets passed as -D options: it is shown only to users allowed to view system logs, like the system log itself.
+ * secrets passed as -D options: it is shown only to users allowed to view server data, like the system log itself.
  */
 final class ServerInfo {
 

@@ -104,7 +104,7 @@ async function showRecordingBadge(systemLog) {
   const on = systemLog?.status === 'on';
   await chrome.action.setBadgeBackgroundColor({ color: on ? '#d93025' : '#e37400' });
   await chrome.action.setBadgeText({ text: 'REC' });
-  await chrome.action.setTitle({ title: on ? 'BlackBox: recording' : `BlackBox: recording, system logs off (${systemLog?.message || 'not started'})` });
+  await chrome.action.setTitle({ title: on ? 'BlackBox: recording' : `BlackBox: recording, server data off (${systemLog?.message || 'not started'})` });
 }
 
 async function clearBadge() {
