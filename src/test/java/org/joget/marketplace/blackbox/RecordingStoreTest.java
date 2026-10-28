@@ -148,13 +148,17 @@ public class RecordingStoreTest {
     }
 
     @Test
-    public void sessionJsonHasItsOwnCap() throws Exception {
-        assertTrue(RecordingStore.MAX_SESSION_BYTES <= 100L * 1024 * 1024);
+    public void fileLimitStillAppliesAndRefusedUploadsLeaveNothing() throws Exception {
         StringBuilder big = new StringBuilder("{\"console\":[],\"network\":[]");
         while (big.length() < 2048) {
             big.append(' ');
         }
         big.append('}');
-        expectInvalid(() -> store.create(in(big.toString()), 1024, "u", "u", null, null)); // the given limit still applies
+        expectInvalid(() -> store.create(in(big.toString()), 1024, "u", "u", null, null));
+        expectInvalid(() -> store.create(in("{\"console\":[],\"network\":[{\"a\":1}"), 1024, "u", "u", null, null)); // broken
+        assertEquals("no half-made recording left", 0, store.list().size());
+        try (java.util.stream.Stream<Path> all = Files.list(root)) {
+            assertEquals(0, all.count());
+        }
     }
 }

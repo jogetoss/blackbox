@@ -105,6 +105,10 @@ final class SampleData {
         return ids;
     }
 
+    /** Kept of the request bodies (the extension sends up to 64 KB of each): enough for the ids, bounded in memory. */
+    static final int MAX_POST_CHARS = 64 * 1024;
+    static final long MAX_POST_TOTAL = 16L * 1024 * 1024;
+
     /** The request bodies the browser sent (form posts carry the record id). */
     static List<String> postData(Path session) {
         List<String> list = new ArrayList<>();
@@ -112,13 +116,15 @@ final class SampleData {
             return list;
         }
         try {
-            JSONArray net = new JSONObject(new String(Files.readAllBytes(session), StandardCharsets.UTF_8)).optJSONArray("network");
-            for (int i = 0; net != null && i < net.length(); i++) {
-                JSONObject e = net.optJSONObject(i);
-                if (e != null && !e.optString("postData").isEmpty()) {
-                    list.add(e.optString("postData"));
+            long[] kept = {0};
+            SessionFile.each(session, "network", java.util.Collections.singleton("postData"), e -> { // one entry at a time, only postData
+                String post = e.optString("postData");
+                if (!post.isEmpty() && kept[0] < MAX_POST_TOTAL) {
+                    post = post.length() > MAX_POST_CHARS ? post.substring(0, MAX_POST_CHARS) : post; // ids are near the start
+                    kept[0] += post.length();
+                    list.add(post);
                 }
-            }
+            });
         } catch (IOException | RuntimeException e) {
             // unreadable: none
         }

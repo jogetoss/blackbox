@@ -200,22 +200,16 @@ public class RecordingZip {
 
     private static JSONObject importSystemLog(RecordingStore store, String id, ZipFile zip, ZipEntry entry, long maxBytes)
             throws IOException, RecordingStore.InvalidUpload, JSONException {
-        byte[] bytes;
+        Path target = store.path(id, RecordingStore.SYSTEM_LOG);
         try (InputStream in = zip.getInputStream(entry)) {
-            bytes = read(in, maxBytes, RecordingStore.SYSTEM_LOG);
+            SessionFile.copy(in, target, maxBytes, RecordingStore.SYSTEM_LOG); // to disk, then checked as a stream
         }
-        JSONObject log;
         try {
-            log = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
-        } catch (JSONException e) {
-            throw new RecordingStore.InvalidUpload("system-log.json in the ZIP is not valid JSON.");
+            return SessionFile.systemLogSummary(target);
+        } catch (RecordingStore.InvalidUpload | IOException e) {
+            Files.deleteIfExists(target);
+            throw e;
         }
-        JSONArray entries = log.optJSONArray("entries");
-        if (entries == null) {
-            throw new RecordingStore.InvalidUpload("system-log.json in the ZIP has no entries list.");
-        }
-        Files.write(store.path(id, RecordingStore.SYSTEM_LOG), bytes);
-        return SystemLogStore.summary(entries, log.optBoolean("truncated"));
     }
 
     /** glowroot/{node}.zip with its glowroot/{node}.json, as written; a package without a valid saved status is skipped. */

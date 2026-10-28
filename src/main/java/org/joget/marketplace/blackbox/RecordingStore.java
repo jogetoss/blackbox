@@ -76,10 +76,9 @@ public class RecordingStore {
     }
 
     /**
-     * session.json is parsed whole in memory (a few times its size), so it gets its own cap below the file limit, and
-     * only a few are parsed at once: a small ZIP can hold a huge session.json.
+     * session.json is read as a stream (SessionFile), so the file limit is its only size limit. Checking one still
+     * reads the whole file: at most a few at once, so many big uploads can't keep every thread busy.
      */
-    static final long MAX_SESSION_BYTES = 100L * 1024 * 1024;
     private static final Semaphore PARSING = new Semaphore(2);
     private static final long PARSE_WAIT_S = 30;
     private static final String META_LOCK = ".meta.lock";
@@ -90,29 +89,29 @@ public class RecordingStore {
      */
     public JSONObject create(InputStream session, long maxBytes, String owner, String ownerName, String title, String notes)
             throws IOException, InvalidUpload {
-        JSONObject report;
-        byte[] bytes;
-        acquireParsing();
-        try {
-            bytes = readLimited(session, Math.min(maxBytes, MAX_SESSION_BYTES));
-            try {
-                report = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
-            } catch (JSONException e) {
-                throw new InvalidUpload("session.json is not valid JSON.");
-            }
-        } finally {
-            PARSING.release();
-        }
-        if (!(report.opt("console") instanceof JSONArray) || !(report.opt("network") instanceof JSONArray)) {
-            throw new InvalidUpload("This is not a BlackBox session.json (no console or network list).");
-        }
-
         String id = newId();
         Path dir = root.resolve(id);
         Files.createDirectories(dir);
-        Files.write(dir.resolve(SESSION), bytes);
+        SessionFile.Head head;
+        boolean ok = false;
+        try {
+            Path tmp = dir.resolve(SESSION + ".part");
+            SessionFile.copy(session, tmp, maxBytes, "session.json"); // to disk first: never whole in memory
+            acquireParsing();
+            try {
+                head = SessionFile.check(tmp);
+            } finally {
+                PARSING.release();
+            }
+            move(tmp, dir.resolve(SESSION));
+            ok = true;
+        } finally {
+            if (!ok) {
+                deleteTree(dir);
+            }
+        }
 
-        JSONObject rec = report.optJSONObject("recording");
+        JSONObject rec = head.recording;
         JSONObject tab = rec != null ? rec.optJSONObject("tab") : null;
         if (isBlank(title) && tab != null) {
             title = !isBlank(tab.optString("title")) ? tab.optString("title") : tab.optString("url");
@@ -129,8 +128,8 @@ public class RecordingStore {
             meta.put("owner", owner);
             meta.put("ownerName", ownerName);
             meta.put("uploadedAt", isoNow());
-            meta.put("tool", report.optString("tool"));
-            meta.put("sessionSize", bytes.length);
+            meta.put("tool", head.tool);
+            meta.put("sessionSize", head.bytes);
             meta.put("videoSize", 0);
             if (rec != null) {
                 JSONObject r = new JSONObject();
@@ -144,7 +143,7 @@ public class RecordingStore {
                 }
                 meta.put("recording", r);
             }
-            JSONObject summary = report.optJSONObject("summary");
+            JSONObject summary = head.summary;
             if (summary != null) {
                 meta.put("summary", summary);
             }
@@ -411,24 +410,6 @@ public class RecordingStore {
         } catch (AtomicMoveNotSupportedException e) {
             Files.move(from, to, StandardCopyOption.REPLACE_EXISTING);
         }
-    }
-
-    static byte[] readLimited(InputStream in, long maxBytes) throws IOException, InvalidUpload {
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        byte[] buf = new byte[64 * 1024];
-        long size = 0;
-        int n;
-        while ((n = in.read(buf)) != -1) {
-            size += n;
-            if (size > maxBytes) {
-                throw new InvalidUpload("session.json is larger than the limit (" + (maxBytes / (1024 * 1024)) + " MB).");
-            }
-            out.write(buf, 0, n);
-        }
-        if (size == 0) {
-            throw new InvalidUpload("session.json is empty.");
-        }
-        return out.toByteArray();
     }
 
     private static boolean startsWithMagic(byte[] buf, int n) {

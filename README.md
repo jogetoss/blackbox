@@ -44,7 +44,7 @@ This section is the single place for what each setting does, who gets what, and 
 | Who can view all recordings | admins only | |
 | Who can delete any recording | admins only | Only recordings they can view |
 | Uploaders can view and delete their own recordings | Yes | |
-| Max file size (MB) | 500 | Video and session.json each; session.json at most 100 MB |
+| Max file size (MB) | 500 | Video and session.json each |
 
 **System logs** (all need **Capture system logs**)
 

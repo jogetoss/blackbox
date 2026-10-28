@@ -42,9 +42,14 @@ Range), `systemlog`, `download` (`format=zip` or `html`), `import`, `delete`, `r
   covers `/web/*`.
 - Uploads are raw request bodies (not multipart): `create` takes `session.json` (title and notes as query
   parameters), then `video` takes `recording.webm`. Only the uploader can add the video, once.
-- `session.json` (in `create`, in `import`, and the `recording-stop` body) is parsed whole in memory, so it is capped
-  at 100 MB (`MAX_SESSION_BYTES`, below the file limit) counting decompressed bytes, and at most 2 are parsed at once;
-  others wait up to 30 s, then get 503.
+- `session.json` (in `create`, in `import`, and the `recording-stop` body) and an imported `system-log.json` are never
+  held whole in memory: they are copied to disk (counting bytes against **Max file size**, decompressed for a ZIP),
+  then checked and read as a stream (`SessionFile` on `JsonStream`, a small pull parser): the check validates the
+  whole document but builds only `recording`, `summary` and `tool`; readers (app URLs, hits, post data) build one
+  entry at a time and only the fields they need. Limits: an entry at most 16 MB, URLs kept up to 8 KB, post data up
+  to 64 KB each and 16 MB in all, 200,000 hits. Measured: a 395 MB session.json is stored and read in a 128 MB heap
+  (the code that parsed it whole ran out of memory at 1 GB). At most 2 checks run at once; others wait up to 30 s,
+  then get 503.
 - `meta.json` changes go through `RecordingStore.modifyMeta`: the latest copy is changed and saved under a per-recording
   lock (in the JVM, plus a file lock on `.meta.lock` for nodes sharing the folder, where the file system supports it).
   `updateMeta` replaces only the keys it is given. So the trace and Glowroot refreshes, the video upload and the

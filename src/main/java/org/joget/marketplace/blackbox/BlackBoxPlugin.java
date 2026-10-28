@@ -664,19 +664,17 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         boolean queued = false;
         logs.put(id, "appExport", new JSONObject().put("state", "exporting").put("at", System.currentTimeMillis()));
         try {
-            byte[] body;
             try (InputStream in = request.getInputStream()) {
+                SessionFile.copy(in, session, maxSizeMb() * 1024 * 1024, "The recording's requests"); // to disk, never whole in memory
                 RecordingStore.acquireParsing();
                 try {
-                    body = RecordingStore.readLimited(in, Math.min(maxSizeMb() * 1024 * 1024, RecordingStore.MAX_SESSION_BYTES));
-                    new JSONObject(new String(body, StandardCharsets.UTF_8)); // only JSON goes on to AppExport
+                    SessionFile.check(session); // only a session-shaped body goes on to AppExport
                 } finally {
                     RecordingStore.releaseParsing();
                 }
             } catch (RecordingStore.InvalidUpload e) {
                 throw new IOException(e.getMessage());
             }
-            Files.write(session, body);
             logs.writeLines(id, systemLog);
             summarizeRecentApps(dir.resolve(ServerInfo.FILE), session, systemLog, id);
             if (off) {

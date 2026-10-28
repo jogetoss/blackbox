@@ -180,24 +180,30 @@ final class AppExport {
         }
     }
 
-    private static void addUrls(List<String> urls, Path file, String key) {
-        JSONArray list = array(file, key);
-        for (int i = 0; list != null && i < list.length(); i++) {
-            JSONObject e = list.optJSONObject(i);
-            if (e != null && !e.optString("url").isEmpty()) {
-                urls.add(e.optString("url"));
-            }
-        }
+    // The fields each reader needs: the rest of an entry (response bodies above all) is skipped, not built
+    private static final java.util.Set<String> URL_FIELDS = new java.util.HashSet<>(java.util.Arrays.asList("url"));
+    private static final java.util.Set<String> NETWORK_FIELDS = new java.util.HashSet<>(java.util.Arrays.asList("t", "url", "type", "status", "failed", "requestHeaders"));
+    private static final java.util.Set<String> CONSOLE_FIELDS = new java.util.HashSet<>(java.util.Arrays.asList("t", "level"));
+    private static final java.util.Set<String> LOG_FIELDS = new java.util.HashSet<>(java.util.Arrays.asList("kind", "url", "status", "error", "level", "req", "other"));
+
+    /** Kept per URL: an app id and version are near the start; a crafted file can't fill memory with URLs. */
+    static final int MAX_URL_CHARS = 8 * 1024;
+    /** Requests and log lines kept per recording (a long real recording has a few thousand). */
+    static final int MAX_HITS = 200_000;
+
+    private static String cutUrl(String u) {
+        return u.length() > MAX_URL_CHARS ? u.substring(0, MAX_URL_CHARS) : u;
     }
 
-    private static JSONArray array(Path file, String key) {
-        if (file == null || !Files.isRegularFile(file)) {
-            return null;
-        }
+    private static void addUrls(List<String> urls, Path file, String key) {
         try {
-            return new JSONObject(new String(Files.readAllBytes(file), StandardCharsets.UTF_8)).optJSONArray(key);
-        } catch (IOException | JSONException e) {
-            return null; // unreadable: no apps from it
+            SessionFile.each(file, key, URL_FIELDS, e -> {
+                if (!e.optString("url").isEmpty() && urls.size() < MAX_HITS) {
+                    urls.add(cutUrl(e.optString("url")));
+                }
+            });
+        } catch (IOException e) {
+            // unreadable: no apps from it
         }
     }
 
@@ -208,40 +214,40 @@ final class AppExport {
      */
     static List<Hit> hits(Path session, Path systemLog) {
         List<Hit> hits = new ArrayList<>();
-        JSONArray network = array(session, "network");
         java.util.TreeMap<Long, String> pages = new java.util.TreeMap<>(); // t -> page shown from then on
-        for (int i = 0; network != null && i < network.length(); i++) {
-            JSONObject n = network.optJSONObject(i);
-            if (n == null || n.optString("url").isEmpty()) {
-                continue;
-            }
-            String url = decode(n.optString("url"));
-            String page = "Document".equals(n.optString("type")) ? url : decode(header(n.optJSONObject("requestHeaders"), "referer"));
-            if (page != null && page.contains("/web/")) {
-                pages.put(n.optLong("t"), page);
-            }
-            hits.add(new Hit(url, page, n.optBoolean("failed") || n.optInt("status") >= 400, true));
-        }
-        JSONArray console = array(session, "console");
-        for (int i = 0; console != null && i < console.length(); i++) {
-            JSONObject c = console.optJSONObject(i);
-            if (c != null && "error".equals(c.optString("level"))) {
-                Map.Entry<Long, String> page = pages.floorEntry(c.optLong("t"));
-                hits.add(new Hit(null, page != null ? page.getValue() : null, true, true));
-            }
-        }
-        JSONArray log = array(systemLog, "entries");
-        for (int i = 0; log != null && i < log.length(); i++) {
-            JSONObject e = log.optJSONObject(i);
-            if (e == null || e.optBoolean("other")) {
-                continue;
-            }
-            if ("request".equals(e.optString("kind")) && !e.optString("url").isEmpty()) {
-                hits.add(new Hit(decode(e.optString("url")), null, e.has("error") || e.optInt("status") >= 500, false));
-            } else if (e.optString("level").matches("ERROR|FATAL") && e.optString("req").contains(" ")) {
-                // req is "METHOD /path": a problem on that request's app, not another request of it
-                hits.add(new Hit(null, decode(e.optString("req").substring(e.optString("req").indexOf(' ') + 1)), true, false));
-            }
+        try { // each list read as a stream, one entry at a time (SessionFile)
+            SessionFile.each(session, "network", NETWORK_FIELDS, n -> {
+                if (n.optString("url").isEmpty() || hits.size() >= MAX_HITS) {
+                    return;
+                }
+                String url = decode(cutUrl(n.optString("url")));
+                String referer = header(n.optJSONObject("requestHeaders"), "referer");
+                String page = "Document".equals(n.optString("type")) ? url : decode(referer != null ? cutUrl(referer) : null);
+                if (page != null && page.contains("/web/")) {
+                    pages.put(n.optLong("t"), page);
+                }
+                hits.add(new Hit(url, page, n.optBoolean("failed") || n.optInt("status") >= 400, true));
+            });
+            SessionFile.each(session, "console", CONSOLE_FIELDS, c -> {
+                if ("error".equals(c.optString("level")) && hits.size() < MAX_HITS) {
+                    Map.Entry<Long, String> page = pages.floorEntry(c.optLong("t"));
+                    hits.add(new Hit(null, page != null ? page.getValue() : null, true, true));
+                }
+            });
+            SessionFile.each(systemLog, "entries", LOG_FIELDS, e -> {
+                if (e.optBoolean("other") || hits.size() >= MAX_HITS) {
+                    return;
+                }
+                if ("request".equals(e.optString("kind")) && !e.optString("url").isEmpty()) {
+                    hits.add(new Hit(decode(cutUrl(e.optString("url"))), null, e.has("error") || e.optInt("status") >= 500, false));
+                } else if (e.optString("level").matches("ERROR|FATAL") && e.optString("req").contains(" ")) {
+                    // req is "METHOD /path": a problem on that request's app, not another request of it
+                    String req = cutUrl(e.optString("req"));
+                    hits.add(new Hit(null, decode(req.substring(req.indexOf(' ') + 1)), true, false));
+                }
+            });
+        } catch (IOException e) {
+            // unreadable: the hits read so far
         }
         return hits;
     }
