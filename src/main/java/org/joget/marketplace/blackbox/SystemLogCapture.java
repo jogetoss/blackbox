@@ -86,6 +86,7 @@ final class SystemLogCapture {
         TraceCollector.start();
         GaugeSampler.start();
         GlowrootPackager.start();
+        ExportJobs.start();
         running = true;
     }
 
@@ -95,6 +96,7 @@ final class SystemLogCapture {
         TraceCollector.stop();
         GaugeSampler.stop();
         GlowrootPackager.stop();
+        ExportJobs.stop();
         if (appender != null) {
             appender.detach();
             appender = null;

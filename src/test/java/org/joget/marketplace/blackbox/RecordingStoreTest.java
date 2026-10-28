@@ -101,4 +101,60 @@ public class RecordingStoreTest {
             // ok
         }
     }
+
+    @Test
+    public void metaChangesNeverPutBackAnOlderCopy() throws Exception {
+        String id = store.create(in(SESSION), 1024 * 1024, "admin", "Admin", "t", "").getString("id");
+        // A background refresh holding the old meta used to write it back over the video upload
+        JSONObject stale = store.readMeta(id);
+        store.writeVideo(id, new ByteArrayInputStream(WEBM), 1024);
+        store.updateMeta(id, new JSONObject().put("serverData", new JSONObject().put("glowroot", "saved")));
+        assertEquals("only the given keys change", WEBM.length, store.readMeta(id).getLong("videoSize"));
+        assertEquals("saved", store.readMeta(id).getJSONObject("serverData").getString("glowroot"));
+        assertEquals("the stale copy had no video yet", 0, stale.getLong("videoSize"));
+        store.updateMeta(id, new JSONObject().put("serverData", JSONObject.NULL));
+        assertFalse("NULL removes a key", store.readMeta(id).has("serverData"));
+        try {
+            store.writeVideo(id, new ByteArrayInputStream(WEBM), 1024);
+            fail("a second video");
+        } catch (RecordingStore.InvalidUpload e) {
+            assertTrue(e.getMessage().contains("already has a video"));
+        }
+    }
+
+    @Test
+    public void concurrentMetaChangesAllLand() throws Exception {
+        String id = store.create(in(SESSION), 1024 * 1024, "admin", "Admin", "t", "").getString("id");
+        int n = 40;
+        Thread[] threads = new Thread[n];
+        for (int i = 0; i < n; i++) {
+            int k = i;
+            threads[i] = new Thread(() -> {
+                try {
+                    store.modifyMeta(id, m -> m.put("k" + k, k));
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            threads[i].start();
+        }
+        for (Thread t : threads) {
+            t.join();
+        }
+        JSONObject meta = store.readMeta(id);
+        for (int i = 0; i < n; i++) {
+            assertEquals(i, meta.getInt("k" + i));
+        }
+    }
+
+    @Test
+    public void sessionJsonHasItsOwnCap() throws Exception {
+        assertTrue(RecordingStore.MAX_SESSION_BYTES <= 100L * 1024 * 1024);
+        StringBuilder big = new StringBuilder("{\"console\":[],\"network\":[]");
+        while (big.length() < 2048) {
+            big.append(' ');
+        }
+        big.append('}');
+        expectInvalid(() -> store.create(in(big.toString()), 1024, "u", "u", null, null)); // the given limit still applies
+    }
 }

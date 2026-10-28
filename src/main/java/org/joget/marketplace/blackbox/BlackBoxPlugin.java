@@ -168,6 +168,15 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 startSystemLog(request, response, access, id);
             } else if ("recording-stop".equals(action) && post) {
                 stopSystemLog(request, response, access, id);
+            } else if ("app-export".equals(action) && !post) {
+                // The recorder polls this while the app export at stop runs on (recording-stop answered "exporting")
+                JSONObject pending = SystemLogStore.isValidId(id) ? SystemLogCapture.store().readMeta(id) : null;
+                if (pending == null || !access.user.getUsername().equals(pending.optString("owner"))) {
+                    error(response, HttpServletResponse.SC_NOT_FOUND, "System log not found.");
+                } else {
+                    JSONObject state = pending.optJSONObject("appExport");
+                    json(response, new JSONObject().put("appExport", state != null ? state : new JSONObject().put("state", "off")));
+                }
             } else if ("traces".equals(action) && !post) {
                 traces(response, store, access, id);
             } else if ("trace".equals(action) && !post) {
@@ -214,6 +223,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             } else {
                 error(response, HttpServletResponse.SC_BAD_REQUEST, "Unknown action.");
             }
+        } catch (RecordingStore.Busy e) {
+            error(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE, e.getMessage());
         } catch (RecordingStore.InvalidUpload e) {
             error(response, HttpServletResponse.SC_BAD_REQUEST, e.getMessage());
         } catch (JSONException e) {
@@ -271,6 +282,11 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         if (systemLogId != null) {
             atStop = appExportAtStop(systemLogId, access.user.getUsername()); // before attach, which moves its app/ folder
             boolean appsAtStop = atStop != null && "done".equals(atStop.optString("state"));
+            if (atStop != null && "exporting".equals(atStop.optString("state"))) {
+                // Still running: the recording gets it when it ends (deliverStopExport), no second export
+                meta.put("appExport", new JSONObject().put("state", "exporting").put("capture", systemLogId));
+                store.updateMeta(recId, new JSONObject().put("appExport", meta.get("appExport")));
+            }
             meta.put("systemLog", attachSystemLog(store, recId, systemLogId, access.user.getUsername(), appsAtStop));
             if ("attached".equals(meta.getJSONObject("systemLog").optString("status"))) {
                 try {
@@ -279,24 +295,29 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                     LogUtil.warn(getClassName(), "Could not sum up the server data of recording " + recId + ": " + e.getMessage());
                 }
             }
-            store.updateMeta(recId, meta);
+            store.updateMeta(recId, new JSONObject().put("systemLog", meta.get("systemLog")).putOpt("serverData", meta.opt("serverData")));
         }
         String done = atStop != null ? atStop.optString("state") : "";
-        if (!"done".equals(done) && !"off".equals(done)) {
+        if (!"done".equals(done) && !"off".equals(done) && !"exporting".equals(done)) {
             summarizeRecentApps(store.file(recId, ServerInfo.FILE), store.file(recId, RecordingStore.SESSION),
                     store.file(recId, RecordingStore.SYSTEM_LOG), recId);
         }
-        JSONArray saved = null;
         if ("done".equals(done)) {
-            saved = atStop.optJSONArray("saved");
+            JSONArray saved = atStop.optJSONArray("saved");
+            if (saved != null && saved.length() > 0) {
+                meta.put("apps", saved);
+                store.updateMeta(recId, new JSONObject().put("apps", saved));
+            }
+        } else if ("exporting".equals(done)) {
+            deliverStopExport(systemLogId); // in case it ended just now
         } else if (!"off".equals(done) && !"false".equals(getPropertyString("includeAppExport")) && !"false".equals(request.getParameter("apps"))) {
-            // No export at stop (no system log capture, or the stop's export failed): the apps as they are now
-            saved = exportApps(store.dir(recId), store.file(recId, RecordingStore.SESSION), store.file(recId, RecordingStore.SYSTEM_LOG),
-                    sampleMode(request), recId, access);
-        }
-        if (saved != null && saved.length() > 0) {
-            meta.put("apps", saved);
-            store.updateMeta(recId, meta);
+            // No export at stop (no system log capture, or the stop's export failed): the apps as they are now, in the
+            // background; the recording lists them when it ends
+            java.util.concurrent.Callable<JSONArray> job = exportJob(store.dir(recId), store.file(recId, RecordingStore.SESSION),
+                    store.file(recId, RecordingStore.SYSTEM_LOG), sampleMode(request), recId, access);
+            meta.put("appExport", new JSONObject().put("state", "exporting"));
+            store.updateMeta(recId, new JSONObject().put("appExport", meta.get("appExport")));
+            ExportJobs.submit(() -> finishUploadExport(recId, job));
         }
         LogUtil.info(getClassName(), "Recording " + recId + " uploaded by " + access.user.getUsername());
         // url: where the extension's "Open uploaded" link points
@@ -318,33 +339,64 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     }
 
     /**
-     * The apps the recording used, exported into dir/app/ (AppExport) with their sample and process data. Returns the
-     * summary meta.apps keeps for the recordings list (empty when none or on failure). label names it in the log.
+     * The apps the recording used, exported into dir/app/ (AppExport) with their sample and process data, now. Returns
+     * the summary meta.apps keeps for the recordings list (empty when none or on failure). label names it in the log.
      */
     private JSONArray exportApps(Path dir, Path session, Path systemLog, SampleData.Mode sample, String label, Access access) {
         try {
-            List<String> urls = AppExport.urls(session, systemLog);
-            List<AppExport.Seen> apps = AppExport.find(AppExport.hits(session, systemLog));
-            AppExport.AfterExport after = null;
-            boolean keepIds = "true".equals(getPropertyString("sampleKeepIds"));
+            return exportJob(dir, session, systemLog, sample, label, access).call();
+        } catch (Exception | LinkageError e) {
+            LogUtil.warn(getClassName(), "Could not export the apps of " + label + ": " + e);
+            return new JSONArray();
+        }
+    }
+
+    private static final String DENIED = "Not exported: you are not an admin of this app, and \"Who can export apps they "
+            + "don't administer\" doesn't allow you or Joget doesn't let you access it.";
+
+    /**
+     * Prepares an app export to run later (ExportJobs): what needs the request is done now, on the request thread:
+     * reading the recording's URLs and posts, and deciding which apps this user may have exported (Access.canExportApp
+     * reads the request and its user). The job does the heavy part. session and systemLog must stay until it runs.
+     */
+    private java.util.concurrent.Callable<JSONArray> exportJob(Path dir, Path session, Path systemLog, SampleData.Mode sample,
+            String label, Access access) throws IOException {
+        List<String> urls = AppExport.urls(session, systemLog);
+        List<AppExport.Seen> apps = AppExport.find(AppExport.hits(session, systemLog));
+        Map<String, String> decided = new java.util.HashMap<>(); // app@version -> reason it is denied, or null
+        for (AppExport.Seen s : apps) {
+            AppDefinition def = AppExport.resolve(s.appId, s.version);
+            if (def != null) {
+                decided.put(AppExport.key(def), access.canExportApp(def) ? null : DENIED);
+            }
+        }
+        java.util.Set<String> candidates = null;
+        if (sample != null) {
+            List<String> texts = new java.util.ArrayList<>(urls);
+            texts.addAll(SampleData.postData(session));
+            candidates = SampleData.candidateIds(texts);
+        }
+        java.util.Set<String> ids0 = candidates;
+        boolean keepIds = "true".equals(getPropertyString("sampleKeepIds"));
+        String sensitive = getPropertyString("sensitiveColumns");
+        int newest = (int) Math.min(positive("sampleRows", 20), 500);
+        String max = getPropertyString("maxApps");
+        int maxApps = max != null && max.trim().matches("\\d{1,4}") ? Integer.parseInt(max.trim()) : AppExport.MAX_APPS;
+        return () -> {
             Masker.IdMap ids = new Masker.IdMap(keepIds);
+            AppExport.AfterExport after = null;
             if (sample != null) {
-                List<String> texts = new java.util.ArrayList<>(urls);
-                texts.addAll(SampleData.postData(session));
-                java.util.Set<String> candidates = SampleData.candidateIds(texts);
-                String sensitive = getPropertyString("sensitiveColumns");
                 Masker masker = new Masker(sensitive == null || sensitive.trim().isEmpty() ? Masker.DEFAULT_SENSITIVE : sensitive);
                 SampleData.Source src = SampleData.joget();
                 ProcessData.Source psrc = ProcessData.joget();
-                int newest = (int) Math.min(positive("sampleRows", 20), 500);
                 after = (jwa, def) -> {
                     masker.setDefinition(SampleData.definitionText(jwa));
-                    List<SampleData.Table> tables = SampleData.build(SampleData.tables(def), candidates, src, sample, masker, ids, newest);
+                    List<SampleData.Table> tables = SampleData.build(SampleData.tables(def), ids0, src, sample, masker, ids, newest);
                     SampleData.addTo(jwa, tables);
                     try {
                         JSONObject extra = new JSONObject().put("sample", SampleData.summary(tables, sample));
                         // Processes: recorded process / activity ids, and those in the sample rows (record ids, links)
-                        java.util.Set<String> refs = new java.util.LinkedHashSet<>(candidates);
+                        java.util.Set<String> refs = new java.util.LinkedHashSet<>(ids0);
                         refs.addAll(ids.all().keySet());
                         refs.addAll(SampleData.valuesIn(tables));
                         JSONArray processes = ProcessData.collect(def.getAppId(), ProcessData.processIds(refs, psrc), psrc, sample,
@@ -358,19 +410,13 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                     }
                 };
             }
-            String max = getPropertyString("maxApps");
-            int maxApps = max != null && max.trim().matches("\\d{1,4}") ? Integer.parseInt(max.trim()) : AppExport.MAX_APPS;
-            // Only apps this user may have exported (Access.canExportApp); the rest are listed as denied
-            AppExport.Exporter exporter = AppExport.joget(def -> access.canExportApp(def) ? null
-                    : "Not exported: you are not an admin of this app, and \"Who can export apps they don't administer\" "
-                    + "doesn't allow you or Joget doesn't let you access it.");
+            // Only apps decided above may be exported; a version that changed meanwhile was never checked: denied
+            AppExport.Exporter exporter = AppExport.joget(def -> decided.containsKey(AppExport.key(def))
+                    ? decided.get(AppExport.key(def)) : "Not exported: the app changed while it was being exported. Upload again.");
             JSONArray saved = AppExport.save(dir, apps, exporter, after, maxApps);
             SampleData.writeIdMap(dir, ids, keepIds);
             return saved;
-        } catch (IOException | RuntimeException | LinkageError e) {
-            LogUtil.warn(getClassName(), "Could not export the apps of " + label + ": " + e);
-            return new JSONArray();
-        }
+        };
     }
 
     private void uploadVideo(HttpServletRequest request, HttpServletResponse response, RecordingStore store, Access access, String id)
@@ -495,7 +541,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             if (meta.has("systemLog")) {
                 // the list's server data tags (traces, load, info, Glowroot data), as after an upload
                 meta.put("serverData", ServerData.of(store.dir(meta.getString("id")), slowMs()));
-                store.updateMeta(meta.getString("id"), meta);
+                store.updateMeta(meta.getString("id"), new JSONObject().put("serverData", meta.get("serverData")));
             }
             LogUtil.info(getClassName(), "Recording " + meta.getString("id") + " imported by " + access.user.getUsername());
             meta.put("url", request.getContextPath() + "/blackbox/view?id=" + meta.getString("id"));
@@ -588,8 +634,12 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
     }
 
-    /** How long an upload waits for the app export its recording's stop started. */
-    private static final long STOP_EXPORT_WAIT_MS = 120 * 1000L;
+    /**
+     * How long recording-stop and an upload wait for the app export at stop, kept well under common proxy timeouts
+     * (nginx: 60 s). Past it the export goes on in the background (ExportJobs).
+     */
+    private static final long STOP_SYNC_MS = 20 * 1000L;
+    private static final long STOP_EXPORT_WAIT_MS = STOP_SYNC_MS;
 
     /**
      * The app export at stop, into the capture's pending folder (app/), which {@link SystemLogStore#attach} moves into
@@ -611,15 +661,21 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         Path session = dir.resolve("stop-session.json");
         Path systemLog = dir.resolve("stop-system-log.json");
         JSONObject state = new JSONObject().put("state", "failed");
+        boolean queued = false;
         logs.put(id, "appExport", new JSONObject().put("state", "exporting").put("at", System.currentTimeMillis()));
         try {
             byte[] body;
             try (InputStream in = request.getInputStream()) {
-                body = RecordingStore.readLimited(in, maxSizeMb() * 1024 * 1024);
+                RecordingStore.acquireParsing();
+                try {
+                    body = RecordingStore.readLimited(in, Math.min(maxSizeMb() * 1024 * 1024, RecordingStore.MAX_SESSION_BYTES));
+                    new JSONObject(new String(body, StandardCharsets.UTF_8)); // only JSON goes on to AppExport
+                } finally {
+                    RecordingStore.releaseParsing();
+                }
             } catch (RecordingStore.InvalidUpload e) {
                 throw new IOException(e.getMessage());
             }
-            new JSONObject(new String(body, StandardCharsets.UTF_8)); // only JSON goes on to AppExport
             Files.write(session, body);
             logs.writeLines(id, systemLog);
             summarizeRecentApps(dir.resolve(ServerInfo.FILE), session, systemLog, id);
@@ -628,22 +684,133 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 return state;
             }
             SampleData.Mode sample = sampleMode(request);
-            JSONArray saved = exportApps(dir, session, systemLog, sample, id, access);
-            state = new JSONObject().put("state", "done").put("saved", saved)
-                    .put("sampleData", sample == null ? "none" : sample.name().toLowerCase());
+            java.util.concurrent.Callable<JSONArray> job = exportJob(dir, session, systemLog, sample, id, access);
+            String mode = sample == null ? "none" : sample.name().toLowerCase();
+            queued = true;
+            ExportJobs.submit(() -> {
+                JSONObject end = new JSONObject();
+                try {
+                    end.put("state", "done").put("saved", job.call()).put("sampleData", mode);
+                } catch (Exception | LinkageError e) {
+                    LogUtil.warn(getClassName(), "Could not export the apps at the stop of system log " + id + ": " + e);
+                    try {
+                        end = new JSONObject().put("state", "failed");
+                    } catch (JSONException ignored) {
+                        // a constant key: never
+                    }
+                } finally {
+                    deleteQuietly(session);
+                    deleteQuietly(systemLog);
+                }
+                try {
+                    logs.put(id, "appExport", end);
+                } catch (IOException e) {
+                    LogUtil.warn(getClassName(), "Could not save the app export state of system log " + id + ": " + e);
+                }
+                deliverStopExport(id); // the upload came first and is waiting for it
+            });
+            return waitForStopExport(id, STOP_SYNC_MS);
         } catch (IOException | RuntimeException e) {
             LogUtil.warn(getClassName(), "Could not export the apps at the stop of system log " + id + ": " + e);
         } finally {
-            Files.deleteIfExists(session);
-            Files.deleteIfExists(systemLog);
-            logs.put(id, "appExport", state);
+            if (!queued) {
+                Files.deleteIfExists(session);
+                Files.deleteIfExists(systemLog);
+                logs.put(id, "appExport", state);
+            }
         }
         return state;
     }
 
+    private static void deleteQuietly(Path f) {
+        try {
+            Files.deleteIfExists(f);
+        } catch (IOException e) {
+            // a temp file of the capture: goes with its folder
+        }
+    }
+
+    /** The capture's appExport state, waiting up to ms while it is exporting (it may still be exporting then). */
+    private static JSONObject waitForStopExport(String id, long ms) throws JSONException {
+        long until = System.currentTimeMillis() + ms;
+        while (true) {
+            JSONObject pending = SystemLogCapture.store().readMeta(id);
+            JSONObject state = pending != null ? pending.optJSONObject("appExport") : null;
+            if (state == null) {
+                return new JSONObject().put("state", "failed");
+            }
+            if (!"exporting".equals(state.optString("state")) || System.currentTimeMillis() > until) {
+                return state;
+            }
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return state;
+            }
+        }
+    }
+
+    private static final Object DELIVERING = new Object();
+
     /**
-     * The app export the recording's stop made (see {@link #exportAtStop}), waiting while it still runs; null when
-     * there was none (no body at stop, another user's capture, or the wait ran out).
+     * A stop export that ended after its recording was uploaded: moves its apps in and lists them. Runs from both
+     * sides (the export's end, and the upload in case it ended just before), so it acts once: only while the
+     * recording still says appExport exporting from this capture.
+     */
+    static void deliverStopExport(String captureId) {
+        synchronized (DELIVERING) {
+            try {
+                SystemLogStore logs = SystemLogCapture.store();
+                JSONObject pending = logs.readMeta(captureId);
+                String rec = pending != null ? pending.optString("recording") : "";
+                JSONObject state = pending != null ? pending.optJSONObject("appExport") : null;
+                if (rec.isEmpty() || state == null || "exporting".equals(state.optString("state"))) {
+                    return;
+                }
+                RecordingStore store = store();
+                JSONObject meta = store.readMeta(rec);
+                JSONObject waiting = meta != null ? meta.optJSONObject("appExport") : null;
+                if (waiting == null || !"exporting".equals(waiting.optString("state")) || !captureId.equals(waiting.optString("capture"))) {
+                    return;
+                }
+                JSONObject changes = new JSONObject().put("appExport", new JSONObject().put("state", state.optString("state")));
+                if ("done".equals(state.optString("state"))) {
+                    TraceStore.moveFolder(logs.dir(captureId), store.dir(rec), AppExport.DIR, name -> true);
+                    JSONArray saved = state.optJSONArray("saved");
+                    if (saved != null && saved.length() > 0) {
+                        changes.put("apps", saved);
+                    }
+                }
+                store.updateMeta(rec, changes);
+            } catch (IOException | RuntimeException e) { // JSONException is a RuntimeException
+                LogUtil.warn(BlackBoxPlugin.class.getName(), "Could not add the late app export of system log " + captureId + ": " + e);
+            }
+        }
+    }
+
+    /** An export at upload, run in the background: lists the apps in the recording when it ends. */
+    private void finishUploadExport(String recId, java.util.concurrent.Callable<JSONArray> job) {
+        JSONArray saved = null;
+        try {
+            saved = job.call();
+        } catch (Exception | LinkageError e) {
+            LogUtil.warn(getClassName(), "Could not export the apps of " + recId + ": " + e);
+        }
+        try {
+            JSONObject changes = new JSONObject().put("appExport", new JSONObject().put("state", saved != null ? "done" : "failed"));
+            if (saved != null && saved.length() > 0) {
+                changes.put("apps", saved);
+            }
+            store().updateMeta(recId, changes);
+        } catch (IOException | JSONException e) {
+            LogUtil.warn(getClassName(), "Could not list the exported apps of " + recId + ": " + e);
+        }
+    }
+
+    /**
+     * The app export the recording's stop made (see {@link #exportAtStop}), waiting a while if it still runs; null
+     * when there was none (no body at stop, another user's capture). After the wait it may still say exporting.
      */
     private JSONObject appExportAtStop(String systemLogId, String owner) {
         long until = System.currentTimeMillis() + STOP_EXPORT_WAIT_MS;
@@ -654,8 +821,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 return state;
             }
             if (System.currentTimeMillis() > until) {
-                LogUtil.warn(getClassName(), "Gave up waiting for the app export of system log " + systemLogId);
-                return null;
+                LogUtil.info(getClassName(), "The app export of system log " + systemLogId + " is still running: added when it ends");
+                return state;
             }
             try {
                 Thread.sleep(500);

@@ -4,12 +4,15 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.security.SecureRandom;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -17,6 +20,9 @@ import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.TimeZone;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -57,17 +63,45 @@ public class RecordingStore {
         }
     }
 
+    /** Too many uploads are being read at once: try again later (HTTP 503). */
+    public static class Busy extends InvalidUpload {
+        public Busy(String message) {
+            super(message);
+        }
+    }
+
+    /** A change to a recording's meta.json, made by {@link #modifyMeta} on the latest copy under its lock. */
+    public interface MetaChange {
+        void apply(JSONObject meta) throws IOException, InvalidUpload, JSONException;
+    }
+
+    /**
+     * session.json is parsed whole in memory (a few times its size), so it gets its own cap below the file limit, and
+     * only a few are parsed at once: a small ZIP can hold a huge session.json.
+     */
+    static final long MAX_SESSION_BYTES = 100L * 1024 * 1024;
+    private static final Semaphore PARSING = new Semaphore(2);
+    private static final long PARSE_WAIT_S = 30;
+    private static final String META_LOCK = ".meta.lock";
+    private static final ConcurrentHashMap<String, Object> META_LOCKS = new ConcurrentHashMap<>();
+
     /**
      * Saves session.json and creates the recording. The video is added later with {@link #writeVideo}.
      */
     public JSONObject create(InputStream session, long maxBytes, String owner, String ownerName, String title, String notes)
             throws IOException, InvalidUpload {
-        byte[] bytes = readLimited(session, maxBytes);
         JSONObject report;
+        byte[] bytes;
+        acquireParsing();
         try {
-            report = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
-        } catch (JSONException e) {
-            throw new InvalidUpload("session.json is not valid JSON.");
+            bytes = readLimited(session, Math.min(maxBytes, MAX_SESSION_BYTES));
+            try {
+                report = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
+            } catch (JSONException e) {
+                throw new InvalidUpload("session.json is not valid JSON.");
+            }
+        } finally {
+            PARSING.release();
         }
         if (!(report.opt("console") instanceof JSONArray) || !(report.opt("network") instanceof JSONArray)) {
             throw new InvalidUpload("This is not a BlackBox session.json (no console or network list).");
@@ -166,17 +200,75 @@ public class RecordingStore {
                     out.write(buf, 0, n);
                 } while ((n = in.read(buf)) != -1);
             }
-            move(tmp, dir.resolve(VIDEO));
+            long videoSize = size;
+            // Checked again on the latest meta, under its lock: two uploads at once keep one video
+            return modifyMeta(id, m -> {
+                if (m.optLong("videoSize") > 0) {
+                    throw new InvalidUpload("This recording already has a video.");
+                }
+                move(tmp, dir.resolve(VIDEO));
+                m.put("videoSize", videoSize);
+            });
         } finally {
             Files.deleteIfExists(tmp);
         }
+    }
+
+    /** Waits for one of the few session.json parse slots. */
+    static void acquireParsing() throws Busy {
         try {
-            meta.put("videoSize", size);
-        } catch (JSONException e) {
-            throw new IOException(e);
+            if (!PARSING.tryAcquire(PARSE_WAIT_S, TimeUnit.SECONDS)) {
+                throw new Busy("The server is busy reading other uploads. Try again in a minute.");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new Busy("Interrupted while waiting to read the upload.");
         }
-        writeMeta(id, meta);
-        return meta;
+    }
+
+    static void releaseParsing() {
+        PARSING.release();
+    }
+
+    /**
+     * Applies a change to the latest meta.json and saves it, so writers on other threads (traces, Glowroot data, the
+     * video upload) never put back an older copy. Locked per recording in this JVM, and with a file lock for nodes
+     * sharing the folder (where the file system supports it). Returns the saved meta.
+     */
+    public JSONObject modifyMeta(String id, MetaChange change) throws IOException, InvalidUpload {
+        if (!isValidId(id)) {
+            throw new IllegalArgumentException("Invalid recording id");
+        }
+        Path dir = root.resolve(id);
+        Object lock = META_LOCKS.computeIfAbsent(dir.toAbsolutePath().toString(), k -> new Object());
+        synchronized (lock) {
+            if (!Files.isDirectory(dir)) {
+                throw new IOException("Recording not found: " + id);
+            }
+            try (FileChannel ch = FileChannel.open(dir.resolve(META_LOCK), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                    FileLock fl = fileLock(ch)) {
+                JSONObject meta = readMeta(id);
+                if (meta == null) {
+                    throw new IOException("Recording not found: " + id);
+                }
+                try {
+                    change.apply(meta);
+                } catch (JSONException e) {
+                    throw new IOException(e);
+                }
+                writeMeta(id, meta);
+                return meta;
+            }
+        }
+    }
+
+    /** The file lock, or null where the file system has none (the JVM lock still holds). */
+    private static FileLock fileLock(FileChannel ch) {
+        try {
+            return ch.lock();
+        } catch (IOException | UnsupportedOperationException e) {
+            return null;
+        }
     }
 
     public JSONObject readMeta(String id) {
@@ -248,11 +340,23 @@ public class RecordingStore {
         return root.resolve(id).resolve(name);
     }
 
-    public void updateMeta(String id, JSONObject meta) throws IOException {
-        if (readMeta(id) == null) {
-            throw new IOException("Recording not found: " + id);
+    /** Replaces the given keys of the latest meta.json (null removes the key), under its lock. */
+    public JSONObject updateMeta(String id, JSONObject changes) throws IOException {
+        try {
+            return modifyMeta(id, m -> {
+                for (java.util.Iterator<?> it = changes.keys(); it.hasNext();) {
+                    String k = String.valueOf(it.next());
+                    Object v = changes.opt(k);
+                    if (v == null || v == JSONObject.NULL) {
+                        m.remove(k);
+                    } else {
+                        m.put(k, v);
+                    }
+                }
+            });
+        } catch (InvalidUpload e) {
+            throw new IOException(e.getMessage());
         }
-        writeMeta(id, meta);
     }
 
     public boolean delete(String id) throws IOException {

@@ -234,8 +234,10 @@ async function stopAndSave(reason) {
   return { id, stopSent };
 }
 
-// The server waits this long for the app export at stop; the upload then waits for it on the server
+// How long the recorder waits for the app export at stop. The server answers within about 20 s ("exporting" if it
+// runs on), so the recorder polls it; past this the upload goes ahead and the server adds the apps when they're done
 const STOP_WAIT_MS = 150000;
+const STOP_POLL_MS = 3000;
 
 // Ends the server's system log capture and sends what it needs to export the apps the recording used, as they are
 // now, with their sample and process data (the requests and console errors, as in session.json). Waits for it, so the
@@ -258,7 +260,15 @@ async function stopOnServer(report) {
     const res = await fetch(log.uploadUrl + '?' + new URLSearchParams({ action: 'recording-stop', id: log.id, ...Quick.exportParams(meta.options) }),
       { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: abort.signal });
     const out = await res.json().catch(() => null);
-    const e = out?.appExport;
+    let e = out?.appExport;
+    const until = Date.now() + STOP_WAIT_MS;
+    while (e?.state === 'exporting' && Date.now() < until) {
+      await new Promise((r) => setTimeout(r, STOP_POLL_MS));
+      const poll = await fetch(log.uploadUrl + '?' + new URLSearchParams({ action: 'app-export', id: log.id }),
+        { credentials: 'include', signal: abort.signal }).then((r) => r.json()).catch(() => null);
+      if (!poll?.appExport) break;
+      e = poll.appExport;
+    }
     if (e && report.recording.systemLog) {
       report.recording.systemLog.appExport = { state: e.state, sampleData: e.sampleData, apps: e.saved?.length };
     }

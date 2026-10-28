@@ -49,6 +49,7 @@ const Actions = (() => {
     const atStop = recording?.systemLog?.appExport;
     if (atStop && atStop.state !== 'failed') {
       $('upAtStop').textContent = atStop.state === 'off' ? 'Apps not exported: turned off for this recording.'
+        : atStop.state === 'exporting' ? 'The server is still exporting the apps used; they are added to the recording when done.'
         : `Apps exported when the recording stopped (${atStop.apps || 0}), sample data: ${atStop.sampleData || 'none'}.`;
       $('upAtStop').hidden = false;
       return;

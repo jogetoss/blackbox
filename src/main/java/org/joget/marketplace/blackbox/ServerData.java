@@ -87,20 +87,20 @@ final class ServerData {
     /** Refreshes the trace counts in a recording's meta.json (a trace was saved, failed or retried). */
     static void refreshTraces(RecordingStore store, String recId) {
         try {
-            JSONObject meta = store.readMeta(recId);
             Path dir = store.dir(recId);
-            if (meta == null || dir == null) {
+            if (dir == null) {
                 return;
             }
-            JSONObject d = meta.optJSONObject("serverData");
-            long slowMs = d != null ? d.optLong("slowMs", DEFAULT_SLOW_MS) : DEFAULT_SLOW_MS;
-            if (d == null) {
-                d = new JSONObject().put("slowMs", slowMs);
-            }
-            d.put("traces", traces(dir, slowMs));
-            meta.put("serverData", d);
-            store.updateMeta(recId, meta);
-        } catch (IOException | JSONException e) {
+            store.modifyMeta(recId, meta -> { // the latest meta, so a video upload meanwhile isn't undone
+                JSONObject d = meta.optJSONObject("serverData");
+                long slowMs = d != null ? d.optLong("slowMs", DEFAULT_SLOW_MS) : DEFAULT_SLOW_MS;
+                if (d == null) {
+                    d = new JSONObject().put("slowMs", slowMs);
+                }
+                d.put("traces", traces(dir, slowMs));
+                meta.put("serverData", d);
+            });
+        } catch (IOException | JSONException | RecordingStore.InvalidUpload e) {
             // the list shows the old counts until the next change
         }
     }
@@ -108,24 +108,24 @@ final class ServerData {
     /** The Glowroot data state (GlowrootData.overall) changed: the recordings list shows it. */
     static void refreshGlowroot(RecordingStore store, String recId) {
         try {
-            JSONObject meta = store.readMeta(recId);
             Path dir = store.dir(recId);
-            if (meta == null || dir == null) {
+            if (dir == null) {
                 return;
             }
-            JSONObject d = meta.optJSONObject("serverData");
-            if (d == null) {
-                d = new JSONObject().put("slowMs", DEFAULT_SLOW_MS);
-            }
             String state = GlowrootData.overall(GlowrootData.statuses(dir));
-            if (state == null) {
-                d.remove("glowroot");
-            } else {
-                d.put("glowroot", state);
-            }
-            meta.put("serverData", d);
-            store.updateMeta(recId, meta);
-        } catch (IOException | JSONException e) {
+            store.modifyMeta(recId, meta -> {
+                JSONObject d = meta.optJSONObject("serverData");
+                if (d == null) {
+                    d = new JSONObject().put("slowMs", DEFAULT_SLOW_MS);
+                }
+                if (state == null) {
+                    d.remove("glowroot");
+                } else {
+                    d.put("glowroot", state);
+                }
+                meta.put("serverData", d);
+            });
+        } catch (IOException | JSONException | RecordingStore.InvalidUpload e) {
             // the list shows the old state until the next change
         }
     }

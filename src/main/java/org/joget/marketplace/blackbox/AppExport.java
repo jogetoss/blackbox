@@ -275,14 +275,26 @@ final class AppExport {
         return joget(null);
     }
 
+    /** The version an export takes: the one the URLs named, else the published one, else the latest. Null: no app. */
+    static AppDefinition resolve(String appId, String version) {
+        AppService appService = (AppService) AppUtil.getApplicationContext().getBean("appService");
+        AppDefinition def = version != null ? appService.loadAppDefinition(appId, version) : appService.getPublishedAppDefinition(appId);
+        if (def == null) {
+            def = appService.loadAppDefinition(appId, null); // never published: the latest
+        }
+        return def;
+    }
+
+    /** The key of an access decision: the app and the version it resolved to. */
+    static String key(AppDefinition def) {
+        return def.getAppId() + "@" + def.getVersion();
+    }
+
     /** As {@link #joget()}; deny gives the reason an app's definition may not be exported (null: allowed). */
     static Exporter joget(java.util.function.Function<AppDefinition, String> deny) {
         AppService appService = (AppService) AppUtil.getApplicationContext().getBean("appService");
         return (appId, version, out) -> {
-            AppDefinition def = version != null ? appService.loadAppDefinition(appId, version) : appService.getPublishedAppDefinition(appId);
-            if (def == null) {
-                def = appService.loadAppDefinition(appId, null); // never published: the latest
-            }
+            AppDefinition def = resolve(appId, version);
             if (def == null) {
                 return null;
             }
