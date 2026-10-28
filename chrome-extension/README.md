@@ -18,9 +18,10 @@ Internals and the Upload endpoint API: [ARCHITECTURE.md](../ARCHITECTURE.md).
 2. **Load unpacked** → select this folder. After an update, click the reload icon on the extension card.
 3. Pin the extension.
 
-## Settings
+## Extension settings
 
-Popup → **Settings**:
+Popup → **Settings** (this browser only; the server's options are in the plugin README's
+[Settings](../README.md#settings)):
 
 - **Upload URL** — the server that stores recordings, e.g. `https://example.com/jw/api/blackbox` for the BlackBox
   Joget plugin. **Save** asks Chrome for access to that server and checks the connection.
@@ -43,8 +44,9 @@ Popup → **Settings**:
    - **Microphone** (off by default) — to talk through the problem. Chrome asks for the microphone on the first
      recording; if you blocked it, set **Microphone** to **Allow** at
      `chrome://settings/content/siteDetails?site=chrome-extension://<extension id>`.
-   - The server's options, as far as its BlackBox settings and your rights allow: **Export the apps used**,
-     **Sample form data**, **Mask data**, **All server log lines**, **Glowroot data**.
+   - The server's options: **Export the apps used**, **Sample form data**, **Mask data**, **All server log lines**,
+     **Glowroot data**. Each shows only when the server's BlackBox settings and your rights allow it; see the plugin
+     README's [Per-recording choices](../README.md#per-recording-choices-popup).
 
    Both sounds go into one sound track. `session.json` says what the recording has: `recording.audio` =
    `{ page, pageSource: "tab" | "system", mic, message }`, where `message` says why a sound is missing.
