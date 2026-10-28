@@ -85,6 +85,46 @@ final class GaugeStore {
     }
 
     /** A ZIP's gauges.json back into gauges/{node}.jsonl files. */
+    /**
+     * As {@link #write(Path, JSONObject)} from a gauges.json file read as a stream ({nodes: {node: [samples]}}): each
+     * sample becomes a line of gauges/{node}.jsonl, one at a time. Invalid JSON: JsonStream.Malformed.
+     */
+    static void write(Path outer, Path merged) throws IOException {
+        Path dir = Files.createDirectories(outer.resolve(DIR));
+        try (JsonStream js = new JsonStream(new java.io.BufferedReader(new java.io.InputStreamReader(Files.newInputStream(merged),
+                StandardCharsets.UTF_8)))) {
+            js.beginObject();
+            while (js.hasNext()) {
+                if (!"nodes".equals(js.nextName()) || js.peekKind() != '{') {
+                    js.skipValue();
+                    continue;
+                }
+                js.beginObject();
+                while (js.hasNext()) {
+                    String node = js.nextName();
+                    if (js.peekKind() != '[' || !TraceStore.isIndexFile(node + ".jsonl")) {
+                        js.skipValue();
+                        continue;
+                    }
+                    try (java.io.Writer out = Files.newBufferedWriter(dir.resolve(node + ".jsonl"), StandardCharsets.UTF_8)) {
+                        js.beginArray();
+                        while (js.hasNext()) {
+                            Object s = js.nextValue(64 * 1024);
+                            if (s instanceof JSONObject) {
+                                out.write(s.toString());
+                                out.write('\n');
+                            }
+                        }
+                        js.endArray();
+                    }
+                }
+                js.endObject();
+            }
+            js.endObject();
+            js.end();
+        }
+    }
+
     static void write(Path outer, JSONObject merged) throws IOException {
         JSONObject nodes = merged.optJSONObject("nodes");
         if (nodes == null) {

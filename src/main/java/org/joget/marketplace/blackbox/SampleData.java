@@ -135,7 +135,9 @@ final class SampleData {
     static final class Table {
         final String name;
         final FormRowSet rows = new FormRowSet();
-        final Map<String, byte[]> files = new LinkedHashMap<>(); // app_formuploads/... -> content
+        final Map<String, byte[]> files = new LinkedHashMap<>(); // app_formuploads/... -> content (placeholders)
+        final Map<String, Path> fileSources = new LinkedHashMap<>(); // app_formuploads/... -> real file, streamed into the .jwa
+        long sourceBytes; // their total size, for the per-table limit
         final Set<String> masked = new TreeSet<>();
         String picked; // "touched", "linked", "newest"
 
@@ -316,6 +318,7 @@ final class SampleData {
         for (Map.Entry<String, byte[]> e : t.files.entrySet()) {
             total += e.getValue().length;
         }
+        total += t.sourceBytes;
         for (File f : src.files(t.name, oldId)) {
             String name = f.getName();
             String target;
@@ -329,12 +332,14 @@ final class SampleData {
                 if (f.length() > MAX_FILE_BYTES || total + f.length() > MAX_FILES_BYTES) {
                     content = ("BlackBox placeholder: the file (" + f.length() + " bytes) is larger than the sample limit.\n")
                             .getBytes(StandardCharsets.UTF_8);
+                } else if (f.canRead()) {
+                    total += f.length();
+                    t.sourceBytes += f.length();
+                    renamedFiles.put(name, target);
+                    t.fileSources.put("app_formuploads/" + t.name + "/" + newId + "/" + target, f.toPath()); // copied at addTo
+                    continue;
                 } else {
-                    try {
-                        content = Files.readAllBytes(f.toPath());
-                    } catch (IOException e) {
-                        continue;
-                    }
+                    continue;
                 }
             }
             total += content.length;
@@ -424,6 +429,9 @@ final class SampleData {
                 for (Map.Entry<String, byte[]> f : t.files.entrySet()) {
                     put(out, written, f.getKey(), f.getValue());
                 }
+                for (Map.Entry<String, Path> f : t.fileSources.entrySet()) {
+                    putFile(out, written, f.getKey(), f.getValue());
+                }
             }
             Enumeration<? extends ZipEntry> all = in.entries();
             while (all.hasMoreElements()) {
@@ -443,6 +451,22 @@ final class SampleData {
             }
         }
         Files.move(tmp, jwa, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    /** A real uploaded file into the .jwa, copied as a stream (it may be several MB). */
+    private static void putFile(ZipOutputStream out, Set<String> written, String name, Path file) throws IOException {
+        if (!written.add(name)) {
+            return;
+        }
+        out.putNextEntry(new ZipEntry(name));
+        try (InputStream in = Files.newInputStream(file)) {
+            byte[] buf = new byte[64 * 1024];
+            int n;
+            while ((n = in.read(buf)) != -1) {
+                out.write(buf, 0, n);
+            }
+        }
+        out.closeEntry();
     }
 
     private static void put(ZipOutputStream out, Set<String> written, String name, byte[] content) throws IOException {
@@ -474,7 +498,7 @@ final class SampleData {
         JSONArray list = new JSONArray();
         for (Table t : tables) {
             list.put(new JSONObject().put("table", t.name).put("rows", t.rows.size()).put("picked", t.picked)
-                    .put("files", t.files.size()).put("masked", new JSONArray(t.masked)));
+                    .put("files", t.files.size() + t.fileSources.size()).put("masked", new JSONArray(t.masked)));
         }
         return new JSONObject().put("mode", mode.name().toLowerCase(java.util.Locale.ROOT)).put("tables", list);
     }

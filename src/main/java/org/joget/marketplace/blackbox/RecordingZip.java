@@ -239,7 +239,7 @@ public class RecordingZip {
             }
             Path dir = Files.createDirectories(store.dir(id).resolve(GlowrootData.DIR));
             try (InputStream in = zip.getInputStream(e)) {
-                Files.write(dir.resolve(file), read(in, maxBytes, name));
+                copy(in, dir.resolve(file), maxBytes, name);
             }
             try {
                 status.put("imported", true);
@@ -278,7 +278,7 @@ public class RecordingZip {
                 continue;
             }
             try (InputStream in = zip.getInputStream(e)) {
-                Files.write(dir.resolve(file), read(in, maxBytes, file));
+                copy(in, dir.resolve(file), maxBytes, file);
             }
             summary.put(new JSONObject().put("id", a.optString("id")).put("name", a.optString("name")).put("version", a.optLong("version")));
         }
@@ -309,10 +309,16 @@ public class RecordingZip {
         if (entry == null) {
             return;
         }
-        try (InputStream in = zip.getInputStream(entry)) {
-            GaugeStore.write(store.dir(id), new JSONObject(new String(read(in, maxBytes, GaugeStore.MERGED), StandardCharsets.UTF_8)));
-        } catch (JSONException e) {
+        Path tmp = Files.createTempFile(store.dir(id), "gauges-", ".json");
+        try {
+            try (InputStream in = zip.getInputStream(entry)) {
+                copy(in, tmp, maxBytes, GaugeStore.MERGED);
+            }
+            GaugeStore.write(store.dir(id), tmp); // as a stream, one sample at a time
+        } catch (JsonStream.Malformed | JsonStream.TooLarge e) {
             throw new RecordingStore.InvalidUpload(GaugeStore.MERGED + " in the ZIP is not valid JSON.");
+        } finally {
+            Files.deleteIfExists(tmp);
         }
     }
 
@@ -323,22 +329,37 @@ public class RecordingZip {
         if (index == null) {
             return;
         }
-        JSONArray traces;
-        try (InputStream in = zip.getInputStream(index)) {
-            traces = new JSONArray(new String(read(in, maxBytes, TraceStore.MERGED), StandardCharsets.UTF_8));
-        } catch (JSONException e) {
-            throw new RecordingStore.InvalidUpload(TraceStore.MERGED + " in the ZIP is not valid JSON.");
-        }
-        if (traces.length() > MAX_TRACES) {
-            throw new RecordingStore.InvalidUpload("The ZIP has more than " + MAX_TRACES + " traces.");
-        }
         Path dir = Files.createDirectories(store.dir(id).resolve(TraceStore.DIR));
-        StringBuilder lines = new StringBuilder();
-        for (int i = 0; i < traces.length(); i++) {
-            JSONObject e = traces.optJSONObject(i);
-            if (e == null || e.optString("key").isEmpty()) {
-                continue;
+        Path tmp = Files.createTempFile(store.dir(id), "traces-", ".json");
+        try {
+            try (InputStream in = zip.getInputStream(index)) {
+                copy(in, tmp, maxBytes, TraceStore.MERGED);
             }
+            importTraceEntries(zip, tmp, dir);
+        } catch (JsonStream.Malformed | JsonStream.TooLarge | JSONException e) {
+            throw new RecordingStore.InvalidUpload(TraceStore.MERGED + " in the ZIP is not valid JSON.");
+        } finally {
+            Files.deleteIfExists(tmp);
+        }
+    }
+
+    /** traces.json's entries, read as a stream: each trace file copied, each entry a line of traces/import.jsonl. */
+    private static void importTraceEntries(ZipFile zip, Path index, Path dir) throws IOException, RecordingStore.InvalidUpload {
+        Path out = dir.resolve(TraceStore.IMPORT_NODE + ".jsonl");
+        int count = 0;
+        try (JsonStream js = new JsonStream(new java.io.BufferedReader(new java.io.InputStreamReader(Files.newInputStream(index),
+                StandardCharsets.UTF_8)));
+                java.io.Writer lines = Files.newBufferedWriter(out, StandardCharsets.UTF_8)) {
+            js.beginArray();
+            while (js.hasNext()) {
+                if (++count > MAX_TRACES) {
+                    throw new RecordingStore.InvalidUpload("The ZIP has more than " + MAX_TRACES + " traces.");
+                }
+                Object v = js.nextValue(SessionFile.MAX_HEAD_CHARS);
+                JSONObject e = v instanceof JSONObject ? (JSONObject) v : null;
+                if (e == null || e.optString("key").isEmpty()) {
+                    continue;
+                }
             String file = e.optString("file");
             if (!file.isEmpty()) {
                 ZipEntry f = TraceStore.isTraceFile(file) ? zip.getEntry(TraceStore.DIR + "/" + file) : null;
@@ -346,13 +367,38 @@ public class RecordingZip {
                     e.remove("file");
                 } else {
                     try (InputStream in = zip.getInputStream(f)) {
-                        Files.write(dir.resolve(file), read(in, GlowrootClient.MAX_EXPORT_BYTES, file));
+                        copy(in, dir.resolve(file), GlowrootClient.MAX_EXPORT_BYTES, file);
                     }
                 }
             }
-            lines.append(e.toString()).append('\n');
+            lines.write(e.toString());
+            lines.write('\n');
+            }
+            js.endArray();
+            js.end();
         }
-        Files.write(dir.resolve(TraceStore.IMPORT_NODE + ".jsonl"), lines.toString().getBytes(StandardCharsets.UTF_8));
+    }
+
+    /** Copies a ZIP entry to a file as a stream, at most maxBytes (else InvalidUpload, and the file is removed). */
+    private static void copy(InputStream in, Path target, long maxBytes, String name) throws IOException, RecordingStore.InvalidUpload {
+        boolean ok = false;
+        try (java.io.OutputStream out = Files.newOutputStream(target)) {
+            byte[] buf = new byte[64 * 1024];
+            long size = 0;
+            int n;
+            while ((n = in.read(buf)) != -1) {
+                size += n;
+                if (size > maxBytes) {
+                    throw new RecordingStore.InvalidUpload(name + " in the ZIP is larger than the limit.");
+                }
+                out.write(buf, 0, n);
+            }
+            ok = true;
+        } finally {
+            if (!ok) {
+                Files.deleteIfExists(target);
+            }
+        }
     }
 
     private static byte[] read(InputStream in, long maxBytes, String name) throws IOException, RecordingStore.InvalidUpload {

@@ -161,4 +161,43 @@ public class RecordingZipTest {
             // expected
         }
     }
+
+    @Test
+    public void gaugesTravelAndAreReadAsAStream() throws Exception {
+        String id = from.create(new ByteArrayInputStream(SESSION.getBytes(StandardCharsets.UTF_8)), 1 << 20,
+                "alice", "Alice", "T", "").getString("id");
+        Files.write(from.path(id, RecordingStore.SYSTEM_LOG), SYSTEM_LOG.getBytes(StandardCharsets.UTF_8));
+        for (int i = 0; i < 3; i++) {
+            GaugeStore.append(from.dir(id), "node-a", new JSONObject().put("ts", 1000 + i).put("cpu", 0.5));
+        }
+        GaugeStore.append(from.dir(id), "node-b", new JSONObject().put("ts", 1000).put("cpu", 0.1));
+        Path zip = tmp.resolve(id + "-g.zip");
+        try (OutputStream out = Files.newOutputStream(zip)) {
+            RecordingZip.write(out, from.readMeta(id), from.file(id, RecordingStore.SESSION), from.file(id, RecordingStore.SYSTEM_LOG),
+                    from.file(id, RecordingStore.VIDEO), from.dir(id), null);
+        }
+        String newId = RecordingZip.importZip(to, zip, 1 << 20, true, "bob", "Bob").getString("id");
+        Path g = to.dir(newId).resolve(GaugeStore.DIR);
+        assertEquals(3, Files.readAllLines(g.resolve("node-a.jsonl")).size());
+        assertEquals(1, Files.readAllLines(g.resolve("node-b.jsonl")).size());
+        assertEquals(1002, new JSONObject(Files.readAllLines(g.resolve("node-a.jsonl")).get(2)).getLong("ts"));
+
+        // A broken gauges.json: refused, and nothing is left of the recording
+        Path bad = tmp.resolve("bad.zip");
+        try (java.util.zip.ZipOutputStream z = new java.util.zip.ZipOutputStream(Files.newOutputStream(bad))) {
+            for (String[] e : new String[][]{{"session.json", SESSION}, {"system-log.json", SYSTEM_LOG}, {GaugeStore.MERGED, "{\"nodes\":{\"n\":[{\"ts\":1}"}}) {
+                z.putNextEntry(new java.util.zip.ZipEntry(e[0]));
+                z.write(e[1].getBytes(StandardCharsets.UTF_8));
+                z.closeEntry();
+            }
+        }
+        int before = to.list().size();
+        try {
+            RecordingZip.importZip(to, bad, 1 << 20, true, "bob", "Bob");
+            fail("broken gauges.json");
+        } catch (RecordingStore.InvalidUpload e) {
+            assertTrue(e.getMessage().contains(GaugeStore.MERGED));
+        }
+        assertEquals(before, to.list().size());
+    }
 }

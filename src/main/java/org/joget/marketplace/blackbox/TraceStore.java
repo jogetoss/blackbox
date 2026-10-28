@@ -166,9 +166,15 @@ final class TraceStore {
             Path target = to.resolve(f.getFileName().toString());
             try {
                 if (isIndexFile(f.getFileName().toString())) {
-                    byte[] lines = Files.readAllBytes(f);
-                    synchronized (LOCK) {
-                        Files.write(target, lines, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+                    synchronized (LOCK) { // appended as a stream: the index is never held whole
+                        try (java.io.InputStream in = Files.newInputStream(f);
+                                java.io.OutputStream out = Files.newOutputStream(target, StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
+                            byte[] buf = new byte[64 * 1024];
+                            int n;
+                            while ((n = in.read(buf)) != -1) {
+                                out.write(buf, 0, n);
+                            }
+                        }
                     }
                     Files.delete(f);
                 } else {

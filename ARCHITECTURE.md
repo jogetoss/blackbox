@@ -50,6 +50,13 @@ Range), `systemlog`, `download` (`format=zip` or `html`), `import`, `delete`, `r
   to 64 KB each and 16 MB in all, 200,000 hits. Measured: a 395 MB session.json is stored and read in a 128 MB heap
   (the code that parsed it whole ran out of memory at 1 GB). At most 2 checks run at once; others wait up to 30 s,
   then get 503.
+- The rest of a ZIP import is streamed too: Glowroot packages, `.jwa` files and trace pages are copied entry to file;
+  `gauges.json` and `traces.json` are read as streams and written line by line (`GaugeStore.write(Path, Path)`,
+  `importTraceEntries`). Real uploaded files in sample data are copied into the `.jwa` from disk at `addTo`
+  (`Table.fileSources`), and `TraceStore.moveFolder` appends index files as streams. Read whole on purpose, all small or
+  bounded: `meta.json` and status files, ZIP `meta.json` / `apps.json` / `server-info.json` (64 KB to 1 MB), Glowroot's
+  `config.json` and JSON replies (20 MB cap), the app definition text used for masking, and the system log merge at
+  upload (capped by **Max size of system logs per recording**; it sorts all nodes' lines).
 - `meta.json` changes go through `RecordingStore.modifyMeta`: the latest copy is changed and saved under a per-recording
   lock (in the JVM, plus a file lock on `.meta.lock` for nodes sharing the folder, where the file system supports it).
   `updateMeta` replaces only the keys it is given. So the trace and Glowroot refreshes, the video upload and the

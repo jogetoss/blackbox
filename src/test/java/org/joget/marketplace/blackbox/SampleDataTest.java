@@ -286,6 +286,34 @@ public class SampleDataTest {
     }
 
     @Test
+    public void realFilesAreStreamedIntoTheJwa() throws Exception {
+        Path jwa = Files.createTempFile("app", ".jwa");
+        try (ZipOutputStream z = new ZipOutputStream(Files.newOutputStream(jwa))) {
+            z.putNextEntry(new ZipEntry("appDefinition.xml"));
+            z.write("<appDefinition/>".getBytes(StandardCharsets.UTF_8));
+            z.closeEntry();
+        }
+        Fake src = new Fake();
+        src.row("leave", P1, "name", "Siti", "photo", "me.jpg");
+        Path upload = Files.createTempDirectory("up");
+        File photo = upload.resolve("me.jpg").toFile();
+        byte[] bytes = new byte[300 * 1024];
+        new java.util.Random(7).nextBytes(bytes);
+        Files.write(photo.toPath(), bytes);
+        src.files.put("leave/" + P1, Collections.singletonList(photo));
+        List<SampleData.Table> t = SampleData.build(tables("leave"), Collections.singleton(P1), src, SampleData.Mode.REAL,
+                masker, new Masker.IdMap(false), 0);
+        assertEquals("not held in memory", 0, t.get(0).files.size());
+        assertEquals(1, t.get(0).fileSources.size());
+        SampleData.addTo(jwa, t);
+        String name = t.get(0).fileSources.keySet().iterator().next();
+        try (ZipFile z = new ZipFile(jwa.toFile())) {
+            assertArrayEquals(bytes, readAll(z, z.getEntry(name)));
+        }
+        assertEquals(1, SampleData.summary(t, SampleData.Mode.REAL).getJSONArray("tables").getJSONObject(0).getInt("files"));
+    }
+
+    @Test
     public void followsProcessIdsAndReferences() throws Exception {
         Fake src = new Fake() {
             @Override
