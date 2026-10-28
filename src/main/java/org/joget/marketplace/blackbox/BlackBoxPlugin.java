@@ -108,15 +108,15 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         String id = request.getParameter("id");
         try {
             if ("me".equals(action) && !post) {
+                JSONObject options = quickSettings(access, user);
                 json(response, new JSONObject()
                         .put("user", new JSONObject().put("username", user.getUsername()).put("name", fullName(user)))
                         .put("canUpload", access.canUpload())
                         .put("maxSizeMb", maxSizeMb())
-                        .put("sampleData", new JSONObject() // what the upload form may offer
-                                .put("enabled", !"false".equals(getPropertyString("includeAppExport"))
-                                        && !"false".equals(getPropertyString("sampleData")))
-                                .put("real", true)) // Mask data: offered wherever sample data is
-                        .put("options", quickSettings(access, user)));
+                        .put("sampleData", new JSONObject() // older extensions' upload form: same rules as options
+                                .put("enabled", options.getBoolean("sample"))
+                                .put("real", options.getBoolean("real")))
+                        .put("options", options));
             } else if ("list".equals(action) && !post) {
                 list(response, store, access);
             } else if ("create".equals(action) && post) {

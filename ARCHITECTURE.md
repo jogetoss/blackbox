@@ -232,8 +232,9 @@ App filter and the App tab's problem lists, so the lane works for local recordin
 
 ### Sample data
 
-`recording-stop` and `create` take `sampleData=none|masked|real` (missing: masked); `me` returns `sampleData: {enabled,
-real}` for the upload form. `AppExport.save` calls an `AfterExport` hook per saved `.jwa`: `SampleData.build` with one
+`recording-stop` and `create` take `sampleData=none|masked|real` (missing: masked); `me` returns `options` (`quickSettings`: what
+this user may get), which the popup and the upload form both use; `sampleData: {enabled, real}` repeats `options.sample`
+and `options.real` for older extensions. `AppExport.save` calls an `AfterExport` hook per saved `.jwa`: `SampleData.build` with one
 `Masker` (random HMAC key per export, so fakes are stable within a recording and differ between them) and one `IdMap` for all apps of
 the recording, then `SampleData.addTo` rewrites the `.jwa` with `data/<table>.json` (`FormUtil.formRowSetToJson(rows,
 true)`, the format `AppService.importFormData` reads) and `app_formuploads/<table>/<newId>/<file>`. Data comes from

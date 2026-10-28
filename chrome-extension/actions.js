@@ -62,8 +62,8 @@ const Actions = (() => {
     if (!settings.uploadUrl || !(await Server.hasPermission(settings.uploadUrl))) return;
     const me = await Server.me(settings.uploadUrl);
     $('upAppsRow').hidden = !me.options?.apps;
-    $('upSampleRow').hidden = !me.sampleData?.enabled;
-    $('upMaskRow').hidden = !me.sampleData?.enabled || !me.sampleData?.real;
+    $('upSampleRow').hidden = !me.options?.sample;
+    $('upMaskRow').hidden = !me.options?.sample || !me.options?.real;
   }
 
   // The upload's apps / sampleData parameters: from the form when it offered the choice, else as saved with the
