@@ -25,8 +25,9 @@ server can accept it in place of a CSRF token.
 | `POST ?action=create&title=…&notes=…` | `session.json` (`application/json`) | `{"id":"…","url":"/path/to/view"}` — `url` optional |
 | `POST ?action=video&id=<id>` | `recording.webm` (`video/webm`) | any JSON object |
 
-Errors: an HTTP error status with `{"error":{"message":"…"}}`; **401** means "not logged in". `url` may be a path; it is
-resolved against the Upload URL. The Recording page URL setting, when set, takes priority over `url`.
+Errors: an HTTP error status with `{"error":{"message":"…"}}` (the plugin adds `"code"`, the status as a string);
+**401** means "not logged in". `url` may be a path; it is resolved against the Upload URL. The Recording page URL
+setting, when set, takes priority over `url`.
 
 The plugin serves this at `<context>/api/blackbox` with more actions: `list`, `meta`, `session`, `video` (GET with HTTP
 Range), `systemlog`, `download` (`format=zip` or `html`), `import`, `delete`, `recording-start`, `recording-stop`,
@@ -40,7 +41,12 @@ Range), `systemlog`, `download` (`format=zip` or `html`), `import`, `delete`, `r
   covers `/web/*`.
 - Uploads are raw request bodies (not multipart): `create` takes `session.json` (title and notes as query
   parameters), then `video` takes `recording.webm`. Only the uploader can add the video, once.
-- Error responses: `{"error":{"code":"403","message":"..."}}`.
+- Server data in `meta.json` (`systemLog`, `serverData`, `apps`) is removed by `hideServerData` for users who may not
+  see it, in `list`, `meta` and `download&format=html` (whose page carries the meta as JSON). The ZIP keeps only a
+  fixed list of meta keys (`RecordingZip.META_KEYS`).
+- `import` keeps a ZIP's server data only for **Who can view system logs** (`canViewSystemLog()`, without the
+  uploader rule: a ZIP can hold another user's recording). When it drops some, the response (not `meta.json`) has
+  `serverDataSkipped: true`, and the list page says so instead of opening the copy.
 
 ## Storage
 
@@ -153,9 +159,19 @@ starts at `recording-start` (or the node's first recorded request) and ends at s
 ## System Info snapshot
 
 `recording-start` saves `server-info.json`, grouped like Glowroot's **JVM > Environment** page, then everything
-**Settings > System Info** shows (the viewer's order: Recent changes, Joget with Process, Plugin, then Host, Cluster,
-Java, Database, DB pool, License, System properties; the JVM start from Recent changes is shown in Joget, and
-`platform.jvm.total/max/processors` only in Java and Host):
+**Settings > System Info** shows. The Info tab shows the sections whose changes can be tracked first: Recent changes,
+Joget (with Process), Plugin; then Host, Cluster, Java, Database, DB pool, License, System properties.
+
+`server-info.json` (and the ZIP) keeps everything; the viewer leaves out what another section already shows:
+
+- the JVM start (in Recent changes) is shown in Joget;
+- Host's **Node** when Cluster lists **Nodes**;
+- License keys `platform.version`, `platform.db.profile`, `platform.db.jdbc.driver`;
+- system properties shown in Joget, Host, Cluster or Java (`platform.jvm.total/max/processors/used`, `wflow.name`,
+  `os.*`, `java.version`, `java.runtime.version`, `java.vm.name`, `java.vm.vendor`, `user.timezone`), and those a
+  `-D` argument sets to the same value.
+
+Sections:
 
 - **Host**: hostname, node, processors, total and free RAM (`TotalPhysicalMemorySize`, `FreePhysicalMemorySize`: the
   OS's free memory, page cache not counted), OS. **Process**: id, start time, uptime.
@@ -169,16 +185,18 @@ Java, Database, DB pool, License, System properties; the JVM start from Recent c
   `ServerInfo.summarizeApps` narrows the shown **App versions** to the apps the recording used and other apps whose
   forms use one of their tables (`SampleData.tables`), one line per app: its latest change and how many versions
   changed, plus `shares <tables>` for the others.
-- **Cluster**: `ServerUtil` (this node's `wflow.name`, the shared `servers.json` nodes, the active nodes, each with its
-  `serversIP.properties` address), `wflow.cluster` (set by the wflow-cluster agent), Tomcat's Engine `jvmRoute` and
-  the requested session id's route suffix. No session replication row: Joget's `web.xml` has no `<distributable/>`, so
-  Tomcat never copies its sessions between nodes and logins need sticky sessions. The viewer
-  shows **Cluster** (`Yes: N nodes` or `No: one node`) and **Nodes**: the registered and active nodes in one list, each
-  with its address, the recorded requests it served, and with several nodes `this node` (where the snapshot was taken)
-  and `not active`; this node alone when Joget lists none (the wflow-cluster agent alone isn't a cluster). **Node
-  switches** (only when it happened) counts how often the next recorded request went to another node. The served counts come from the system
-  log: each node names its files by Joget's node name (`wflow.name`, else the hostname), and `attach` puts the `node` (from the
-  `system-log.<node>.jsonl` file name) on each request entry.
+- **Cluster**:
+  - Saved: `ServerUtil` (this node's `wflow.name`, the registered nodes in the shared `servers.json`, the active
+    nodes, each with its `serversIP.properties` address), `wflow.cluster` (set by the wflow-cluster agent), Tomcat's
+    Engine `jvmRoute` and the requested session id's route suffix.
+  - No session replication row: Joget's `web.xml` has no `<distributable/>`, so Tomcat never copies sessions between
+    nodes and logins need sticky sessions.
+  - Shown: **Cluster** (`Yes: N nodes` or `No: one node`) and **Nodes**, the registered and active nodes in one list,
+    each with its address and the recorded requests it served; with several nodes, `this node` (where the snapshot
+    was taken) and `not active`. With no node list, this node alone (the wflow-cluster agent alone isn't a cluster).
+  - **Node switches** (only when it happened): how often the next recorded request went to another node.
+  - The served counts come from the system log: each node names its files by Joget's node name (`wflow.name`, else
+    the hostname), and `attach` puts the `node` from the `system-log.<node>.jsonl` file name on each request entry.
 - **Plugins**: one entry per jar in `app_plugins` (`PluginManager.getBaseDirectory()`): modified date, size, then each
   plugin it loaded (name, version, class) from `listOsgiPlugin` + `getJarFileName`. A jar with none failed to load or
   holds no plugin; a loaded jar not in the folder says so.
@@ -192,26 +210,26 @@ Java, Database, DB pool, License, System properties; the JVM start from Recent c
 - **System properties**: System Info's system table (`SysInfo.getSystemProperties()`): every Java system property plus
   JVM memory and processors. On Community the same values are read directly.
 
-The viewer leaves out what another section already shows; `server-info.json` (and the ZIP) keeps it all: Host **Node**
-when Cluster has **Joget node name**; License `platform.version`, `platform.db.profile`, `platform.db.jdbc.driver`;
-system properties shown in Joget, Host, Cluster or Java (`platform.jvm.*`, `wflow.name`, `os.*`, `java.version`,
-`java.runtime.version`, `java.vm.name`, `java.vm.vendor`, `user.timezone`) and those a `-D` argument sets to the same value.
-
 ## App export
 
-**When:** at stop. The recorder builds `session.json`, then POSTs `recording-stop` with a JSON body of its network
-entries (`t`, `url`, `type`, `status`, `failed`, `postData`, the `referer` header) and console errors, plus `apps=false`
-or `sampleData=none|masked|real` from `recording.options` (the popup's quick settings, `quick.js`). `exportAtStop`
-writes them and the capture's lines so far (`SystemLogStore.writeLines`; lines other nodes haven't flushed are missing)
-next to the capture, exports into the pending folder's `app/`, and keeps the state in the capture's `meta.json` as
-`appExport` (`off`, `exporting`, `done` with `saved`, `failed`). The recorder waits up to 150 s and saves the state in
-`recording.systemLog.appExport`. `create` waits up to 120 s while it is `exporting`, then `attach` moves `app/` into the
-recording and `meta.apps` takes `saved`; `off` exports nothing. With no export at stop (no capture, the stop's body
-never arrived, or `failed`), `create` exports as below from the uploaded files, taking `apps` / `sampleData` from the
-upload (the upload form, or `recording.options` for automatic uploads).
+**When:** at stop, with the upload as the fallback.
 
-`me.options` says what the popup may offer: `systemLog`, `apps`, `sample` (also needs the server data of one's own
-recordings), `real` (Mask data: the same as `sample`), `allServer` and `glowrootData`. The others only turn a setting off: `recording-start` takes
+1. The recorder builds `session.json`, then POSTs `recording-stop` with a JSON body: its network entries (`t`, `url`,
+   `type`, `status`, `failed`, `postData`, the `referer` header) and console errors, plus `apps=false` or
+   `sampleData=none|masked|real` from `recording.options` (the popup's quick settings, `quick.js`). It waits up to
+   150 s and saves the result in `recording.systemLog.appExport`.
+2. `exportAtStop` writes the body and the capture's lines so far (`SystemLogStore.writeLines`; lines other nodes
+   haven't flushed are missing) next to the capture and exports into the pending folder's `app/`.
+3. The state is kept in the capture's `meta.json` as `appExport`: `off`, `exporting`, `done` (with `saved`) or `failed`.
+4. `create` waits up to 120 s while it is `exporting`, then `attach` moves `app/` into the recording and `meta.apps`
+   takes `saved`; `off` exports nothing.
+5. Fallback: with no export at stop (no capture, the body never arrived, or `failed`), `create` exports as below from
+   the uploaded files, with `apps` / `sampleData` from the upload (the form, or `recording.options` when automatic).
+
+`me.options` (`quickSettings`) says what this user may get, for the popup and the upload form alike: `systemLog`,
+`apps` (also needs upload rights), `sample` (also needs the server data of one's own recordings), `real` (Mask data:
+the same as `sample`), `allServer` and `glowrootData`. `me.sampleData: {enabled, real}` repeats `sample` and `real`
+for older extensions. Apart from Mask data, a choice can only turn a setting off: `recording-start` takes
 `allServer=false` and `glowrootData=false`.
 
 The export (`exportApps`) runs `AppExport`: `hits` reads `session.json` (each request with its page:
@@ -224,7 +242,7 @@ alone. Apps rank by problems, then requests; the top `maxApps` (default 5, 0 = a
 `AppService.exportApp` (reads the current request's parameters, which carry no `tablenames`, `usergroups` or
 `exportplugins`, so no data, groups or plugins go in). `apps.json` records each app's state: `saved`, `missing`,
 `failed` (with the reason) or `skipped` (beyond the cap), and `problems`. `meta.apps` keeps `[{id, name, version,
-problems}]` for the list; `list` and `meta` drop it for users who may not see server data. `appfile` serves only names
+problems}]` for the list (hidden by `hideServerData`, see the API). `appfile` serves only names
 matching `<id>-<n>.jwa`.
 
 `viewer.js` repeats `appOf` to draw the Apps lane (segments from the same page signals, flips under 0.5 s merged), the
@@ -232,9 +250,7 @@ App filter and the App tab's problem lists, so the lane works for local recordin
 
 ### Sample data
 
-`recording-stop` and `create` take `sampleData=none|masked|real` (missing: masked); `me` returns `options` (`quickSettings`: what
-this user may get), which the popup and the upload form both use; `sampleData: {enabled, real}` repeats `options.sample`
-and `options.real` for older extensions. `AppExport.save` calls an `AfterExport` hook per saved `.jwa`: `SampleData.build` with one
+`recording-stop` and `create` take `sampleData=none|masked|real` (missing: masked). `AppExport.save` calls an `AfterExport` hook per saved `.jwa`: `SampleData.build` with one
 `Masker` (random HMAC key per export, so fakes are stable within a recording and differ between them) and one `IdMap` for all apps of
 the recording, then `SampleData.addTo` rewrites the `.jwa` with `data/<table>.json` (`FormUtil.formRowSetToJson(rows,
 true)`, the format `AppService.importFormData` reads) and `app_formuploads/<table>/<newId>/<file>`. Data comes from
@@ -264,7 +280,7 @@ in its rows (activity ids resolved with `getActivityById`), kept when the proces
 | `GlowrootClient` | Glowroot's JSON backend and trace export; finds the local agent's port |
 | `GlowrootData`, `GlowrootPackager`, `GlowrootTag` | Glowroot data packages; tagging recorded requests |
 | `ServerInfo` | System Info snapshot at recording-start (host, cluster, plugins, Java, Joget, DB, pool, license) |
-| `AppExport` | Finds the apps in the recorded URLs, exports them at upload, lists them in `app/apps.json` |
+| `AppExport` | Finds the apps in the recorded URLs, exports them (at stop, else at upload), lists them in `app/apps.json` |
 | `SampleData` | Picks the sample rows of an exported app, masks / remaps them, adds them to the `.jwa` |
 | `ProcessData` | The touched process instances of an exported app, read only, masked like the sample |
 | `Masker` | Shape-keeping fake values, kept values, user pseudonyms, the old -> new record id map |
@@ -281,7 +297,7 @@ in its rows (activity ids resolved with `getActivityById`), kept when the proces
 | `recorder.js` | Shows the `desktopCapture` picker (window/screen) or uses the tab stream, mixes page sound and microphone into one track, records with `MediaRecorder`, saves progress every 5 s, sends `recording-stop` with the app export's input, keeps the recording in IndexedDB |
 | `background.js` | Attaches the debugger (Network, Runtime, Log, Page), fetches response bodies, forwards events to the recorder; starts/stops system log capture; REC badge |
 | `viewer.js` | Replay UI shared by every replay page: video + synced lists, timeline, request details, Features drawer |
-| `recordings.js` | Recordings page: list with Browser issues; batch Upload, Download ZIP, Delete for ticked rows |
+| `recordings.js` | Recordings page: list with Browser issues; batch Upload, Download ZIP, Delete for ticked rows (Upload off when `me.canUpload` is false) |
 | `actions.js` | Upload (with its form), Move to folder, Download ZIP and Delete of one recording; links in messages |
 | `replay.js` | Replay page: loads the recording named in the address, its status bar, ⚠ Upload and the fix box |
 | `report.js` | Builds `session.json`; recovers recordings interrupted by a crash |
@@ -295,7 +311,7 @@ in its rows (activity ids resolved with `getActivityById`), kept when the proces
 | `build-standalone.py` | Builds `dist/blackbox-viewer.html` |
 
 The recorder is a window, not an offscreen document: a `chooseDesktopMedia` stream id can only be opened by the page
-that showed the picker (tested in the BlackBox spike X0-01).
+that showed the picker (tested early in the project).
 
 **Sound.** Page sound comes from `chrome.tabCapture` on the started tab in every mode, because the picker shares
 system audio only for a screen on Windows and ChromeOS (Linux and macOS get none, and windows never have sound).
@@ -307,5 +323,5 @@ When the picker does share system audio, it replaces the tab's sound. Details:
 - `MediaRecorder` records only the first sound track: page sound and microphone are mixed into one track (Opus).
 - The microphone is opened after the picked source, with `getUserMedia({ audio: true })` in the recorder window (the
   permission belongs to the extension's origin). A refused microphone or missing page sound doesn't stop the
-  recording; the reason goes to `recording.audio.message` in `session.json`. Page sound and microphone share one
-  track; `recording.audio` = `{ page, pageSource: "tab" | "system", mic, message }`.
+  recording. `session.json` says what it has: `recording.audio` = `{ page, pageSource: "tab" | "system", mic,
+  message }`, where `message` says why a sound is missing.
