@@ -4,7 +4,8 @@
 // meta: { startedAt (ms), settings: { displaySurface }, tab: { url, title } }
 function buildReport(meta, consoleEntries, navigations, network, stoppedAt, reason) {
   // "Slow" = Glowroot's slow threshold, sent by the plugin at recording start; 2 s without a server
-  const slowMs = meta.systemLog?.slowMs || 2000;
+  const capture = meta.serverCapture || meta.systemLog; // systemLog: a crashed recording of extension 1.1 and older
+  const slowMs = capture?.slowMs || 2000;
   return {
     tool: 'blackbox ' + (chrome.runtime.getManifest().version_name || chrome.runtime.getManifest().version),
     note: 't = milliseconds since recording start = position in recording.webm',
@@ -17,7 +18,7 @@ function buildReport(meta, consoleEntries, navigations, network, stoppedAt, reas
       audio: meta.audio, // { page, pageSource?: 'tab' | 'system', mic, message? }: which sound recording.webm has (absent: made before sound support)
       tab: meta.tab,
       userAgent: meta.userAgent || navigator.userAgent,
-      systemLog: meta.systemLog ? { status: meta.systemLog.status, id: meta.systemLog.id, server: meta.systemLog.server, message: meta.systemLog.message } : undefined,
+      serverCapture: capture ? { status: capture.status, id: capture.id, server: capture.server, message: capture.message } : undefined,
       options: meta.options, // { apps, sampleData: none | masked | real }: the popup's app export choices
     },
     summary: {

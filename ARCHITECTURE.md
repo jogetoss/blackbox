@@ -61,12 +61,25 @@ Range), `systemlog`, `download` (`format=zip` or `html`), `import`, `delete`, `r
   lock (in the JVM, plus a file lock on `.meta.lock` for nodes sharing the folder, where the file system supports it).
   `updateMeta` replaces only the keys it is given. So the trace and Glowroot refreshes, the video upload and the
   upload's own changes never put back an older copy (`writeVideo` also checks "already has a video" under the lock).
-- Server data in `meta.json` (`systemLog`, `serverData`, `apps`) is removed by `hideServerData` for users who may not
+- Server data in `meta.json` (`serverCapture`, `serverData`, `apps`) is removed by `hideServerData` for users who may not
   see it, in `list`, `meta` and `download&format=html` (whose page carries the meta as JSON). The ZIP keeps only a
   fixed list of meta keys (`RecordingZip.META_KEYS`).
 - `import` keeps a ZIP's server data only for **Who can view server data** (`canViewServerData()`, without the
   uploader rule: a ZIP can hold another user's recording). When it drops some, the response (not `meta.json`) has
   `serverDataSkipped: true`, and the list page says so instead of opening the copy.
+
+### Old names (`systemLog`)
+
+Plugin 8.2.1 and older and extension 1.1 and older call the capture summary `systemLog`. It is read, never written
+(`RecordingStore.LEGACY_CAPTURE`):
+
+- `meta.json`: `readMeta` moves `systemLog` to `serverCapture`; the next change saves the file with the new name.
+- `session.json` (uploads, ZIPs): `create` takes the capture id from `recording.serverCapture`, else `recording.systemLog`.
+  The file itself is kept as it is.
+- `recording-start` answers under both `serverCapture` and `systemLog`: extension 1.1 reads its slow threshold there.
+- The extension reads `systemLog` in recordings it kept before 1.2 (upload form, viewer, Import ZIP, crash
+  recovery) and in the `recording-start` answer of older plugins.
+- An older plugin doesn't read `recording.serverCapture`, so recordings from extension 1.2 get no server data there.
 
 ## Storage
 
@@ -84,7 +97,10 @@ Captures waiting for an upload are in
 
 The extension keeps recordings in IndexedDB (newest 10), or reads them from a linked folder on disk.
 
-## System logs
+## Server capture
+
+The capture collects all server data of a recording: log lines and requests (below), traces, server load, System
+Info and the app export at stop (their own sections).
 
 1. When recording starts, the extension calls `recording-start` with a random UUID (lower case). The server refuses
    with 403 when **Capture server data** (`captureServerData`, off by default) is off or the user may not upload, and
@@ -97,7 +113,7 @@ The extension keeps recordings in IndexedDB (newest 10), or reads them from a li
    `<wflow>/blackbox/pending/<id>/system-log.<node>.jsonl`, flushed every 2 seconds.
 3. Stop removes the rule; the recorder calls `recording-stop` with the app export's input (see "App export"), or the
    service worker calls it plainly when the recorder can't. The lines wait on the server until the recording is uploaded;
-   `session.json` carries the id (`recording.systemLog.id`), and `create` moves them into the recording as
+   `session.json` carries the id (`recording.serverCapture.id`), and `create` moves them into the recording as
    `system-log.json`. Only the user who started the capture can attach it. After the move, the pending folder keeps
    only `meta.json` pointing at the recording, for 24 hours (`FORWARD_MS`), so late traces still reach it. Captures
    never uploaded are deleted after the keep period (checked every hour).
@@ -268,7 +284,7 @@ Sections:
    and `sampleData`) or `failed`.
 4. `recording-stop` waits up to 20 s (`STOP_SYNC_MS`, under common proxy timeouts such as nginx's 60 s) and answers
    the state, `exporting` if it runs on. The recorder then polls `GET app-export&id=<capture>` (owner only) every 3 s,
-   up to 150 s, and saves a summary in `recording.systemLog.appExport`: `{state, sampleData, apps}` (`apps` = how many).
+   up to 150 s, and saves a summary in `recording.serverCapture.appExport`: `{state, sampleData, apps}` (`apps` = how many).
 5. `create` also waits up to 20 s while it is `exporting`:
    - `done`: `attach` moves `app/` into the recording and `meta.apps` takes `saved`; `off` exports nothing.
    - still `exporting`: `attach` leaves `app/` (`withApps` false), the recording gets `appExport: {state: exporting,
@@ -279,7 +295,7 @@ Sections:
    `recording.options` when automatic) and answers at once; `meta.appExport` says `exporting` until it ends, then
    `done` or `failed`. The replay page shows **Exporting apps…** and reloads when it is done.
 
-`me.options` (`quickSettings`) says what this user may get, for the popup and the upload form alike: `systemLog`,
+`me.options` (`quickSettings`) says what this user may get, for the popup and the upload form alike: `serverCapture`,
 `apps` (upload rights and `Access.mayExportApps`: admin, an app admin of some app, or **Who can export apps they
 don't administer**), `sample` (`apps` + **Allow capturing form data**), `real` (Mask data: the same as `sample`), `allServer` and `glowrootData`. `me.sampleData: {enabled, real}` repeats `sample` and `real`
 for older extensions. Apart from Mask data, a choice can only turn a setting off: `recording-start` takes

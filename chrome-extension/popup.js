@@ -7,11 +7,11 @@ async function bg(msg) {
   return res;
 }
 
-// Warns about the server data capture before and during a recording ('' = nothing to say).
+// Warns about the server capture before and during a recording ('' = nothing to say).
 // Before: server data comes only from the Upload URL's server, so a tab on another server gets none.
-// During: why the server didn't start capturing (background saves rec.systemLog = { status: 'off', message }).
-async function systemLogNote(rec) {
-  if (rec) return rec.systemLog?.status === 'off' ? `Server data off: ${rec.systemLog.message}` : '';
+// During: why the server didn't start capturing (background saves rec.serverCapture = { status: 'off', message }).
+async function serverDataNote(rec) {
+  if (rec) return rec.serverCapture?.status === 'off' ? `Server data off: ${rec.serverCapture.message}` : '';
   const { uploadUrl } = await chrome.storage.local.get('uploadUrl');
   if (!uploadUrl) return 'No Upload URL in Settings: no server data.';
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -103,7 +103,7 @@ function render(rec) {
   $('quick').hidden = !!rec; // the choices are made: they apply from the start
   $('start').hidden = !!rec;
   $('stop').hidden = !rec;
-  systemLogNote(rec).then((note) => { $('systemLog').replaceChildren(...linkify(note)); $('systemLog').hidden = !note; }, () => {});
+  serverDataNote(rec).then((note) => { $('serverNote').replaceChildren(...linkify(note)); $('serverNote').hidden = !note; }, () => {});
   clearInterval(timer);
   if (!rec) { $('status').textContent = ''; return; }
   if (!rec.startedAt) { $('status').textContent = rec.mode === 'tab' ? 'Starting…' : 'Pick what to record in the recorder window.'; return; }

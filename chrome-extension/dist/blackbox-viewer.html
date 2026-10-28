@@ -1986,7 +1986,7 @@ function renderInfo() {
       'Failed requests': s.failedRequests,
       'Navigations': (report.navigations || []).length,
       // the counts are on the tabs; a capture that didn't reach the server still says why here
-      'System logs': current.systemLog ? undefined : systemLogInfo(rec.systemLog),
+      'Server data': current.systemLog ? undefined : captureInfo(rec.serverCapture || rec.systemLog), // systemLog: extension 1.1 and older
       'Server clock offset': serverOffset ? `${serverOffset} ms (corrected)` : undefined,
       'User agent': rec.userAgent,
       'Recorded with': report.tool,
@@ -2286,7 +2286,7 @@ const FEATURES = [
     { server: 'Open full trace shows Glowroot\'s page. Retry looks again for failed ones. The tab updates by itself while traces are still being collected.', file: 'Summaries only; the full trace pages are in the ZIP download.' }],
   ['Server load strip', 'Under the timeline: CPU, heap, busy request threads and database connections (as % of each maximum) and GC time, sampled every second on the server. Hover for values, click to seek.', ['server', 'file']],
   ['Info tab', 'The recording: tab title and URL, start, stop, length, stop reason, counts and the browser.', ALL,
-    { extension: 'Also says whether system logs were captured; they show on the server after the upload.', server: 'Also a snapshot of the server at recording start: host, process, Java, Joget, database, connection pool, license and system properties.', file: 'Also the server snapshot at recording start, when it was included.' }],
+    { extension: 'Also says whether server data was captured; they show on the server after the upload.', server: 'Also a snapshot of the server at recording start: host, process, Java, Joget, database, connection pool, license and system properties.', file: 'Also the server snapshot at recording start, when it was included.' }],
   ['Where this copy is', 'The first label in the status bar says where the open copy lives (In this browser, In folder, Opened from files, On <server>, Downloaded file), so Delete is never mistaken for deleting another copy.', ALL],
   ['Notes', 'The notes typed at upload (steps, what went wrong), under the header.', ['server', 'file']],
   ['Upload', 'Sends the recording to the Upload URL\'s server, using your login there. After a recording stops, it is uploaded by itself and the server\'s page opens when you are logged in (Settings: Open recordings on the server when you are logged in). When that automatic upload fails, the button shows ⚠ Upload: hover for the reason; click to check again and, if it still fails, see the fix (change the Upload URL, log in, allow access) in place of the form.', ['extension']],
@@ -2331,7 +2331,7 @@ function soundInfo(a) {
   return (parts.join(' + ') || 'none') + (a.message ? ` (${a.message})` : '');
 }
 
-function systemLogInfo(s) {
+function captureInfo(s) {
   const log = current.systemLog;
   if (log) {
     const n = serverItems.filter((e) => e.kind === 'log' && !e.other).length;

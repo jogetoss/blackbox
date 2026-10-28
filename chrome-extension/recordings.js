@@ -205,14 +205,14 @@
   }
 
   // A recording ZIP (Download ZIP on a BlackBox server) becomes a recording in browser storage, like a new one:
-  // it can be replayed, uploaded (to this or another server) or exported. Its system log is not kept.
+  // it can be replayed, uploaded (to this or another server) or exported. Its server data is not kept.
   async function importZip(file) {
     const parts = await readZip(file);
     if (!parts.has('session.json')) throw new Error(`${file.name} has no session.json: it is not a BlackBox recording ZIP.`);
     const report = JSON.parse(await parts.get('session.json').text());
     if (!Array.isArray(report.console) || !Array.isArray(report.network)) throw new Error('This is not a BlackBox session.json.');
     // The capture id belongs to the server it was recorded on: an upload elsewhere must not try to attach it
-    if (report.recording?.systemLog) delete report.recording.systemLog.id;
+    for (const key of ['serverCapture', 'systemLog']) delete report.recording?.[key]?.id; // systemLog: ZIPs before plugin 8.2.2
     const started = Date.parse(report.recording?.startedAt);
     const id = started ? recordingId(started) : file.name.replace(/\.zip$/i, '');
     if (await idbGet(id)) throw new Error('This recording is already in the extension.');

@@ -9,12 +9,17 @@ const path = require('path');
 const JOGET = process.env.BB_JOGET || 'http://localhost:3128/jw';
 const USER = process.env.BB_USER || 'admin';
 const PASSWORD = process.env.BB_PASSWORD || USER; // local test servers: the password is the username
+// The extension under test: this repo's, or BB_EXTENSION (e.g. an older release, to test this plugin with it)
+const EXTENSION = process.env.BB_EXTENSION || path.join(__dirname, '..', '..', 'chrome-extension');
+// Extension 1.1 and older keep the server capture under recording.systemLog; later ones under serverCapture
+const LEGACY_EXTENSION = !fs.readFileSync(path.join(EXTENSION, 'report.js'), 'utf8').includes('serverCapture');
+const CAPTURE_KEY = LEGACY_EXTENSION ? 'systemLog' : 'serverCapture';
 
 const test = base.extend({
   // eslint-disable-next-line no-empty-pattern
   context: async ({}, use) => {
     const ext = fs.mkdtempSync(path.join(os.tmpdir(), 'bb-ext-'));
-    fs.cpSync(path.join(__dirname, '..', '..', 'chrome-extension'), ext, { recursive: true });
+    fs.cpSync(EXTENSION, ext, { recursive: true });
     const manifest = JSON.parse(fs.readFileSync(path.join(ext, 'manifest.json'), 'utf8'));
     manifest.host_permissions = [new URL(JOGET).origin + '/*'];
     fs.writeFileSync(path.join(ext, 'manifest.json'), JSON.stringify(manifest, null, 2));
@@ -69,4 +74,55 @@ async function appsWhenExported(page, id, timeoutMs = 90_000) {
   }
 }
 
-module.exports = { test, expect, JOGET, loginJoget, api, appsWhenExported };
+const ASSIGNMENT = `${JOGET}/web/client/app/iService/2/assignment/82809_70801_iService_supportRequest_requestAcceptByDepartment`;
+
+/** A session.json of a recording that opened an iService assignment (j8213's test data); no video. */
+function report(now, title, recording = {}) {
+  return {
+    tool: 'BlackBox e2e',
+    recording: {
+      startedAt: new Date(now - 8000).toISOString(),
+      stoppedAt: new Date(now).toISOString(),
+      durationMs: 8000,
+      tab: { title, url: `${JOGET}/web/userview/iService/v/_/req` },
+      ...recording,
+    },
+    summary: { console: 0, errors: 0, requests: 1, failedRequests: 0 },
+    console: [],
+    network: [{ t: 1000, method: 'GET', status: 200, type: 'Document', url: ASSIGNMENT }],
+    navigations: [],
+  };
+}
+
+/** The extension's settings and one kept recording, written with its own storage code. */
+async function keep(page, extensionId, id, rep) {
+  await page.goto(`chrome-extension://${extensionId}/recordings.html`);
+  await page.evaluate(async ({ id, uploadUrl, report }) => {
+    await chrome.storage.local.set({ uploadUrl });
+    await idbAddRecording({ id, savedAt: new Date().toISOString(), video: null, report, uploaded: null });
+  }, { id, uploadUrl: `${JOGET}/api/blackbox`, report: rep });
+}
+
+/** What the recorder does: start a server capture, then stop it with the recording's requests (stopOnServer). */
+async function captureAndStop(page, params) {
+  return page.evaluate(async ({ uploadUrl, url, params }) => {
+    const id = crypto.randomUUID();
+    const post = (action, extra, body) => fetch(uploadUrl + '?' + new URLSearchParams({ action, id, ...extra }),
+      { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body });
+    const start = await post('recording-start', {});
+    if (!start.ok) throw new Error('recording-start: HTTP ' + start.status + ' ' + await start.text());
+    const body = JSON.stringify({ network: [{ t: 1000, url, type: 'Document', status: 200 }], console: [] });
+    const stop = await (await post('recording-stop', params, body)).json();
+    return { id, stop };
+  }, { uploadUrl: `${JOGET}/api/blackbox`, url: ASSIGNMENT, params });
+}
+
+async function uploaded(joget, title) {
+  const rec = (await api(joget, 'list')).recordings.find((r) => r.title === title);
+  expect(rec, 'uploaded recording in the list').toBeTruthy();
+  return rec;
+}
+
+module.exports = {
+  test, expect, JOGET, LEGACY_EXTENSION, CAPTURE_KEY, ASSIGNMENT, loginJoget, api, appsWhenExported, report, keep, captureAndStop, uploaded,
+};

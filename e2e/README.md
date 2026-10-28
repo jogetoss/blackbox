@@ -23,6 +23,8 @@ BB_HEADED=1 npx playwright test  # watch it in a window
 | `BB_JOGET` | `http://localhost:3128/jw` | The Joget to test against (j8213) |
 | `BB_USER` | `admin` | |
 | `BB_PASSWORD` | the user name | Local test servers use the user name as password |
+| `BB_EXTENSION` | `../chrome-extension` | The extension to load, e.g. an older release to test this plugin with it |
+| `BB_CONTAINER`, `BB_WFLOW` | `j8213`, `/opt/wflow` | Where `legacy-names.spec.js` edits a `meta.json` (`docker exec`) |
 
 ## How it works
 
@@ -33,6 +35,11 @@ BB_HEADED=1 npx playwright test  # watch it in a window
 - `tests/quick-settings.spec.js`: the popup's quick settings (shown as `me.options` allows, remembered), the app export
   at `recording-stop` kept by the upload, apps turned off at stop, and the automatic upload sending the choices saved
   with the recording (needs "Capture server data" on).
+- `tests/legacy-names.spec.js`: recordings, ZIPs and extensions from before the `systemLog` -> `serverCapture`
+  rename still work: the extension's own capture start and upload, a kept recording with `systemLog`, a `meta.json`
+  with `systemLog`, and an old ZIP imported on the server and in the extension. Run the whole suite a second time with
+  the previous extension (`git archive <tag> chrome-extension | tar -x -C /some/dir`, then
+  `BB_EXTENSION=/some/dir/chrome-extension npx playwright test`); its ZIP test is skipped there.
 - `tests/upload-form.spec.js`: the sample data choice on the upload form, the `sampleData` parameter it sends, and the
   App data the server builds (needs j8213's iService app).
 

@@ -1,55 +1,6 @@
 // Popup quick settings and the app export at recording stop: the choices made before recording reach the server
 // at stop (recording-stop) or, without a server data capture, at the upload, also when nobody clicks Send.
-const { test, expect, JOGET, loginJoget, api, appsWhenExported } = require('./fixtures');
-
-const ASSIGNMENT = `${JOGET}/web/client/app/iService/2/assignment/82809_70801_iService_supportRequest_requestAcceptByDepartment`;
-
-// A recording that opened an iService assignment (j8213's test data); no video
-function report(now, title, recording = {}) {
-  return {
-    tool: 'BlackBox e2e',
-    recording: {
-      startedAt: new Date(now - 8000).toISOString(),
-      stoppedAt: new Date(now).toISOString(),
-      durationMs: 8000,
-      tab: { title, url: `${JOGET}/web/userview/iService/v/_/req` },
-      ...recording,
-    },
-    summary: { console: 0, errors: 0, requests: 1, failedRequests: 0 },
-    console: [],
-    network: [{ t: 1000, method: 'GET', status: 200, type: 'Document', url: ASSIGNMENT }],
-    navigations: [],
-  };
-}
-
-// The extension's settings and one kept recording, written with its own storage code
-async function keep(page, extensionId, id, rep) {
-  await page.goto(`chrome-extension://${extensionId}/recordings.html`);
-  await page.evaluate(async ({ id, uploadUrl, report }) => {
-    await chrome.storage.local.set({ uploadUrl });
-    await idbAddRecording({ id, savedAt: new Date().toISOString(), video: null, report, uploaded: null });
-  }, { id, uploadUrl: `${JOGET}/api/blackbox`, report: rep });
-}
-
-// What the recorder does: start a capture, then stop it with the recording's requests (stopOnServer)
-async function captureAndStop(page, params) {
-  return page.evaluate(async ({ uploadUrl, url, params }) => {
-    const id = crypto.randomUUID();
-    const post = (action, extra, body) => fetch(uploadUrl + '?' + new URLSearchParams({ action, id, ...extra }),
-      { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body });
-    const start = await post('recording-start', {});
-    if (!start.ok) throw new Error('recording-start: HTTP ' + start.status + ' ' + await start.text());
-    const body = JSON.stringify({ network: [{ t: 1000, url, type: 'Document', status: 200 }], console: [] });
-    const stop = await (await post('recording-stop', params, body)).json();
-    return { id, stop };
-  }, { uploadUrl: `${JOGET}/api/blackbox`, url: ASSIGNMENT, params });
-}
-
-async function uploaded(joget, title) {
-  const rec = (await api(joget, 'list')).recordings.find((r) => r.title === title);
-  expect(rec, 'uploaded recording in the list').toBeTruthy();
-  return rec;
-}
+const { test, expect, JOGET, CAPTURE_KEY, loginJoget, api, appsWhenExported, report, keep, captureAndStop, uploaded } = require('./fixtures');
 
 test('popup shows the server options and keeps the choices', async ({ context, extensionId }) => {
   const joget = await context.newPage();
@@ -96,7 +47,7 @@ test('stop exports the apps; the upload keeps that export', async ({ context, ex
 
   const id = 'e2e-stop-' + Date.now();
   await keep(page, extensionId, id, report(Date.now(), id, {
-    systemLog: { status: 'on', id: logId, appExport: { state: 'done', sampleData: 'masked', apps: stop.appExport.saved.length } },
+    [CAPTURE_KEY]: { status: 'on', id: logId, appExport: { state: 'done', sampleData: 'masked', apps: stop.appExport.saved.length } },
     options: { apps: true, sampleData: 'masked' },
   }));
   await page.goto(`chrome-extension://${extensionId}/viewer.html?id=${id}`);
@@ -110,7 +61,8 @@ test('stop exports the apps; the upload keeps that export', async ({ context, ex
   expect((await create).status()).toBe(200);
   const rec = await uploaded(joget, id);
   try {
-    expect(rec.systemLog.status).toBe('attached');
+    expect(rec.serverCapture.status).toBe('attached');
+    expect(rec.systemLog).toBeUndefined();
     expect(rec.apps.map((a) => a.id)).toContain('iService');
     const apps = await appsWhenExported(joget, rec.id);
     const iService = apps.apps.find((a) => a.id === 'iService');
@@ -144,7 +96,7 @@ test('apps turned off at stop: the upload exports nothing', async ({ context, ex
 
   const id = 'e2e-off-' + Date.now();
   await keep(page, extensionId, id, report(Date.now(), id, {
-    systemLog: { status: 'on', id: logId, appExport: { state: 'off' } }, options: { apps: false, sampleData: 'masked' },
+    [CAPTURE_KEY]: { status: 'on', id: logId, appExport: { state: 'off' } }, options: { apps: false, sampleData: 'masked' },
   }));
   await page.goto(`chrome-extension://${extensionId}/viewer.html?id=${id}`);
   // The auto-upload after a recording stops: no click on Send

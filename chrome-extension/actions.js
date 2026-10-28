@@ -46,7 +46,7 @@ const Actions = (() => {
   async function sampleOptions(row) {
     const rec = await Store.load(row.kind, row.id);
     const recording = rec?.report?.recording;
-    const atStop = recording?.systemLog?.appExport;
+    const atStop = (recording?.serverCapture || recording?.systemLog)?.appExport; // systemLog: extension 1.1 and older
     if (atStop && atStop.state !== 'failed') {
       $('upAtStop').textContent = atStop.state === 'off' ? 'Apps not exported: turned off for this recording.'
         : atStop.state === 'exporting' ? 'The server is still exporting the apps used; they are added to the recording when done.'

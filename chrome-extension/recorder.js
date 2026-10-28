@@ -127,7 +127,7 @@ async function pickAndStart() {
   const res = await chrome.runtime.sendMessage({ target: 'background', type: 'source-picked', startedAt });
   if (res?.error) throw new Error(res.error);
   meta.tab = { url: res.url, title: res.title };
-  meta.systemLog = res.systemLog; // { status, id?, server?, message? }: the plugin attaches the lines by id on upload
+  meta.serverCapture = res.serverCapture; // { status, id?, server?, message? }: the plugin attaches its data by id on upload
   meta.options = Quick.options(await Quick.get()); // the popup's app export choices, used at stop and at upload
   meta.userAgent = navigator.userAgent;
   recId = recordingId(startedAt);
@@ -239,12 +239,12 @@ async function stopAndSave(reason) {
 const STOP_WAIT_MS = 150000;
 const STOP_POLL_MS = 3000;
 
-// Ends the server's system log capture and sends what it needs to export the apps the recording used, as they are
+// Ends the server capture and sends what it needs to export the apps the recording used, as they are
 // now, with their sample and process data (the requests and console errors, as in session.json). Waits for it, so the
 // upload that follows finds the export done. Returns false when the server never got the stop (the service worker
-// then sends a plain one). report.recording.systemLog.appExport says what the server did.
+// then sends a plain one). report.recording.serverCapture.appExport says what the server did.
 async function stopOnServer(report) {
-  const log = meta.systemLog;
+  const log = meta.serverCapture;
   if (log?.status !== 'on' || !log.uploadUrl) return false;
   $('status').textContent = 'Saving… the server is exporting the apps used';
   const body = {
@@ -269,13 +269,13 @@ async function stopOnServer(report) {
       if (!poll?.appExport) break;
       e = poll.appExport;
     }
-    if (e && report.recording.systemLog) {
-      report.recording.systemLog.appExport = { state: e.state, sampleData: e.sampleData, apps: e.saved?.length };
+    if (e && report.recording.serverCapture) {
+      report.recording.serverCapture.appExport = { state: e.state, sampleData: e.sampleData, apps: e.saved?.length };
     }
     return true;
   } catch (e) {
     // Timed out: the server has the stop and the upload waits for its export. Not sent: the service worker retries
-    console.warn('Could not stop the system log on the server:', e);
+    console.warn('Could not stop the server capture:', e);
     return e.name === 'AbortError';
   } finally {
     clearTimeout(timer);

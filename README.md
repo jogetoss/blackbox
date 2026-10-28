@@ -30,7 +30,12 @@ the upgrade they fall back to their defaults. Open the plugin's settings and set
 
 The old names said "system logs", but these settings cover all server data: logs, traces, server load, Glowroot data,
 Info (license key, system properties) and the exported apps. Also renamed: the `canViewSystemLog` flag in the API's
-recording JSON is now `canViewServerData`. Recordings, ZIPs and the extension are not affected.
+recording JSON is now `canViewServerData`.
+
+**Also renamed: the capture summary `systemLog` is now `serverCapture`** (in `meta.json`, in `session.json`'s
+`recording`, and in the `recording-start` answer). Existing recordings, ZIPs and extension 1.1 keep working: their
+`systemLog` is still read. One case breaks: **extension 1.2 with plugin 8.2.1 or older** uploads recordings without
+their server data. Upgrade the plugin before (or with) the extension.
 
 ## Use
 
