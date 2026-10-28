@@ -146,13 +146,13 @@
   function serverIssues(r) {
     const td = el('td');
     if (!r.canViewServerData) return td;
-    if (r.systemLog?.status !== 'attached') {
+    if (r.serverCapture?.status !== 'attached') {
       td.append(el('span', 'muted', '–'));
       td.title = 'No server data: the system logs were not captured for this recording';
       return td;
     }
     const d = r.serverData || {};
-    const errors = r.systemLog.errors || 0;
+    const errors = r.serverCapture.errors || 0;
     td.append(badge(`${errors} server errors`, errors ? 'err' : ''));
     const t = d.traces;
     if (t?.slow) td.append(' ', badge(`${t.slow} slow`, 'warn', `Requests of ${fmtMs(d.slowMs)} or more (Glowroot's slow threshold)`));
@@ -176,7 +176,7 @@
 
   function serverTags(r) {
     const td = el('td', 'hide-sm');
-    if (!r.canViewServerData || r.systemLog?.status !== 'attached') return td;
+    if (!r.canViewServerData || r.serverCapture?.status !== 'attached') return td;
     const d = r.serverData || {};
     td.append(badge('System logs', 'yes'));
     if (d.traces?.total) td.append(' ', badge(`Traces ${d.traces.total}`, 'yes'));

@@ -56,7 +56,7 @@ final class ServerInfo {
 
         JSONObject host = new JSONObject();
         put(host, "Hostname", hostname());
-        put(host, "Node", SystemLogCapture.nodeName());
+        put(host, "Node", ServerCapture.nodeName());
         put(host, "Processors", String.valueOf(rt.availableProcessors()));
         put(host, "Total RAM", mb(osAttribute("TotalPhysicalMemorySize")));
         put(host, "Free RAM", mb(osAttribute("FreePhysicalMemorySize"))); // the OS's free memory, page cache not counted
@@ -467,7 +467,7 @@ final class ServerInfo {
         return (s / 86400 > 0 ? s / 86400 + " d " : "") + (s / 3600 % 24) + " h " + (s / 60 % 60) + " min";
     }
 
-    /** Writes the snapshot into the capture's pending folder; it moves into the recording with the system log. */
+    /** Writes the snapshot into the capture's pending folder; it moves into the recording with the rest of the server capture. */
     static final String RECENT_APPS = "recentApps";
 
     /** The form tables of an app version (null: latest), or null when there is no such app. */

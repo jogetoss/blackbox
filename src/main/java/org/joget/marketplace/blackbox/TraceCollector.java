@@ -49,7 +49,7 @@ final class TraceCollector {
     private static final int MAX_PER_CAPTURE = 100;          // traces per capture on one node
     private static final long RETRY_SCAN_S = 20;
     static final String RETRY_PREFIX = "Retry requested";
-    private static final String NODE = SystemLogCapture.nodeName();
+    private static final String NODE = ServerCapture.nodeName();
     private static final Pattern NODE_NAME = Pattern.compile("^[A-Za-z0-9.-]+$");
 
     private static final Map<Running, Boolean> RUNNING = new ConcurrentHashMap<>();
@@ -85,7 +85,7 @@ final class TraceCollector {
     }
 
     /** A tagged request has started. Returns what to pass to {@link #end}, or null when traces are off. */
-    static Running begin(SystemLogCapture.Capture capture, String method, String url, long start) {
+    static Running begin(ServerCapture.Capture capture, String method, String url, long start) {
         if (jobs == null || !capture.traces) {
             return null;
         }
@@ -460,7 +460,7 @@ final class TraceCollector {
 
     /** Where the capture's traces go now: its pending folder, or the recording's folder after the upload. */
     private static Path dir(String captureId) {
-        SystemLogStore store = SystemLogCapture.store();
+        ServerCaptureStore store = ServerCapture.store();
         JSONObject meta = store.readMeta(captureId);
         if (meta == null) {
             return null;
@@ -472,7 +472,7 @@ final class TraceCollector {
 
     /** Written to the pending folder just as the upload moved it: move what was left behind. */
     private static void moveIfUploaded(String captureId, Path written) throws IOException {
-        SystemLogStore store = SystemLogCapture.store();
+        ServerCaptureStore store = ServerCapture.store();
         if (!written.equals(store.dir(captureId))) {
             return;
         }
@@ -486,7 +486,7 @@ final class TraceCollector {
 
     /** The recording a capture was uploaded as, or null before the upload. */
     private static String uploadedAs(String captureId) {
-        JSONObject meta = SystemLogCapture.store().readMeta(captureId);
+        JSONObject meta = ServerCapture.store().readMeta(captureId);
         String rec = meta != null ? meta.optString("recording") : "";
         return rec.isEmpty() ? null : rec;
     }

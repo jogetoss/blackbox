@@ -92,7 +92,7 @@ The extension keeps recordings in IndexedDB (newest 10), or reads them from a li
    (`declarativeNetRequest` session rule). Requests made by a service worker carry no tab id, and Joget's PWA service
    worker re-fetches almost every userview request, so those are tagged too; while recording, other tabs on the same
    server can add lines.
-2. `SystemLogFilter` marks the threads of those requests; an appender on log4j's root logger keeps their log lines (what
+2. `ServerCaptureFilter` marks the threads of those requests; an appender on log4j's root logger keeps their log lines (what
    `joget.log` would show, level info and up) plus one entry per request (method, URL, status, time). They go to
    `<wflow>/blackbox/pending/<id>/system-log.<node>.jsonl`, flushed every 2 seconds.
 3. Stop removes the rule; the recorder calls `recording-stop` with the app export's input (see "App export"), or the
@@ -115,7 +115,7 @@ is open there (the starting node, and any node that served one of its requests).
 `otherEntries`, not as entries or errors.
 
 Log4j 2 is not visible to plugin bundles (OSGi exports neither `org.apache.logging.log4j` nor `org.apache.log4j`),
-so `SystemLogCapture` reaches it through Joget's classloader by reflection; the appender is a `java.lang.reflect.Proxy`.
+so `ServerCapture` reaches it through Joget's classloader by reflection; the appender is a `java.lang.reflect.Proxy`.
 
 ## Glowroot traces
 
@@ -260,7 +260,7 @@ Sections:
 1. The recorder builds `session.json`, then POSTs `recording-stop` with a JSON body: its network entries (`t`, `url`,
    `type`, `status`, `failed`, `postData`, the `referer` header) and console errors, plus `apps=false` or
    `sampleData=none|masked|real` from `recording.options` (the popup's quick settings, `quick.js`).
-2. `exportAtStop` writes the body and the capture's lines so far (`SystemLogStore.writeLines`; lines other nodes
+2. `exportAtStop` writes the body and the capture's lines so far (`ServerCaptureStore.writeLines`; lines other nodes
    haven't flushed are missing) next to the capture, decides which apps the user may have exported (`exportJob`, on
    the request thread: the checks need the request and its user), and queues the export into the pending folder's
    `app/` on `ExportJobs` (one background thread).
@@ -338,16 +338,16 @@ in its rows (activity ids resolved with `getActivityById`), kept when the proces
 
 | Part | Job |
 |---|---|
-| `Activator` | Registers `BlackBoxPlugin`, `BlackBoxPageFilter`, `BlackBoxApiFilter` and `SystemLogFilter` |
+| `Activator` | Registers `BlackBoxPlugin`, `BlackBoxPageFilter`, `BlackBoxApiFilter` and `ServerCaptureFilter` |
 | `BlackBoxPlugin` | System settings + API logic (actions above) |
 | `BlackBoxApiFilter` | Serves the API at `/api/blackbox?action=…` |
 | `BlackBoxPageFilter` | Serves the static pages at `/blackbox/…` |
 | `RecordingStore` | Folder storage, validation (JSON shape, WebM header, size limits, id format) |
 | `RecordingZip` | `download&format=zip` and `import`: the recording as one ZIP and back |
 | `RecordingHtml` | `download&format=html`: view.html with viewer.css/js inlined, the recording in `<script>` data blocks, `export.js` to open it |
-| `SystemLogFilter` | Marks requests that carry `X-BlackBox-Id` (all URLs, before Spring Security) |
-| `SystemLogCapture` | Root-logger appender, per-thread marking, pending files, flush/idle/cleanup timer |
-| `SystemLogStore` | Pending capture folders: start, stop, attach (merge nodes, sort by time, move traces), clean up |
+| `ServerCaptureFilter` | Marks requests that carry `X-BlackBox-Id` (all URLs, before Spring Security) |
+| `ServerCapture` | Root-logger appender, per-thread marking, pending files, flush/idle/cleanup timer |
+| `ServerCaptureStore` | Pending capture folders: start, stop, attach (merge nodes, sort by time, move traces), clean up |
 | `TraceCollector` | Per node: picks the slow and failed recorded requests, finds their Glowroot trace (retries), saves it; Retry requests per node |
 | `GlowrootClient` | Glowroot's JSON backend and trace export; finds the local agent's port |
 | `GlowrootData`, `GlowrootPackager`, `GlowrootTag` | Glowroot data packages; tagging recorded requests |

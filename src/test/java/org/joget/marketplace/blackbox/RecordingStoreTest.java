@@ -52,6 +52,36 @@ public class RecordingStoreTest {
     }
 
     @Test
+    public void captureIdFromSessionJsonNewAndLegacyName() throws Exception {
+        String uuid = "0f8fad5b-d9cb-469f-a165-70867728950e";
+        for (String key : new String[] {RecordingStore.CAPTURE, RecordingStore.LEGACY_CAPTURE}) {
+            String session = SESSION.replace("\"durationMs\":1200,", "\"durationMs\":1200,\"" + key + "\":{\"status\":\"on\",\"id\":\"" + uuid + "\"},");
+            JSONObject meta = store.create(in(session), 1024 * 1024, "admin", "Admin User", "", "");
+            assertEquals(key, uuid, meta.optString("captureId"));
+            assertFalse(key, store.readMeta(meta.getString("id")).has("captureId")); // never saved
+        }
+    }
+
+    @Test
+    public void legacyCaptureSummaryInMetaJsonIsRenamed() throws Exception {
+        String id = store.create(in(SESSION), 1024 * 1024, "admin", "Admin User", "", "").getString("id");
+        Path file = root.resolve(id).resolve(RecordingStore.META);
+        JSONObject old = new JSONObject(new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
+        old.put(RecordingStore.LEGACY_CAPTURE, new JSONObject().put("status", "attached").put("errors", 3));
+        Files.write(file, old.toString().getBytes(StandardCharsets.UTF_8)); // as plugin 8.2.1 saved it
+
+        JSONObject meta = store.readMeta(id);
+        assertFalse(meta.has(RecordingStore.LEGACY_CAPTURE));
+        assertEquals(3, meta.getJSONObject(RecordingStore.CAPTURE).getInt("errors"));
+        assertEquals("attached", store.list().get(0).getJSONObject(RecordingStore.CAPTURE).getString("status"));
+
+        store.updateMeta(id, new JSONObject().put("notes", "x")); // the next change saves the new name
+        String saved = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
+        assertTrue(saved.contains("\"" + RecordingStore.CAPTURE + "\""));
+        assertFalse(saved.contains("\"" + RecordingStore.LEGACY_CAPTURE + "\""));
+    }
+
+    @Test
     public void rejectsBadInput() throws Exception {
         expectInvalid(() -> store.create(in("not json"), 1024, "u", "u", null, null));
         expectInvalid(() -> store.create(in("{\"a\":1}"), 1024, "u", "u", null, null));

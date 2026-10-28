@@ -38,7 +38,7 @@ final class GlowrootPackager {
     private static final long TICK_S = 10;
     private static final long AFTER_MINUTE_MS = 30_000L; // Glowroot writes a minute's aggregates a moment after it ends
     private static final long MAX_WAIT_MS = 3 * 3600 * 1000L; // give up on captures never stopped
-    private static final String NODE = SystemLogCapture.nodeName();
+    private static final String NODE = ServerCapture.nodeName();
     private static final String EMBEDDED_JAR = "glowroot-embedded-collector.jar";
     private static final String H2_DRIVER = "org.glowroot.agent.embedded.shaded.org.h2.Driver";
 
@@ -60,7 +60,7 @@ final class GlowrootPackager {
         });
         jobs.schedule(() -> {
             try {
-                recover(SystemLogCapture.store(), BlackBoxPlugin.store(), NODE, System.currentTimeMillis());
+                recover(ServerCapture.store(), BlackBoxPlugin.store(), NODE, System.currentTimeMillis());
             } catch (IOException | RuntimeException e) { // JSONException is a RuntimeException
                 LogUtil.warn(GlowrootPackager.class.getName(), "Could not check for unfinished Glowroot data packages: " + e);
             }
@@ -79,7 +79,7 @@ final class GlowrootPackager {
      * build runs as usual; blocks Glowroot overwrote meanwhile are counted as lost). Those in a recording whose capture
      * is gone are marked failed, so the recording doesn't stay "building" for good. Returns the capture ids watched.
      */
-    static List<String> recover(SystemLogStore logs, RecordingStore recordings, String node, long now)
+    static List<String> recover(ServerCaptureStore logs, RecordingStore recordings, String node, long now)
             throws IOException, JSONException {
         List<String> watched = new ArrayList<>();
         java.util.Set<String> covered = new java.util.HashSet<>();
@@ -142,7 +142,7 @@ final class GlowrootPackager {
     }
 
     /** A capture is open on this node: build its package after it stops. */
-    static void watch(SystemLogCapture.Capture capture) {
+    static void watch(ServerCapture.Capture capture) {
         if (jobs == null || !capture.glowrootData || WATCHED.putIfAbsent(capture.id, System.currentTimeMillis()) != null) {
             return;
         }
@@ -159,7 +159,7 @@ final class GlowrootPackager {
         long now = System.currentTimeMillis();
         for (Map.Entry<String, Long> e : WATCHED.entrySet()) {
             String id = e.getKey();
-            JSONObject meta = SystemLogCapture.store().readMeta(id);
+            JSONObject meta = ServerCapture.store().readMeta(id);
             if (meta == null) {
                 WATCHED.remove(id); // expired or deleted
                 continue;
@@ -315,7 +315,7 @@ final class GlowrootPackager {
             }
             GlowrootData.writeStatus(dir, NODE, s);
             moveIfUploaded(id, dir);
-            JSONObject meta = SystemLogCapture.store().readMeta(id);
+            JSONObject meta = ServerCapture.store().readMeta(id);
             String rec = meta != null ? meta.optString("recording") : "";
             if (!rec.isEmpty()) {
                 ServerData.refreshGlowroot(BlackBoxPlugin.store(), rec); // the recordings list's state
@@ -327,7 +327,7 @@ final class GlowrootPackager {
 
     /** Written to the pending folder just as the upload moved it: move what was left behind. */
     private static void moveIfUploaded(String id, Path written) throws IOException {
-        SystemLogStore store = SystemLogCapture.store();
+        ServerCaptureStore store = ServerCapture.store();
         if (!written.equals(store.dir(id))) {
             return;
         }

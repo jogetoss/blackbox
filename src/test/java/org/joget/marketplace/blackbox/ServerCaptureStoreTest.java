@@ -10,18 +10,18 @@ import org.json.JSONObject;
 import org.junit.Before;
 import org.junit.Test;
 
-public class SystemLogStoreTest {
+public class ServerCaptureStoreTest {
 
     private static final String ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
     private static final long DAY = 24L * 3600 * 1000;
 
     private Path root;
-    private SystemLogStore store;
+    private ServerCaptureStore store;
 
     @Before
     public void setUp() throws Exception {
         root = Files.createTempDirectory("bb-systemlog");
-        store = new SystemLogStore(root);
+        store = new ServerCaptureStore(root);
     }
 
     private void lines(String node, String... json) throws Exception {
@@ -73,7 +73,7 @@ public class SystemLogStoreTest {
                 .put("file", "node-a-0123456789abcdef.html").put("updated", 1));
         TraceStore.writeTrace(store.dir(ID), "node-a-0123456789abcdef.html", "<html></html>".getBytes(StandardCharsets.UTF_8));
         Path rec = Files.createDirectories(root.getParent().resolve(root.getFileName() + "-rec"));
-        assertNotNull(store.attach(ID, "admin", rec.resolve(SystemLogStore.FILE)));
+        assertNotNull(store.attach(ID, "admin", rec.resolve(ServerCaptureStore.FILE)));
 
         assertTrue(Files.isRegularFile(rec.resolve("traces/node-a.jsonl")));
         assertTrue(Files.isRegularFile(rec.resolve("traces/node-a-0123456789abcdef.html")));
@@ -109,7 +109,7 @@ public class SystemLogStoreTest {
         Files.write(app.resolve("crm-3.jwa"), new byte[] {1});
         Files.write(app.resolve(AppExport.LIST), "{}".getBytes(StandardCharsets.UTF_8));
         Path rec = Files.createDirectories(root.resolve("rec"));
-        assertNotNull(store.attach(ID, "admin", rec.resolve(SystemLogStore.FILE)));
+        assertNotNull(store.attach(ID, "admin", rec.resolve(ServerCaptureStore.FILE)));
         assertTrue(Files.isRegularFile(rec.resolve(AppExport.DIR).resolve("crm-3.jwa")));
         assertNotNull(AppExport.list(rec));
         assertFalse(Files.exists(app.resolve("crm-3.jwa")));
@@ -121,7 +121,7 @@ public class SystemLogStoreTest {
         Path app = Files.createDirectories(store.dir(ID).resolve(AppExport.DIR));
         Files.write(app.resolve("crm-3.jwa"), new byte[] {1}); // a stop export still running when the upload gave up
         Path rec = Files.createDirectories(root.resolve("rec"));
-        assertNotNull(store.attach(ID, "admin", rec.resolve(SystemLogStore.FILE), false));
+        assertNotNull(store.attach(ID, "admin", rec.resolve(ServerCaptureStore.FILE), false));
         assertFalse("the upload exports the apps itself", Files.exists(rec.resolve(AppExport.DIR)));
         assertTrue("left in the pending folder, deleted with it", Files.exists(app.resolve("crm-3.jwa")));
     }
@@ -147,16 +147,16 @@ public class SystemLogStoreTest {
 
     @Test
     public void rejectsBadIds() throws Exception {
-        assertFalse(SystemLogStore.isValidId("../x"));
-        assertFalse(SystemLogStore.isValidId("0F8FAD5B-D9CB-469F-A165-70867728950E")); // the extension sends lower case
+        assertFalse(ServerCaptureStore.isValidId("../x"));
+        assertFalse(ServerCaptureStore.isValidId("0F8FAD5B-D9CB-469F-A165-70867728950E")); // the extension sends lower case
         assertNull(store.readMeta("../../etc"));
     }
 
     @Test
     public void nodeNameIsJogetsNameElseTheHost() {
-        assertEquals("n1", SystemLogCapture.nodeName("n1", "host-a"));
-        assertEquals("host-a", SystemLogCapture.nodeName("", "host-a"));
-        assertEquals("my-node", SystemLogCapture.nodeName("my node", null)); // safe for the file name
-        assertEquals("node", SystemLogCapture.nodeName(null, null));
+        assertEquals("n1", ServerCapture.nodeName("n1", "host-a"));
+        assertEquals("host-a", ServerCapture.nodeName("", "host-a"));
+        assertEquals("my-node", ServerCapture.nodeName("my node", null)); // safe for the file name
+        assertEquals("node", ServerCapture.nodeName(null, null));
     }
 }

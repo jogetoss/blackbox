@@ -11,17 +11,17 @@ import org.joget.apps.app.model.PluginWebFilterAbstract;
 
 /**
  * Marks requests that carry X-BlackBox-Id (added by the extension to the recorded tab's requests) so their log
- * lines are captured ({@link SystemLogCapture}), records each one's method, URL, status and time, and hands slow
+ * lines are captured ({@link ServerCapture}), records each one's method, URL, status and time, and hands slow
  * and failed ones to {@link TraceCollector} for their Glowroot trace.
  *
  * Runs on every URL before Spring Security, so log lines from the login itself are captured too. Requests without
  * the header cost one header lookup.
  */
-public class SystemLogFilter extends PluginWebFilterAbstract {
+public class ServerCaptureFilter extends PluginWebFilterAbstract {
 
     @Override
     public String getName() {
-        return "BlackBox System Log";
+        return "BlackBox Server Capture";
     }
 
     @Override
@@ -31,7 +31,7 @@ public class SystemLogFilter extends PluginWebFilterAbstract {
 
     @Override
     public String getDescription() {
-        return "Captures the system logs made during a BlackBox recording.";
+        return "Captures the server data (log lines, requests, traces) of a BlackBox recording.";
     }
 
     public String getLabel() {
@@ -65,8 +65,8 @@ public class SystemLogFilter extends PluginWebFilterAbstract {
     @Override
     public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain) throws IOException, ServletException {
         HttpServletRequest request = (HttpServletRequest) req;
-        String id = request.getHeader(SystemLogCapture.HEADER);
-        SystemLogCapture.Capture capture = id == null ? null : SystemLogCapture.find(id);
+        String id = request.getHeader(ServerCapture.HEADER);
+        ServerCapture.Capture capture = id == null ? null : ServerCapture.find(id);
         if (capture == null) {
             chain.doFilter(req, res);
             return;
@@ -74,10 +74,10 @@ public class SystemLogFilter extends PluginWebFilterAbstract {
         HttpServletResponse response = (HttpServletResponse) res;
         long start = System.currentTimeMillis();
         // The viewer compares this with the browser's clock to line up the system log with the video
-        response.setHeader(SystemLogCapture.TIME_HEADER, String.valueOf(start));
+        response.setHeader(ServerCapture.TIME_HEADER, String.valueOf(start));
         String url = request.getRequestURI() + (request.getQueryString() != null ? "?" + request.getQueryString() : "");
         GlowrootTag.tag(id); // a Glowroot trace of it, if Glowroot keeps one, carries the recording id
-        Object prev = SystemLogCapture.begin(capture, request.getMethod() + " " + url);
+        Object prev = ServerCapture.begin(capture, request.getMethod() + " " + url);
         TraceCollector.Running run = TraceCollector.begin(capture, request.getMethod(), url, start);
         Throwable failure = null;
         try {
@@ -86,7 +86,7 @@ public class SystemLogFilter extends PluginWebFilterAbstract {
             failure = e;
             throw e;
         } finally {
-            SystemLogCapture.end(prev);
+            ServerCapture.end(prev);
             long ms = System.currentTimeMillis() - start;
             capture.request(start, request.getMethod(), url, response.getStatus(), ms, failure);
             TraceCollector.end(run, response.getStatus(), ms, failure);

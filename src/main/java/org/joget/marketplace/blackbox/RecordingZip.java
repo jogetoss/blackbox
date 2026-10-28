@@ -126,9 +126,9 @@ public class RecordingZip {
     /**
      * Creates a recording from a ZIP made by {@link #write} (or any ZIP with session.json at its top level).
      * The importer becomes the owner; who uploaded it first is kept as importedFrom. The system log is kept only
-     * when keepSystemLog is true. Each file is limited to maxBytes. Nothing is kept if any part is invalid.
+     * when keepServerData is true. Each file is limited to maxBytes. Nothing is kept if any part is invalid.
      */
-    public static JSONObject importZip(RecordingStore store, Path zipFile, long maxBytes, boolean keepSystemLog,
+    public static JSONObject importZip(RecordingStore store, Path zipFile, long maxBytes, boolean keepServerData,
             String owner, String ownerName) throws IOException, RecordingStore.InvalidUpload {
         ZipFile zip;
         try {
@@ -155,7 +155,7 @@ public class RecordingZip {
             try (InputStream in = zip.getInputStream(sessionEntry)) {
                 meta = store.create(in, maxBytes, owner, ownerName, old.optString("title"), old.optString("notes"));
             }
-            meta.remove("systemLogId"); // a capture id from the other server: nothing to attach here
+            meta.remove("captureId"); // a capture id from the other server: nothing to attach here
             String id = meta.optString("id");
             try {
                 ZipEntry videoEntry = zip.getEntry(RecordingStore.VIDEO);
@@ -165,14 +165,14 @@ public class RecordingZip {
                     }
                 }
                 ZipEntry logEntry = zip.getEntry(RecordingStore.SYSTEM_LOG);
-                if (logEntry != null && keepSystemLog) {
-                    meta.put("systemLog", importSystemLog(store, id, zip, logEntry, maxBytes));
+                if (logEntry != null && keepServerData) {
+                    meta.put(RecordingStore.CAPTURE, importSystemLog(store, id, zip, logEntry, maxBytes));
                     importTraces(store, id, zip, maxBytes);
                     importGauges(store, id, zip, maxBytes);
                     importServerInfo(store, id, zip);
                     importGlowroot(store, id, zip, maxBytes);
                 }
-                if (keepSystemLog) {
+                if (keepServerData) {
                     JSONArray apps = importApps(store, id, zip, maxBytes);
                     if (apps.length() > 0) {
                         meta.put("apps", apps);
@@ -185,7 +185,7 @@ public class RecordingZip {
                             .put("uploadedAt", old.optString("uploadedAt")));
                 }
                 store.updateMeta(id, meta);
-                if (!keepSystemLog && (logEntry != null || zip.getEntry(AppExport.DIR + "/" + AppExport.LIST) != null)) {
+                if (!keepServerData && (logEntry != null || zip.getEntry(AppExport.DIR + "/" + AppExport.LIST) != null)) {
                     meta.put("serverDataSkipped", true); // in the response only, so the page can say why it's missing
                 }
                 return meta;

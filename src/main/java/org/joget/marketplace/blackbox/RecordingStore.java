@@ -37,7 +37,11 @@ public class RecordingStore {
     public static final String META = "meta.json";
     public static final String SESSION = "session.json";
     public static final String VIDEO = "recording.webm";
-    public static final String SYSTEM_LOG = SystemLogStore.FILE;
+    public static final String SYSTEM_LOG = ServerCaptureStore.FILE;
+    /** meta.json and session.json's recording: the server capture's summary (status, id, entries, errors...). */
+    public static final String CAPTURE = "serverCapture";
+    /** CAPTURE's name in recordings and ZIPs made by plugin 8.2.1 and older or extension 1.1 and older: read, never written. */
+    static final String LEGACY_CAPTURE = "systemLog";
 
     // yyyyMMdd-HHmmss-<8 hex>: sorts by upload time and can never contain a path separator
     private static final Pattern ID = Pattern.compile("^[0-9]{8}-[0-9]{6}-[0-9a-f]{8}$");
@@ -151,11 +155,12 @@ public class RecordingStore {
             throw new IOException(e);
         }
         writeMeta(id, meta);
-        // Not saved in meta.json: the caller attaches the system log captured under this id (session.json has it)
-        JSONObject systemLog = rec != null ? rec.optJSONObject("systemLog") : null;
-        if (systemLog != null && SystemLogStore.isValidId(systemLog.optString("id"))) {
+        // Not saved in meta.json: the caller attaches the server data captured under this id (session.json has it)
+        JSONObject capture = rec == null ? null
+                : rec.has(CAPTURE) ? rec.optJSONObject(CAPTURE) : rec.optJSONObject(LEGACY_CAPTURE);
+        if (capture != null && ServerCaptureStore.isValidId(capture.optString("id"))) {
             try {
-                meta.put("systemLogId", systemLog.optString("id"));
+                meta.put("captureId", capture.optString("id"));
             } catch (JSONException e) {
                 throw new IOException(e);
             }
@@ -270,6 +275,15 @@ public class RecordingStore {
         }
     }
 
+    /** A meta.json written by plugin 8.2.1 or older: its capture summary under CAPTURE (saved so on the next change). */
+    static JSONObject renameLegacy(JSONObject meta) throws JSONException {
+        Object old = meta.remove(LEGACY_CAPTURE);
+        if (old != null && !meta.has(CAPTURE)) {
+            meta.put(CAPTURE, old);
+        }
+        return meta;
+    }
+
     public JSONObject readMeta(String id) {
         if (!isValidId(id)) {
             return null;
@@ -279,7 +293,7 @@ public class RecordingStore {
             return null;
         }
         try {
-            return new JSONObject(new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
+            return renameLegacy(new JSONObject(new String(Files.readAllBytes(file), StandardCharsets.UTF_8)));
         } catch (IOException | JSONException e) {
             return null;
         }

@@ -309,7 +309,7 @@ public class GlowrootDataTest {
 
     @Test
     public void recoverAfterRestart() throws Exception {
-        SystemLogStore logs = new SystemLogStore(dir.resolve("pending"));
+        ServerCaptureStore logs = new ServerCaptureStore(dir.resolve("pending"));
         RecordingStore recordings = new RecordingStore(dir.resolve("recordings"));
         String session = "{\"recording\":{\"tab\":{\"title\":\"T\"}},\"console\":[],\"network\":[]}";
         long now = System.currentTimeMillis();

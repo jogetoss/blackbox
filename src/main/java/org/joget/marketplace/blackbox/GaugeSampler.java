@@ -30,7 +30,7 @@ final class GaugeSampler {
 
     private static final long MAX_MS = 2 * 3600 * 1000L;
     private static final long META_CHECK_MS = 5000;
-    private static final String NODE = SystemLogCapture.nodeName();
+    private static final String NODE = ServerCapture.nodeName();
 
     private static final Map<String, Sampled> CAPTURES = new ConcurrentHashMap<>();
     private static ScheduledExecutorService timer;
@@ -61,7 +61,7 @@ final class GaugeSampler {
     }
 
     /** A capture is open on this node: sample for it until it stops. */
-    static void watch(SystemLogCapture.Capture capture) {
+    static void watch(ServerCapture.Capture capture) {
         if (timer != null && capture.gauges) {
             CAPTURES.putIfAbsent(capture.id, new Sampled());
         }
@@ -83,7 +83,7 @@ final class GaugeSampler {
             Sampled s = e.getValue();
             if (now - s.metaCheckedAt >= META_CHECK_MS) {
                 s.metaCheckedAt = now;
-                JSONObject meta = SystemLogCapture.store().readMeta(e.getKey());
+                JSONObject meta = ServerCapture.store().readMeta(e.getKey());
                 if (meta == null || meta.has("stoppedAt") && now > meta.optLong("stoppedAt") + 1000 || now - s.since > MAX_MS) {
                     CAPTURES.remove(e.getKey());
                     continue;

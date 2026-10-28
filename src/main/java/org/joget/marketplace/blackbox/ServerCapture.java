@@ -26,8 +26,8 @@ import org.json.JSONObject;
 /**
  * Captures the log events of requests the extension tags with X-BlackBox-Id while a recording runs.
  *
- * {@link SystemLogFilter} marks the request thread; an appender on the root logger keeps only the events of marked
- * threads and appends them to the capture's pending file ({@link SystemLogStore}).
+ * {@link ServerCaptureFilter} marks the request thread; an appender on the root logger keeps only the events of marked
+ * threads and appends them to the capture's pending file ({@link ServerCaptureStore}).
  *
  * Log4j 2 is not visible to plugin bundles (OSGi exports neither org.apache.logging.log4j nor org.apache.log4j), so
  * {@link RootAppender} reaches it through Joget's own classloader by reflection, and the appender is a
@@ -37,7 +37,7 @@ import org.json.JSONObject;
  * started with allServer also keeps every other thread's lines (marked "other": scheduler, email, other users) on the
  * nodes where it is open: the node that started it and those that served one of its requests.
  */
-final class SystemLogCapture {
+final class ServerCapture {
 
     static final String HEADER = "X-BlackBox-Id";
     static final String TIME_HEADER = "X-BlackBox-Time";
@@ -58,11 +58,11 @@ final class SystemLogCapture {
     private static ScheduledExecutorService timer;
     private static RootAppender appender;
 
-    private SystemLogCapture() {
+    private ServerCapture() {
     }
 
-    static SystemLogStore store() {
-        return new SystemLogStore(Paths.get(SetupManager.getBaseDirectory(), "blackbox", "pending"));
+    static ServerCaptureStore store() {
+        return new ServerCaptureStore(Paths.get(SetupManager.getBaseDirectory(), "blackbox", "pending"));
     }
 
     /** Called by the bundle activator. */
@@ -77,12 +77,12 @@ final class SystemLogCapture {
             throw new IllegalStateException("Could not add the BlackBox appender to log4j", e);
         }
         timer = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "BlackBox system log");
+            Thread t = new Thread(r, "BlackBox server capture");
             t.setDaemon(true);
             return t;
         });
-        timer.scheduleWithFixedDelay(SystemLogCapture::flushAll, FLUSH_MS, FLUSH_MS, TimeUnit.MILLISECONDS);
-        timer.scheduleWithFixedDelay(SystemLogCapture::sweep, 60 * 1000L, SWEEP_MS, TimeUnit.MILLISECONDS);
+        timer.scheduleWithFixedDelay(ServerCapture::flushAll, FLUSH_MS, FLUSH_MS, TimeUnit.MILLISECONDS);
+        timer.scheduleWithFixedDelay(ServerCapture::sweep, 60 * 1000L, SWEEP_MS, TimeUnit.MILLISECONDS);
         TraceCollector.start();
         GaugeSampler.start();
         GlowrootPackager.start();
@@ -114,7 +114,7 @@ final class SystemLogCapture {
 
     /** The open capture for a tagged request, or null when the id is unknown, stopped or expired. */
     static Capture find(String id) {
-        if (!running || !SystemLogStore.isValidId(id)) {
+        if (!running || !ServerCaptureStore.isValidId(id)) {
             return null;
         }
         Capture capture = OPEN.get(id);
@@ -127,7 +127,7 @@ final class SystemLogCapture {
             return null;
         }
         // Started on this node or another one (shared wflow folder)
-        SystemLogStore store = store();
+        ServerCaptureStore store = store();
         JSONObject meta = store.readMeta(id);
         if (meta == null || meta.has("stoppedAt") || meta.optLong("expiresAt") < now) {
             MISSES.put(id, now);
@@ -191,10 +191,10 @@ final class SystemLogCapture {
         try {
             int n = store().sweep(System.currentTimeMillis());
             if (n > 0) {
-                LogUtil.info(SystemLogCapture.class.getName(), "Deleted " + n + " system log capture(s) that were never uploaded");
+                LogUtil.info(ServerCapture.class.getName(), "Deleted " + n + " server capture(s) that were never uploaded");
             }
         } catch (Exception e) {
-            LogUtil.warn(SystemLogCapture.class.getName(), "Could not clean up system log captures: " + e.getMessage());
+            LogUtil.warn(ServerCapture.class.getName(), "Could not clean up server captures: " + e.getMessage());
         }
     }
 
@@ -406,7 +406,7 @@ final class SystemLogCapture {
                 removeAppender.invoke(root, NAME);
                 updateLoggers.invoke(context);
             } catch (ReflectiveOperationException e) {
-                LogUtil.warn(SystemLogCapture.class.getName(), "Could not remove the BlackBox appender: " + e);
+                LogUtil.warn(ServerCapture.class.getName(), "Could not remove the BlackBox appender: " + e);
             }
         }
 

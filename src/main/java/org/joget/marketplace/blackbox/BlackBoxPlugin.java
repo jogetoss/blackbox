@@ -165,14 +165,14 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             } else if ("import".equals(action) && post) {
                 importZip(request, response, store, access);
             } else if ("recording-start".equals(action) && post) {
-                startSystemLog(request, response, access, id);
+                startServerCapture(request, response, access, id);
             } else if ("recording-stop".equals(action) && post) {
-                stopSystemLog(request, response, access, id);
+                stopServerCapture(request, response, access, id);
             } else if ("app-export".equals(action) && !post) {
                 // The recorder polls this while the app export at stop runs on (recording-stop answered "exporting")
-                JSONObject pending = SystemLogStore.isValidId(id) ? SystemLogCapture.store().readMeta(id) : null;
+                JSONObject pending = ServerCaptureStore.isValidId(id) ? ServerCapture.store().readMeta(id) : null;
                 if (pending == null || !access.user.getUsername().equals(pending.optString("owner"))) {
-                    error(response, HttpServletResponse.SC_NOT_FOUND, "System log not found.");
+                    error(response, HttpServletResponse.SC_NOT_FOUND, "Server capture not found.");
                 } else {
                     JSONObject state = pending.optJSONObject("appExport");
                     json(response, new JSONObject().put("appExport", state != null ? state : new JSONObject().put("state", "off")));
@@ -235,7 +235,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
     /** Removes the meta keys that are server data, for users who may not see it (list, meta, HTML download). */
     static void hideServerData(JSONObject meta) {
-        meta.remove("systemLog"); // its error count is server data too
+        meta.remove(RecordingStore.CAPTURE); // its error count is server data too
         meta.remove("serverData");
         meta.remove("apps");
     }
@@ -277,25 +277,25 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                     request.getParameter("title"), request.getParameter("notes"));
         }
         String recId = meta.getString("id");
-        String systemLogId = (String) meta.remove("systemLogId");
+        String captureId = (String) meta.remove("captureId");
         JSONObject atStop = null;
-        if (systemLogId != null) {
-            atStop = appExportAtStop(systemLogId, access.user.getUsername()); // before attach, which moves its app/ folder
+        if (captureId != null) {
+            atStop = appExportAtStop(captureId, access.user.getUsername()); // before attach, which moves its app/ folder
             boolean appsAtStop = atStop != null && "done".equals(atStop.optString("state"));
             if (atStop != null && "exporting".equals(atStop.optString("state"))) {
                 // Still running: the recording gets it when it ends (deliverStopExport), no second export
-                meta.put("appExport", new JSONObject().put("state", "exporting").put("capture", systemLogId));
+                meta.put("appExport", new JSONObject().put("state", "exporting").put("capture", captureId));
                 store.updateMeta(recId, new JSONObject().put("appExport", meta.get("appExport")));
             }
-            meta.put("systemLog", attachSystemLog(store, recId, systemLogId, access.user.getUsername(), appsAtStop));
-            if ("attached".equals(meta.getJSONObject("systemLog").optString("status"))) {
+            meta.put(RecordingStore.CAPTURE, attachServerCapture(store, recId, captureId, access.user.getUsername(), appsAtStop));
+            if ("attached".equals(meta.getJSONObject(RecordingStore.CAPTURE).optString("status"))) {
                 try {
                     meta.put("serverData", ServerData.of(store.dir(recId), slowMs()));
                 } catch (IOException e) {
                     LogUtil.warn(getClassName(), "Could not sum up the server data of recording " + recId + ": " + e.getMessage());
                 }
             }
-            store.updateMeta(recId, new JSONObject().put("systemLog", meta.get("systemLog")).putOpt("serverData", meta.opt("serverData")));
+            store.updateMeta(recId, new JSONObject().put(RecordingStore.CAPTURE, meta.get(RecordingStore.CAPTURE)).putOpt("serverData", meta.opt("serverData")));
         }
         String done = atStop != null ? atStop.optString("state") : "";
         if (!"done".equals(done) && !"off".equals(done) && !"exporting".equals(done)) {
@@ -309,9 +309,9 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 store.updateMeta(recId, new JSONObject().put("apps", saved));
             }
         } else if ("exporting".equals(done)) {
-            deliverStopExport(systemLogId); // in case it ended just now
+            deliverStopExport(captureId); // in case it ended just now
         } else if (!"off".equals(done) && !"false".equals(getPropertyString("includeAppExport")) && !"false".equals(request.getParameter("apps"))) {
-            // No export at stop (no system log capture, or the stop's export failed): the apps as they are now, in the
+            // No export at stop (no server capture, or the stop's export failed): the apps as they are now, in the
             // background; the recording lists them when it ends
             java.util.concurrent.Callable<JSONArray> job = exportJob(store.dir(recId), store.file(recId, RecordingStore.SESSION),
                     store.file(recId, RecordingStore.SYSTEM_LOG), sampleMode(request), recId, access);
@@ -467,7 +467,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         if (!access.canViewServerData(meta)) {
             hideServerData(meta); // the file carries meta as JSON, read or not
         } else if (systemLog == null) {
-            meta.remove("systemLog"); // the summary would point at data that is not in the file
+            meta.remove(RecordingStore.CAPTURE); // the summary would point at data that is not in the file
         }
         RecordingHtml export = RecordingHtml.fromResources();
         response.setContentType("text/html;charset=UTF-8");
@@ -538,7 +538,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             }
             JSONObject meta = RecordingZip.importZip(store, tmp, max, access.canViewServerData(),
                     access.user.getUsername(), fullName(access.user));
-            if (meta.has("systemLog")) {
+            if (meta.has(RecordingStore.CAPTURE)) {
                 // the list's server data tags (traces, load, info, Glowroot data), as after an upload
                 meta.put("serverData", ServerData.of(store.dir(meta.getString("id")), slowMs()));
                 store.updateMeta(meta.getString("id"), new JSONObject().put("serverData", meta.get("serverData")));
@@ -551,10 +551,10 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
     }
 
-    // ---------- system log ----------
+    // ---------- server capture ----------
 
     /** The extension starts capturing when a recording starts; id is its random UUID, sent on the tab's requests. */
-    private void startSystemLog(HttpServletRequest request, HttpServletResponse response, Access access, String id)
+    private void startServerCapture(HttpServletRequest request, HttpServletResponse response, Access access, String id)
             throws IOException, JSONException {
         if (!"true".equals(getPropertyString("captureServerData"))) {
             error(response, HttpServletResponse.SC_FORBIDDEN, "Server data capture is turned off in the BlackBox plugin settings.");
@@ -564,8 +564,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to upload recordings.");
             return;
         }
-        if (!SystemLogStore.isValidId(id)) {
-            error(response, HttpServletResponse.SC_BAD_REQUEST, "Invalid system log id.");
+        if (!ServerCaptureStore.isValidId(id)) {
+            error(response, HttpServletResponse.SC_BAD_REQUEST, "Invalid server capture id.");
             return;
         }
         long maxBytes = positive("systemLogMaxMb", DEFAULT_SYSTEM_LOG_MB) * 1024 * 1024;
@@ -577,17 +577,18 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         // Other users' log lines: only for recorders who may see every recording's server data
         boolean allServer = "true".equals(getPropertyString("captureAllServerLogs")) && access.canViewServerData()
                 && !"false".equals(request.getParameter("allServer"));
-        if (!SystemLogCapture.store().start(id, access.user.getUsername(), maxBytes, keepMs, traces, getPropertyString("glowrootUrl"), gauges,
+        if (!ServerCapture.store().start(id, access.user.getUsername(), maxBytes, keepMs, traces, getPropertyString("glowrootUrl"), gauges,
                 glowrootData, allServer)) {
-            error(response, HttpServletResponse.SC_CONFLICT, "This system log id is already in use.");
+            error(response, HttpServletResponse.SC_CONFLICT, "This server capture id is already in use.");
             return;
         }
-        SystemLogCapture.find(id); // this node samples the server load from now (GaugeSampler)
-        ServerInfo.save(SystemLogCapture.store().dir(id), request, (int) Math.min(positive("recentChangesDays", 7), 365)); // System Info as it is now
+        ServerCapture.find(id); // this node samples the server load from now (GaugeSampler)
+        ServerInfo.save(ServerCapture.store().dir(id), request, (int) Math.min(positive("recentChangesDays", 7), 365)); // System Info as it is now
         JSONObject started = new JSONObject().put("id", id).put("maxMb", maxBytes / (1024 * 1024))
                 .put("traces", traces).put("gauges", gauges).put("glowrootData", glowrootData).put("allServer", allServer)
                 .put("slowThresholdMs", slowMs());
-        json(response, new JSONObject().put("systemLog", started));
+        // RecordingStore.LEGACY_CAPTURE: extension 1.1 and older read the slow threshold from there
+        json(response, new JSONObject().put(RecordingStore.CAPTURE, started).put(RecordingStore.LEGACY_CAPTURE, started));
     }
 
     /** "Slow" for the recordings lists: Glowroot's slow threshold (ServerData.slowMs), or 2 s without Glowroot. */
@@ -607,13 +608,13 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
      * Ends a capture. With a body (the recording's network and console entries, see {@link #exportAtStop}) it also
      * exports the apps the recording used, with their sample and process data, as they are now.
      */
-    private void stopSystemLog(HttpServletRequest request, HttpServletResponse response, Access access, String id)
+    private void stopServerCapture(HttpServletRequest request, HttpServletResponse response, Access access, String id)
             throws IOException, JSONException {
-        if (!SystemLogStore.isValidId(id) || !SystemLogCapture.store().stop(id, access.user.getUsername())) {
-            error(response, HttpServletResponse.SC_NOT_FOUND, "System log not found.");
+        if (!ServerCaptureStore.isValidId(id) || !ServerCapture.store().stop(id, access.user.getUsername())) {
+            error(response, HttpServletResponse.SC_NOT_FOUND, "Server capture not found.");
             return;
         }
-        SystemLogCapture.close(id);
+        ServerCapture.close(id);
         JSONObject result = new JSONObject().put("stopped", id);
         if (request.getContentLengthLong() > 0 || request.getHeader("Transfer-Encoding") != null) {
             result.put("appExport", exportAtStop(request, access, id));
@@ -642,13 +643,13 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     private static final long STOP_EXPORT_WAIT_MS = STOP_SYNC_MS;
 
     /**
-     * The app export at stop, into the capture's pending folder (app/), which {@link SystemLogStore#attach} moves into
+     * The app export at stop, into the capture's pending folder (app/), which {@link ServerCaptureStore#attach} moves into
      * the recording at upload. The body is session.json's network and console entries; apps=false and sampleData
      * (none, masked, real) are the popup's choices, within the settings. The state goes into the capture's meta as
      * appExport: {state: off | exporting | done | failed, saved: [...]}, so the upload doesn't export again.
      */
     private JSONObject exportAtStop(HttpServletRequest request, Access access, String id) throws IOException, JSONException {
-        SystemLogStore logs = SystemLogCapture.store();
+        ServerCaptureStore logs = ServerCapture.store();
         JSONObject pending = logs.readMeta(id);
         if (pending == null) {
             return new JSONObject().put("state", "off");
@@ -690,7 +691,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 try {
                     end.put("state", "done").put("saved", job.call()).put("sampleData", mode);
                 } catch (Exception | LinkageError e) {
-                    LogUtil.warn(getClassName(), "Could not export the apps at the stop of system log " + id + ": " + e);
+                    LogUtil.warn(getClassName(), "Could not export the apps at the stop of server capture " + id + ": " + e);
                     try {
                         end = new JSONObject().put("state", "failed");
                     } catch (JSONException ignored) {
@@ -703,13 +704,13 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 try {
                     logs.put(id, "appExport", end);
                 } catch (IOException e) {
-                    LogUtil.warn(getClassName(), "Could not save the app export state of system log " + id + ": " + e);
+                    LogUtil.warn(getClassName(), "Could not save the app export state of server capture " + id + ": " + e);
                 }
                 deliverStopExport(id); // the upload came first and is waiting for it
             });
             return waitForStopExport(id, STOP_SYNC_MS);
         } catch (IOException | RuntimeException e) {
-            LogUtil.warn(getClassName(), "Could not export the apps at the stop of system log " + id + ": " + e);
+            LogUtil.warn(getClassName(), "Could not export the apps at the stop of server capture " + id + ": " + e);
         } finally {
             if (!queued) {
                 Files.deleteIfExists(session);
@@ -732,7 +733,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     private static JSONObject waitForStopExport(String id, long ms) throws JSONException {
         long until = System.currentTimeMillis() + ms;
         while (true) {
-            JSONObject pending = SystemLogCapture.store().readMeta(id);
+            JSONObject pending = ServerCapture.store().readMeta(id);
             JSONObject state = pending != null ? pending.optJSONObject("appExport") : null;
             if (state == null) {
                 return new JSONObject().put("state", "failed");
@@ -759,7 +760,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     static void deliverStopExport(String captureId) {
         synchronized (DELIVERING) {
             try {
-                SystemLogStore logs = SystemLogCapture.store();
+                ServerCaptureStore logs = ServerCapture.store();
                 JSONObject pending = logs.readMeta(captureId);
                 String rec = pending != null ? pending.optString("recording") : "";
                 JSONObject state = pending != null ? pending.optJSONObject("appExport") : null;
@@ -782,7 +783,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 }
                 store.updateMeta(rec, changes);
             } catch (IOException | RuntimeException e) { // JSONException is a RuntimeException
-                LogUtil.warn(BlackBoxPlugin.class.getName(), "Could not add the late app export of system log " + captureId + ": " + e);
+                LogUtil.warn(BlackBoxPlugin.class.getName(), "Could not add the late app export of server capture " + captureId + ": " + e);
             }
         }
     }
@@ -810,16 +811,16 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
      * The app export the recording's stop made (see {@link #exportAtStop}), waiting a while if it still runs; null
      * when there was none (no body at stop, another user's capture). After the wait it may still say exporting.
      */
-    private JSONObject appExportAtStop(String systemLogId, String owner) {
+    private JSONObject appExportAtStop(String captureId, String owner) {
         long until = System.currentTimeMillis() + STOP_EXPORT_WAIT_MS;
         while (true) {
-            JSONObject pending = SystemLogCapture.store().readMeta(systemLogId);
+            JSONObject pending = ServerCapture.store().readMeta(captureId);
             JSONObject state = pending != null && owner.equals(pending.optString("owner")) ? pending.optJSONObject("appExport") : null;
             if (state == null || !"exporting".equals(state.optString("state"))) {
                 return state;
             }
             if (System.currentTimeMillis() > until) {
-                LogUtil.info(getClassName(), "The app export of system log " + systemLogId + " is still running: added when it ends");
+                LogUtil.info(getClassName(), "The app export of server capture " + captureId + " is still running: added when it ends");
                 return state;
             }
             try {
@@ -840,7 +841,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         boolean apps = !"false".equals(getPropertyString("includeAppExport")) && access.canUpload() && access.mayExportApps();
         boolean sample = apps && !"false".equals(getPropertyString("sampleData"));
         return new JSONObject()
-                .put("systemLog", capture)
+                .put("serverCapture", capture)
                 .put("apps", apps)
                 .put("sample", sample)
                 .put("real", sample) // Mask data: offered wherever sample data is
@@ -878,7 +879,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
     /**
      * The Glowroot data packages (GlowrootPackager): without node, each node's status {nodes: [...]}; with node, that
-     * node's ZIP. For the same users as the system log.
+     * node's ZIP. For the same users as the other server data.
      */
     private void glowrootData(HttpServletRequest request, HttpServletResponse response, RecordingStore store, Access access, String id)
             throws IOException, JSONException {
@@ -956,18 +957,18 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         sendFile(request, response, store.traceFile(id, name), "text/html;charset=UTF-8", name);
     }
 
-    /** Moves the system log captured under systemLogId into the recording. Returns the summary for meta.json. */
+    /** Moves the server data captured under captureId into the recording. Returns the summary for meta.json. */
     /** withApps: take the apps exported at stop (only when that export is the one the recording uses). */
-    private JSONObject attachSystemLog(RecordingStore store, String recId, String systemLogId, String owner, boolean withApps)
+    private JSONObject attachServerCapture(RecordingStore store, String recId, String captureId, String owner, boolean withApps)
             throws JSONException {
-        SystemLogCapture.close(systemLogId); // flush this node's file
+        ServerCapture.close(captureId); // flush this node's file
         try {
-            JSONObject summary = SystemLogCapture.store().attach(systemLogId, owner, store.path(recId, RecordingStore.SYSTEM_LOG), withApps);
+            JSONObject summary = ServerCapture.store().attach(captureId, owner, store.path(recId, RecordingStore.SYSTEM_LOG), withApps);
             if (summary != null) {
                 return summary;
             }
         } catch (IOException e) {
-            LogUtil.error(getClassName(), e, "Could not attach the system log of recording " + recId);
+            LogUtil.error(getClassName(), e, "Could not attach the server capture of recording " + recId);
         }
         // Never started, deleted after the keep period, or another user's
         return new JSONObject().put("status", "unavailable");

@@ -114,16 +114,16 @@ public class RecordingZipTest {
         assertEquals("My title", meta.getString("title"));
         assertEquals("My notes", meta.getString("notes"));
         assertEquals("alice", meta.getJSONObject("importedFrom").getString("owner"));
-        assertEquals(1, meta.getJSONObject("systemLog").getInt("entries"));
-        assertEquals(1, meta.getJSONObject("systemLog").getInt("errors"));
-        assertFalse("capture id of the other server is not kept", meta.has("systemLogId"));
+        assertEquals(1, meta.getJSONObject(RecordingStore.CAPTURE).getInt("entries"));
+        assertEquals(1, meta.getJSONObject(RecordingStore.CAPTURE).getInt("errors"));
+        assertFalse("capture id of the other server is not kept", meta.has("captureId"));
         assertEquals(WEBM.length, to.readMeta(newId).getLong("videoSize"));
         assertArrayEquals(WEBM, Files.readAllBytes(to.file(newId, RecordingStore.VIDEO)));
         assertEquals(SESSION, new String(Files.readAllBytes(to.file(newId, RecordingStore.SESSION)), StandardCharsets.UTF_8));
 
         // Not allowed to see system logs: the recording comes in without it
         JSONObject noLog = RecordingZip.importZip(to, zipOf(id, true), 1 << 20, false, "carol", "Carol");
-        assertFalse(noLog.has("systemLog"));
+        assertFalse(noLog.has(RecordingStore.CAPTURE));
         assertNull(to.file(noLog.getString("id"), RecordingStore.SYSTEM_LOG));
         assertTrue("the response says why", noLog.optBoolean("serverDataSkipped"));
         assertFalse("not stored", to.readMeta(noLog.getString("id")).has("serverDataSkipped"));

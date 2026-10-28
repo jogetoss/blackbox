@@ -32,7 +32,7 @@ window.blackboxPage = 'server'; // for the Features list
     }
     $('dlZip').href = BB.url('download', { id, format: 'zip' });
     $('dlHtml').href = BB.url('download', { id, format: 'html' });
-    if (meta.canViewServerData && meta.systemLog && meta.systemLog.status === 'attached') {
+    if (meta.canViewServerData && meta.serverCapture && meta.serverCapture.status === 'attached') {
       $('dlHtml').title += ' (includes the system logs: share it only with people who may see it)';
       $('dlZip').title += ' (includes the system logs)';
     }
@@ -48,7 +48,7 @@ window.blackboxPage = 'server'; // for the Features list
     let gauges = null;
     let serverInfo = null;
     let apps = null;
-    if (meta.systemLog && meta.systemLog.status === 'attached' && meta.canViewServerData) {
+    if (meta.serverCapture && meta.serverCapture.status === 'attached' && meta.canViewServerData) {
       systemLog = await BB.getJson('systemlog', { id }).catch((e) => { systemLogError = e; return null; });
       traces = await BB.getJson('traces', { id }).catch(() => null);
       gauges = await BB.getJson('gauges', { id }).catch(() => null);
@@ -73,7 +73,7 @@ window.blackboxPage = 'server'; // for the Features list
       info: BB.uploadInfo(meta),
     });
     if (traces) followTraces(traces);
-    if (meta.systemLog && meta.systemLog.status === 'attached' && meta.canViewServerData) glowrootData().catch(() => { /* no button */ });
+    if (meta.serverCapture && meta.serverCapture.status === 'attached' && meta.canViewServerData) glowrootData().catch(() => { /* no button */ });
     if (meta.canViewServerData && meta.appExport && meta.appExport.state === 'exporting') appsPending();
     $('recStatus').hidden = false;
     neighbours().catch(() => { /* no Older / Newer, the recording still plays */ });

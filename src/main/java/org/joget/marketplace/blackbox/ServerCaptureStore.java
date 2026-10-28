@@ -15,13 +15,14 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 /**
- * System log lines captured while a recording runs, kept until the recording is uploaded:
+ * Server data captured while a recording runs (log lines, requests, traces, server load, System Info, apps exported at
+ * stop), kept until the recording is uploaded. The log lines:
  * {root}/{id}/meta.json + system-log.{node}.jsonl (one file per cluster node, so two nodes never write the same file).
  * On upload, {@link #attach} merges them into the recording's system-log.json and deletes the pending folder.
  *
  * The id is a random UUID made by the extension; only the user who started the capture can attach it.
  */
-public class SystemLogStore {
+public class ServerCaptureStore {
 
     public static final String FILE = "system-log.json";
     private static final String META = "meta.json";
@@ -31,7 +32,7 @@ public class SystemLogStore {
 
     private final Path root;
 
-    public SystemLogStore(Path root) {
+    public ServerCaptureStore(Path root) {
         this.root = root;
     }
 

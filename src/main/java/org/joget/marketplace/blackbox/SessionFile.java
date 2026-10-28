@@ -180,7 +180,7 @@ final class SessionFile {
 
     /**
      * Checks a system-log.json file as a stream (an object with an entries list) and returns its summary for meta.json,
-     * like {@link SystemLogStore#summary}, counting one entry at a time.
+     * like {@link ServerCaptureStore#summary}, counting one entry at a time.
      */
     static JSONObject systemLogSummary(Path file) throws IOException, RecordingStore.InvalidUpload {
         int[] n = new int[4]; // entries, requests, other, errors
