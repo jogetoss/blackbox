@@ -307,4 +307,5 @@ When the picker does share system audio, it replaces the tab's sound. Details:
 - `MediaRecorder` records only the first sound track: page sound and microphone are mixed into one track (Opus).
 - The microphone is opened after the picked source, with `getUserMedia({ audio: true })` in the recorder window (the
   permission belongs to the extension's origin). A refused microphone or missing page sound doesn't stop the
-  recording; the reason goes to `recording.audio.message` in `session.json`.
+  recording; the reason goes to `recording.audio.message` in `session.json`. Page sound and microphone share one
+  track; `recording.audio` = `{ page, pageSource: "tab" | "system", mic, message }`.
