@@ -37,7 +37,8 @@ Range), `systemlog`, `download` (`format=zip` or `html`), `import`, `delete`, `r
   `JsonResponseFilter` does not: on `/web/json/*` it rejects requests whose `Referer` is not Joget, and the extension's
   requests have none. The filter answers the request itself, so it never reaches Joget's API Builder servlet.
 - CSRF: POSTs are accepted from a `chrome-extension://` `Origin` (no web page can send that) or with the
-  `OWASP-CSRFTOKEN` header (the pages get it from `/web/json/directory/user/csrfToken`). CSRFGuard itself only
+  CSRF token header (named by `SecurityUtil.getCsrfTokenName()`, `OWASP-CSRFTOKEN` by default; the pages get name and
+  value from `/web/json/directory/user/csrfToken`). CSRFGuard itself only
   covers `/web/*`.
 - Uploads are raw request bodies (not multipart): `create` takes `session.json` (title and notes as query
   parameters), then `video` takes `recording.webm`. Only the uploader can add the video, once.
@@ -50,10 +51,15 @@ Range), `systemlog`, `download` (`format=zip` or `html`), `import`, `delete`, `r
 
 ## Storage
 
-One folder per recording under `<wflow>/blackbox/<id>/`: `meta.json`, `session.json`, `recording.webm`,
-`system-log.json` when system logs were attached, `traces/` when Glowroot traces were copied, `gauges/` with the
-server load samples, `server-info.json`, `glowroot/` with the Glowroot data, and `app/` with the exported apps
-(`apps.json` + `<appId>-<version>.jwa`). Captures waiting for an upload are in
+One folder per recording under `<wflow>/blackbox/<id>/`:
+
+- always: `meta.json`, `session.json`, `recording.webm`;
+- with a system log capture: `system-log.json`, `server-info.json`, and (when their settings are on) `traces/`,
+  `gauges/` (server load) and `glowroot/` (Glowroot data);
+- `app/` with the exported apps (`apps.json` + `<appId>-<version>.jwa`; `apps.json` also holds the sample's
+  `idMap`), exported at stop, or at upload without a capture.
+
+Captures waiting for an upload are in
 `<wflow>/blackbox/pending/`, Retry requests in `<wflow>/blackbox/retry/`. No database tables. Folders on a shared
 `wflow` directory work for clustered nodes; deleting a recording removes its folder.
 
@@ -61,8 +67,9 @@ The extension keeps recordings in IndexedDB (newest 10), or reads them from a li
 
 ## System logs
 
-1. When recording starts, the extension calls `recording-start` with a random id (the user must be logged in and allowed
-   to upload), then adds `X-BlackBox-Id: <id>` to the recorded tab's requests to the Upload URL's server
+1. When recording starts, the extension calls `recording-start` with a random UUID (lower case). The server refuses
+   with 403 when **Capture system logs** (`captureSystemLogs`, off by default) is off or the user may not upload, and
+   with 409 when the id belongs to another user's capture (the same user may start it again). The extension then adds `X-BlackBox-Id: <id>` to the recorded tab's requests to the Upload URL's server
    (`declarativeNetRequest` session rule). Requests made by a service worker carry no tab id, and Joget's PWA service
    worker re-fetches almost every userview request, so those are tagged too; while recording, other tabs on the same
    server can add lines.
@@ -71,9 +78,10 @@ The extension keeps recordings in IndexedDB (newest 10), or reads them from a li
    `<wflow>/blackbox/pending/<id>/system-log.<node>.jsonl`, flushed every 2 seconds.
 3. Stop removes the rule; the recorder calls `recording-stop` with the app export's input (see "App export"), or the
    service worker calls it plainly when the recorder can't. The lines wait on the server until the recording is uploaded;
-   `session.json` carries the id (`recording.systemLog`), and `create` moves them into the recording as
-   `system-log.json`. Only the user who started the capture can attach it. Captures never uploaded are deleted after
-   the keep period (checked every hour).
+   `session.json` carries the id (`recording.systemLog.id`), and `create` moves them into the recording as
+   `system-log.json`. Only the user who started the capture can attach it. After the move, the pending folder keeps
+   only `meta.json` pointing at the recording, for 24 hours (`FORWARD_MS`), so late traces still reach it. Captures
+   never uploaded are deleted after the keep period (checked every hour).
 4. The replay page loads `system-log.json` for allowed users and lines it up with the video. The plugin sends
    `X-BlackBox-Time` (server clock) on tagged responses; if the server clock differs from the browser's by more than
    250 ms, the viewer corrects it. The plugin's own request entries (not in `joget.log`) are only shown in a network
@@ -96,10 +104,12 @@ so `SystemLogCapture` reaches it through Joget's classloader by reflection; the 
   (default 2000 ms, or a lower per-transaction override), or failed (exception, 5xx, and 4xx when its servlet plugin
   says so). BlackBox reads these settings and never changes them.
 - **When:** each node collects the traces of the requests it served, as soon as each request ends, not at stop or
-  upload. Glowroot stores a trace just after the request, so the node tries after 2, 5, 15, 30 and 60 seconds, then
-  every minute, for up to 10 minutes. A request still running past the threshold is listed as pending at once and
-  refreshed every 3 minutes while it runs.
-- **Clusters:** each node reads only its own Glowroot (on `localhost`) and writes its own files to the shared folder.
+  upload. Glowroot stores a trace just after the request, so the node waits 2, 5, 15, 30 and 60 seconds between tries
+  (about 2, 7, 22, 52 and 112 s after the request), then every minute, for up to 10 minutes. A request still running
+  past the threshold is listed as pending at once and refreshed every 3 minutes while it runs. A trace export over
+  20 MB is not saved; only its summary is kept.
+- **Clusters:** each node writes its own files to the shared folder. With **Glowroot address** empty, each node reads
+  its own Glowroot (the local agent's port); when it is set, every node uses that address.
 - **What is kept:** `traces/<node>.jsonl` (one line per state change: pending, saved, none, failed, with a reason) and
   `traces/<node>-<traceId>.html`, Glowroot's own export of the trace (a self-contained page, about 0.4–1 MB). At most
   100 traces per recording per node.
@@ -107,15 +117,19 @@ so `SystemLogCapture` reaches it through Joget's classloader by reflection; the 
   `meta.json` pointing at the recording for a day, so traces of requests still running go to the recording. The replay
   page shows "⏳" on the Traces tab while some are pending, refreshes every 5 seconds, and asks before a download that
   would miss them. A trace with no news for 10 minutes is shown as failed.
-- **Glowroot not reachable:** the recording is saved as usual; the trace is marked failed with the reason (not
-  installed, connection refused, needs a login). Only Glowroot's anonymous access is supported.
+- **Glowroot not reachable:** the recording is saved as usual. With no Glowroot agent in the JVM, the request is
+  marked failed at once ("not running"), judged by a 2000 ms / 5xx / exception rule. Other errors (connection refused,
+  needs a login) keep retrying and end as failed ("Could not read Glowroot: …") after 10 minutes. When Glowroot's
+  settings can't be read, the same fallback rule decides (4xx never counts). Only anonymous access is supported.
 - **Retry:** only the node that served a request can read its trace, and the click may reach any node, so
   `trace-retry` marks the traces pending and writes `<wflow>/blackbox/retry/<recording>@<node>.json`; each node picks
   up its own every 20 seconds and tries again as above. A node that never answers (removed, or renamed) makes the trace
-  failed again after 10 minutes. One retry per recording every 20 seconds. Glowroot keeps traces for 14 days by
-  default, so older ones may be gone. The newest state wins across nodes, so node clocks should be in sync.
-- **Viewing a trace:** `trace&file=…` serves Glowroot's page with `Content-Security-Policy: sandbox allow-scripts`, so
-  its script runs without access to Joget's cookies or pages. It loads Google Fonts and Font Awesome from the internet.
+  failed again after 10 minutes. One retry per recording every 20 seconds on each node (an in-memory map; more often
+  gets 429). Glowroot keeps traces for 14 days by default, so older ones may be gone. The newest state wins across
+  nodes, so node clocks should be in sync.
+- **Viewing a trace:** `trace&file=…` serves Glowroot's page with `Content-Security-Policy: sandbox allow-scripts
+  allow-popups` and `Referrer-Policy: no-referrer`, so its script runs without access to Joget's cookies or pages. It
+  loads Google Fonts and Font Awesome from the internet.
 
 ## Glowroot data
 
@@ -125,10 +139,15 @@ so `SystemLogCapture` reaches it through Joget's classloader by reflection; the 
 - **What is kept:** the tagged traces, the aggregates and gauges of all traffic on that node during the recording
   (plus one rollup bucket on each side, which Glowroot's charts show), and Glowroot's lookup tables. Aggregates and
   gauges can't be split per user.
+- **Setting:** **Copy Glowroot data** (`captureGlowrootData`) is off by default. Only Glowroot 0.14 is supported; other
+  versions fail with the reason.
 - **When:** about a minute after the stop (after Glowroot has written the aggregates of the stop's minute), each node
-  that served the recording builds `glowroot/<node>.zip` in the pending folder, or in the recording once uploaded.
-  `glowroot/<node>.json` holds the state (waiting, building, saved, failed) and the reason. A package not built when
-  Joget stops is not built after a restart.
+  where the capture is open builds `glowroot/<node>.zip`: the node that took `recording-start` and every node that
+  served a recorded request. It goes in the pending folder, or in the recording once uploaded. `glowroot/<node>.json`
+  holds the state (waiting, building, saved, failed) and the reason. A capture never stopped fails after 3 hours.
+- **Restart:** only an in-memory list (`GlowrootPackager.WATCHED`) tracks packages, so one not built when Joget stops
+  is never built, and its state stays `waiting` or `building`. The recording then counts as building for good: Download
+  ZIP answers 409, the replay page keeps polling, and the list keeps **Glowroot ⏳**.
 - **How:** `GlowrootData` copies `data.h2.db` (Glowroot keeps it locked; the copy is not), deletes every row outside
   the recording with Glowroot's own shaded H2 driver (`lib/glowroot-embedded-collector.jar`, H2 1.3), reads only the
   blocks the kept rows point to straight from the live `*.capped.db` ring files, writes them into new capped files of
@@ -140,13 +159,14 @@ so `SystemLogCapture` reaches it through Joget's classloader by reflection; the 
   `admin.json` (localhost on port 4000, nothing expires; none of the server's users, LDAP or SMTP), `README.txt` with
   the steps and the time range, and `Sleep.java` (an idle JVM for the agent).
 - **Disk space while building:** one copy of Glowroot's `data.h2.db` in Joget's temp folder (`java.io.tmpdir`,
-  `/opt/tomcat/temp` in the Joget image), deleted when the package is done; the capped files are read in place,
-  not copied. The rows are deleted in batches of 20,000, each committed, so the copy never grows past its starting
+  `/opt/tomcat/temp` in the Joget image), plus the new capped files holding only the kept blocks, all deleted when the
+  package is done; the live capped files are read in place, not copied. The ZIP is written to the capture's folder.
+  The rows are deleted in batches of 20,000, each committed, so the copy never grows past its starting
   size (measured: 127 MB stayed 127 MB, then 1.5 MB after compacting; one big delete made it 1.36 times larger first).
   Before each build the node checks for that size plus 10% (at least 64 MB) free; with less, the package fails with
   the reason, shown on the replay page's button and in Joget's log.
-- **Downloads:** while a package is still being built, Download ZIP waits (the server answers 409; the list's batch
-  download is off for those rows, tagged **Glowroot ⏳**).
+- **Downloads:** while a package is still being built, Download ZIP waits (the server answers 409). Rows are tagged
+  **Glowroot ⏳**, and the list's batch **Download ZIP** is off while any selected row is building.
 
 ## Server load
 
@@ -180,7 +200,7 @@ Sections:
 - **Recent changes** (first in the Info tab): app versions by `dateModified` (`AppDefinitionDao.findByVersion`, newest
   50; saving a form, list or userview updates it), top-level files of the wflow folder modified
   in the period (not logs, not `servers.json` / `serversIP.properties` / `app_presence.json`, which Joget rewrites), and
-  the JVM start when it is in the period. Every changed app version goes into `server-info.json` as `recentApps`
+  the JVM start when it is in the period. Every changed app version among those 50 goes into `server-info.json` as `recentApps`
   (`{id, version, published, name, modified}`); with the app export (at stop, or at upload without one)
   `ServerInfo.summarizeApps` narrows the shown **App versions** to the apps the recording used and other apps whose
   forms use one of their tables (`SampleData.tables`), one line per app: its latest change and how many versions
@@ -197,9 +217,9 @@ Sections:
   - **Node switches** (only when it happened): how often the next recorded request went to another node.
   - The served counts come from the system log: each node names its files by Joget's node name (`wflow.name`, else
     the hostname), and `attach` puts the `node` from the `system-log.<node>.jsonl` file name on each request entry.
-- **Plugins**: one entry per jar in `app_plugins` (`PluginManager.getBaseDirectory()`): modified date, size, then each
-  plugin it loaded (name, version, class) from `listOsgiPlugin` + `getJarFileName`. A jar with none failed to load or
-  holds no plugin; a loaded jar not in the folder says so.
+- **Plugins**: one entry per jar in `app_plugins` (`PluginManager.getBaseDirectory()`): modified date and size, plus
+  `not loaded` when no loaded plugin comes from it (`listOsgiPlugin` + `getJarFileName`): it failed to load or holds no
+  plugin. A loaded jar not in the folder shows `Not in the plugin folder`. Plugin names and versions are not saved.
 - **Database**: the current profile's `app_datasource-<profile>.properties`: profile, JDBC driver, URL and user, then
   every other key in the file. The password is left out, and `password=` values in the URL are masked.
 - **DB pool** (`connectionPool`): the pool state at recording start (size, active, idle, waiting), then every Tomcat JDBC pool
@@ -217,14 +237,17 @@ Sections:
 1. The recorder builds `session.json`, then POSTs `recording-stop` with a JSON body: its network entries (`t`, `url`,
    `type`, `status`, `failed`, `postData`, the `referer` header) and console errors, plus `apps=false` or
    `sampleData=none|masked|real` from `recording.options` (the popup's quick settings, `quick.js`). It waits up to
-   150 s and saves the result in `recording.systemLog.appExport`.
+   150 s and saves a summary in `recording.systemLog.appExport`: `{state, sampleData, apps}` (`apps` = how many saved).
 2. `exportAtStop` writes the body and the capture's lines so far (`SystemLogStore.writeLines`; lines other nodes
    haven't flushed are missing) next to the capture and exports into the pending folder's `app/`.
-3. The state is kept in the capture's `meta.json` as `appExport`: `off`, `exporting`, `done` (with `saved`) or `failed`.
+3. The state is kept in the capture's `meta.json` as `appExport`: `off`, `exporting` (with `at`), `done` (with `saved`
+   and `sampleData`) or `failed`.
 4. `create` waits up to 120 s while it is `exporting`, then `attach` moves `app/` into the recording and `meta.apps`
    takes `saved`; `off` exports nothing.
-5. Fallback: with no export at stop (no capture, the body never arrived, or `failed`), `create` exports as below from
-   the uploaded files, with `apps` / `sampleData` from the upload (the form, or `recording.options` when automatic).
+5. Fallback: unless the state is `done` or `off`, `create` exports as below from the uploaded files, with `apps` /
+   `sampleData` from the upload (the form, or `recording.options` when automatic). That covers no capture, a body that
+   never arrived, `failed`, a capture of another user, and the 120 s wait running out. In the last case the stop's
+   export may still be running: `attach` moves its unfinished `app/`, and the export at upload rewrites `apps.json`.
 
 `me.options` (`quickSettings`) says what this user may get, for the popup and the upload form alike: `systemLog`,
 `apps` (also needs upload rights), `sample` (also needs the server data of one's own recordings), `real` (Mask data:
@@ -234,14 +257,15 @@ for older extensions. Apart from Mask data, a choice can only turn a setting off
 
 The export (`exportApps`) runs `AppExport`: `hits` reads `session.json` (each request with its page:
 a document's own URL, else its Referer; failed or 4xx/5xx = a problem; console errors = a problem on the page shown
-then) and the system log (requests, 5xx = a problem; error lines = a problem on their request; other threads skipped),
+then) and the system log (requests, 5xx or an `error` = a problem; error lines = a problem on their request; other threads skipped),
 URL-decoded. `find` matches them against Joget's app URL patterns (`appOf`; app icons and screenshots name none). The
 browser's requests name the apps; system log hits only add to those (it also gets other tabs' service worker
 requests, which carry no tab id), unless the browser named none. App Center is dropped unless it had problems or was
 alone. Apps rank by problems, then requests; the top `maxApps` (default 5, 0 = all) are exported with
 `AppService.exportApp` (reads the current request's parameters, which carry no `tablenames`, `usergroups` or
 `exportplugins`, so no data, groups or plugins go in). `apps.json` records each app's state: `saved`, `missing`,
-`failed` (with the reason) or `skipped` (beyond the cap), and `problems`. `meta.apps` keeps `[{id, name, version,
+`failed` or `skipped` (beyond the cap), the last three with a `reason`, and `problems`; a failing sample hook leaves
+`sample: {error}`. `meta.apps` keeps `[{id, name, version,
 problems}]` for the list (hidden by `hideServerData`, see the API). `appfile` serves only names
 matching `<id>-<n>.jwa`.
 
@@ -260,13 +284,15 @@ true)`, the format `AppService.importFormData` reads) and `app_formuploads/<tabl
 
 `ProcessData` runs in the same hook: process ids from the recorded ids, the sample's old record ids and the process ids
 in its rows (activity ids resolved with `getActivityById`), kept when the process definition id starts with
-`<appId>#`; `getRunningProcessById`, `getProcessVariableList`, `getActivityList` (by activated time) and
-`getRunningActivityInfo` (assignees, accepted user). Written to the app's `processes` in `apps.json`.
+`<appId>#`; `getRunningProcessById`, `getProcessVariableList`, `getActivityList` (by `dateCreated`, oldest first) and
+`getRunningActivityInfo` (assignees, accepted user). At most 20 processes per app and 100 activities per process
+(`activitiesCut: true` when cut). Written to the app's `processes` in `apps.json`.
 
 ## Plugin parts
 
 | Part | Job |
 |---|---|
+| `Activator` | Registers `BlackBoxPlugin`, `BlackBoxPageFilter`, `BlackBoxApiFilter` and `SystemLogFilter` |
 | `BlackBoxPlugin` | System settings + API logic (actions above) |
 | `BlackBoxApiFilter` | Serves the API at `/api/blackbox?action=…` |
 | `BlackBoxPageFilter` | Serves the static pages at `/blackbox/…` |
@@ -287,6 +313,7 @@ in its rows (activity ids resolved with `getActivityById`), kept when the proces
 | `GaugeSampler` | Per node: samples heap, GC, CPU, busy threads and DB pool every second while a capture is open |
 | `GaugeStore` | `gauges/` files: append, merge per node, move on upload, ZIP import |
 | `TraceStore` | `traces/` files: append, merge (latest state per request), move on upload, summary of a trace |
+| `ServerData` | The `serverData` summary in `meta.json` for the list (traces, peak load, Info, Glowroot state), made at upload and refreshed as traces arrive |
 | `src/main/resources/static/blackbox/` | Pages: list, view (+ shared viewer from the extension) |
 
 ## Extension parts
