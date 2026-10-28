@@ -125,6 +125,9 @@ public class RecordingZipTest {
         JSONObject noLog = RecordingZip.importZip(to, zipOf(id, true), 1 << 20, false, "carol", "Carol");
         assertFalse(noLog.has("systemLog"));
         assertNull(to.file(noLog.getString("id"), RecordingStore.SYSTEM_LOG));
+        assertTrue("the response says why", noLog.optBoolean("serverDataSkipped"));
+        assertFalse("not stored", to.readMeta(noLog.getString("id")).has("serverDataSkipped"));
+        assertFalse(meta.has("serverDataSkipped"));
     }
 
     @Test

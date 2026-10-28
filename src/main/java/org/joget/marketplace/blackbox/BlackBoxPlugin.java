@@ -131,7 +131,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                     meta.put("canDelete", access.canDelete(meta));
                     meta.put("canViewSystemLog", access.canViewSystemLog(meta));
                     if (!access.canViewSystemLog(meta)) {
-                        meta.remove("apps");
+                        hideServerData(meta);
                     }
                     json(response, meta);
                 }
@@ -216,6 +216,13 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
     }
 
+    /** Removes the meta keys that are server data, for users who may not see it (list, meta, HTML download). */
+    static void hideServerData(JSONObject meta) {
+        meta.remove("systemLog"); // its error count is server data too
+        meta.remove("serverData");
+        meta.remove("apps");
+    }
+
     private void list(HttpServletResponse response, RecordingStore store, Access access) throws IOException, JSONException {
         JSONArray rows = new JSONArray();
         for (JSONObject meta : store.list()) {
@@ -224,9 +231,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 boolean server = access.canViewSystemLog(meta);
                 meta.put("canViewSystemLog", server);
                 if (!server) {
-                    meta.remove("systemLog"); // its error count is server data too
-                    meta.remove("serverData");
-                    meta.remove("apps");
+                    hideServerData(meta);
                 }
                 rows.put(meta);
             }
@@ -403,7 +408,9 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             return;
         }
         Path systemLog = access.canViewSystemLog(meta) ? store.file(id, RecordingStore.SYSTEM_LOG) : null;
-        if (systemLog == null) {
+        if (!access.canViewSystemLog(meta)) {
+            hideServerData(meta); // the file carries meta as JSON, read or not
+        } else if (systemLog == null) {
             meta.remove("systemLog"); // the summary would point at data that is not in the file
         }
         RecordingHtml export = RecordingHtml.fromResources();
@@ -655,7 +662,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
      */
     private JSONObject quickSettings(Access access, User user) throws JSONException {
         boolean capture = "true".equals(getPropertyString("captureSystemLogs")) && access.canUpload();
-        boolean apps = !"false".equals(getPropertyString("includeAppExport"));
+        boolean apps = !"false".equals(getPropertyString("includeAppExport")) && access.canUpload();
         boolean sample = apps && !"false".equals(getPropertyString("sampleData"))
                 && access.canViewSystemLog(new JSONObject().put("owner", user.getUsername()));
         return new JSONObject()

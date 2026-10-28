@@ -185,6 +185,9 @@ public class RecordingZip {
                             .put("uploadedAt", old.optString("uploadedAt")));
                 }
                 store.updateMeta(id, meta);
+                if (!keepSystemLog && (logEntry != null || zip.getEntry(AppExport.DIR + "/" + AppExport.LIST) != null)) {
+                    meta.put("serverDataSkipped", true); // in the response only, so the page can say why it's missing
+                }
                 return meta;
             } catch (RecordingStore.InvalidUpload | IOException | RuntimeException e) { // JSONException is a RuntimeException
                 store.delete(id);

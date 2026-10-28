@@ -29,7 +29,22 @@
     if (recovered.length) message(`Recovered ${recovered.length} recording(s) interrupted by a crash. They end where the last save was (every 5 s).`);
     await Store.restoreFolder();
     await render();
+    await checkUpload();
   });
+
+  // Set when the Upload URL's server says this user may not upload: Upload selected is then disabled with the reason
+  let uploadRefused = '';
+  async function checkUpload() {
+    const { uploadUrl } = await Server.getSettings();
+    if (!uploadUrl || !(await Server.hasPermission(uploadUrl))) return;
+    try {
+      const me = await Server.me(uploadUrl);
+      uploadRefused = me.canUpload ? '' : `You (${me.user.name}) are not allowed to upload recordings. Ask the server's admin.`;
+    } catch (e) {
+      return; // not logged in or not reachable: the upload itself says so
+    }
+    renderBatch();
+  }
 
   function run(fn) {
     Promise.resolve().then(fn).catch(showError);
@@ -144,7 +159,8 @@
     const sel = picked();
     const n = (f) => sel.filter(f).length;
     $('selCount').textContent = sel.length ? `${sel.length} selected` : 'Tick recordings to act on several at once';
-    label('batchUpload', 'Upload selected', n(canUpload), 'Already uploaded, or no local copy');
+    label('batchUpload', 'Upload selected', uploadRefused ? 0 : n(canUpload), 'Already uploaded, or no local copy');
+    if (uploadRefused) $('batchUpload').title = uploadRefused;
     label('batchZip', 'Download ZIP', n(canZip), 'Upload history has no local copy');
     label('batchDelete', 'Delete selected', n(canDelete), 'Recordings on disk can be deleted once uploaded');
     function label(id, text, count, why) {

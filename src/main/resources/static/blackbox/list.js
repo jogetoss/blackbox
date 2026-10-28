@@ -32,7 +32,19 @@
       const meta = await BB.post('import', {}, file, 'application/zip', (done, total) => {
         text.textContent = 'Importing… ' + Math.round(100 * done / total) + '% ';
       });
-      location.href = 'view?id=' + encodeURIComponent(meta.id);
+      const url = 'view?id=' + encodeURIComponent(meta.id);
+      if (!meta.serverDataSkipped) {
+        location.href = url;
+        return;
+      }
+      // Stay here to say why the copy has no server data; the ZIP may hold other users' data
+      const open = document.createElement('a');
+      open.href = url;
+      open.textContent = 'Open it';
+      $('notice').replaceChildren(`Imported "${meta.title || meta.id}" without its server data (system logs, traces, `
+        + 'apps): importing it needs "Who can view system logs" in the BlackBox settings. ', open);
+      $('notice').hidden = false;
+      await load();
     } catch (e) {
       if (!BB.loginNeeded(e, $('error'))) showError(e);
     } finally {

@@ -18,7 +18,8 @@ rebuild it after changing `chrome-extension/viewer.js` or `viewer.css`.
 
 - **Recordings list:** `<context>/blackbox/` (e.g. `http://localhost:8080/jw/blackbox/`). Users who may see server
   data also get **Server issues** and **Server data** columns. Tick rows for **Download ZIP** / **Delete selected**;
-  **Import ZIP…** adds a recording ZIP as a new recording owned by you.
+  **Import ZIP…** adds a recording ZIP as a new recording owned by you; its server data comes along only for users in
+  **Who can view system logs** (the page says when it was left out).
 - **Replay page:** `<context>/blackbox/view?id=<id>`. **Features** lists everything it can do.
 - **Uploading:** in the extension's Settings, set **Upload URL** to `<context>/api/blackbox`. Uploads use your Joget
   login in that browser. When a recording stops and you are logged in, the extension uploads it and opens this replay
@@ -82,12 +83,13 @@ Admins can always do everything below.
 
 | What | Who |
 |---|---|
-| Upload | **Who can upload** |
+| Upload | **Who can upload** (the extension's **Upload selected** is disabled for others) |
 | View a recording | **Who can view all recordings**, or its uploader (with **Uploaders can view and delete…**) |
 | Delete a recording | **Who can delete any recording** (only recordings they can view), or its uploader (same setting) |
 | A recording's server data: system logs, traces, server load, Glowroot data, Info, exported apps and their lanes in the recordings list | **Who can view system logs** (who must also be able to view the recording), or its uploader with **Uploaders can view the server data…**. App definitions can hold plugin settings and environment variables |
 | Sample form data in their recordings | Users who can see their own recordings' server data (row above) |
 | Capture all server log lines | **Who can view system logs** only; the uploader setting doesn't count, since the lines hold other users' data |
+| Import a ZIP's server data | **Who can view system logs** only, for the same reason: a ZIP can hold another user's recording |
 | Downloads (ZIP, HTML) | Anyone who can view the recording; the server data is included only for users who may see it |
 
 ### Per-recording choices (popup)
@@ -97,7 +99,7 @@ allow it. The user must be logged in to the Upload URL's server for the popup to
 
 | Popup checkbox | Shown when | Default |
 |---|---|---|
-| **Export the apps used** | **Export the apps used in the recording** is on | ticked |
+| **Export the apps used** | **Export the apps used in the recording** is on, and the user can upload | ticked |
 | **Sample form data** | **Allow capturing form data** is on, and the user can see their own recordings' server data | ticked |
 | **Mask data** | Same as **Sample form data** | ticked |
 | **All server log lines** | **Capture system logs** + **Also capture all other server log lines** are on, and the user is in **Who can view system logs** and can upload | ticked |
