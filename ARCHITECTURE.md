@@ -31,7 +31,7 @@ setting, when set, takes priority over `url`.
 
 The plugin serves this at `<context>/api/blackbox` with more actions: `list`, `meta`, `session`, `video` (GET with HTTP
 Range), `systemlog`, `download` (`format=zip` or `html`), `import`, `delete`, `recording-start`, `recording-stop`,
-`traces`, `trace`, `trace-retry`, `gauges`, `serverinfo`, `glowroot`, `apps`, `appfile`.
+`traces`, `trace`, `trace-retry`, `gauges`, `serverinfo`, `glowroot`, `apps`, `appfile`, `app-export`.
 
 - The API lives at `/api/*` because Spring Security runs there (the logged-in user is known), but Joget's
   `JsonResponseFilter` does not: on `/web/json/*` it rejects requests whose `Referer` is not Joget, and the extension's
@@ -42,6 +42,13 @@ Range), `systemlog`, `download` (`format=zip` or `html`), `import`, `delete`, `r
   covers `/web/*`.
 - Uploads are raw request bodies (not multipart): `create` takes `session.json` (title and notes as query
   parameters), then `video` takes `recording.webm`. Only the uploader can add the video, once.
+- `session.json` (in `create`, in `import`, and the `recording-stop` body) is parsed whole in memory, so it is capped
+  at 100 MB (`MAX_SESSION_BYTES`, below the file limit) counting decompressed bytes, and at most 2 are parsed at once;
+  others wait up to 30 s, then get 503.
+- `meta.json` changes go through `RecordingStore.modifyMeta`: the latest copy is changed and saved under a per-recording
+  lock (in the JVM, plus a file lock on `.meta.lock` for nodes sharing the folder, where the file system supports it).
+  `updateMeta` replaces only the keys it is given. So the trace and Glowroot refreshes, the video upload and the
+  upload's own changes never put back an older copy (`writeVideo` also checks "already has a video" under the lock).
 - Server data in `meta.json` (`systemLog`, `serverData`, `apps`) is removed by `hideServerData` for users who may not
   see it, in `list`, `meta` and `download&format=html` (whose page carries the meta as JSON). The ZIP keeps only a
   fixed list of meta keys (`RecordingZip.META_KEYS`).
@@ -148,7 +155,10 @@ so `SystemLogCapture` reaches it through Joget's classloader by reflection; the 
 - **Restart:** an in-memory list (`GlowrootPackager.WATCHED`) tracks what to build, so on start `recover` checks this
   node's status files left `waiting` or `building`: while the capture's pending `meta.json` exists, it is watched again
   and built as usual (blocks Glowroot overwrote meanwhile count as lost); in a recording whose capture is gone, it is
-  marked failed. Otherwise the recording would count as building for good (Download ZIP 409, **Glowroot ⏳**).
+  marked failed. Otherwise the recording would count as building for good (Download ZIP 409, **Glowroot ⏳**). A build
+  cut off by a stop or shutdown is not marked failed: the copy is opened with `DB_CLOSE_ON_EXIT=FALSE` (else H2's own
+  shutdown hook closes it under the build), and an error while the plugin or JVM stops leaves `building`, so it is
+  built again after the restart.
 - **How:** `GlowrootData` copies `data.h2.db` (Glowroot keeps it locked; the copy is not), deletes every row outside
   the recording with Glowroot's own shaded H2 driver (`lib/glowroot-embedded-collector.jar`, H2 1.3), reads only the
   blocks the kept rows point to straight from the live `*.capped.db` ring files, writes them into new capped files of
@@ -237,19 +247,25 @@ Sections:
 
 1. The recorder builds `session.json`, then POSTs `recording-stop` with a JSON body: its network entries (`t`, `url`,
    `type`, `status`, `failed`, `postData`, the `referer` header) and console errors, plus `apps=false` or
-   `sampleData=none|masked|real` from `recording.options` (the popup's quick settings, `quick.js`). It waits up to
-   150 s and saves a summary in `recording.systemLog.appExport`: `{state, sampleData, apps}` (`apps` = how many saved).
+   `sampleData=none|masked|real` from `recording.options` (the popup's quick settings, `quick.js`).
 2. `exportAtStop` writes the body and the capture's lines so far (`SystemLogStore.writeLines`; lines other nodes
-   haven't flushed are missing) next to the capture and exports into the pending folder's `app/`.
+   haven't flushed are missing) next to the capture, decides which apps the user may have exported (`exportJob`, on
+   the request thread: the checks need the request and its user), and queues the export into the pending folder's
+   `app/` on `ExportJobs` (one background thread).
 3. The state is kept in the capture's `meta.json` as `appExport`: `off`, `exporting` (with `at`), `done` (with `saved`
    and `sampleData`) or `failed`.
-4. `create` waits up to 120 s while it is `exporting`, then `attach` moves `app/` into the recording and `meta.apps`
-   takes `saved`; `off` exports nothing.
-5. Fallback: unless the state is `done` or `off`, `create` exports as below from the uploaded files, with `apps` /
-   `sampleData` from the upload (the form, or `recording.options` when automatic). That covers no capture, a body that
-   never arrived, `failed`, a capture of another user, and the 120 s wait running out. `attach` moves the stop's
-   `app/` only when its state is `done` (`withApps`); otherwise it stays in the pending folder (a stop export still
-   running finishes there) and is deleted with it.
+4. `recording-stop` waits up to 20 s (`STOP_SYNC_MS`, under common proxy timeouts such as nginx's 60 s) and answers
+   the state, `exporting` if it runs on. The recorder then polls `GET app-export&id=<capture>` (owner only) every 3 s,
+   up to 150 s, and saves a summary in `recording.systemLog.appExport`: `{state, sampleData, apps}` (`apps` = how many).
+5. `create` also waits up to 20 s while it is `exporting`:
+   - `done`: `attach` moves `app/` into the recording and `meta.apps` takes `saved`; `off` exports nothing.
+   - still `exporting`: `attach` leaves `app/` (`withApps` false), the recording gets `appExport: {state: exporting,
+     capture}`, and `deliverStopExport` moves `app/` in and sets `apps` when the export ends (called by the job at its
+     end and by `create` once more; it acts only while the recording still waits for that capture). No second export.
+6. Fallback: with no usable export at stop (no capture, a body that never arrived, `failed`, a capture of another
+   user), `create` queues an export of the uploaded files (`apps` / `sampleData` from the upload: the form, or
+   `recording.options` when automatic) and answers at once; `meta.appExport` says `exporting` until it ends, then
+   `done` or `failed`. The replay page shows **Exporting apps…** and reloads when it is done.
 
 `me.options` (`quickSettings`) says what this user may get, for the popup and the upload form alike: `systemLog`,
 `apps` (upload rights and `Access.mayExportApps`: admin, an app admin of some app, or **Who can export apps they
@@ -325,6 +341,8 @@ in its rows (activity ids resolved with `getActivityById`), kept when the proces
 | `GlowrootData`, `GlowrootPackager`, `GlowrootTag` | Glowroot data packages; tagging recorded requests |
 | `ServerInfo` | System Info snapshot at recording-start (host, cluster, plugins, Java, Joget, DB, pool, license) |
 | `AppExport` | Finds the apps in the recorded URLs, exports them (at stop, else at upload), lists them in `app/apps.json` |
+| `AppAdmins` | An app's own admins from `app_src/<app>/app.properties`, as App Composer reads them |
+| `ExportJobs` | The background thread app exports run on, so requests answer within about 20 s |
 | `SampleData` | Picks the sample rows of an exported app, masks / remaps them, adds them to the `.jwa` |
 | `ProcessData` | The touched process instances of an exported app, read only, masked like the sample |
 | `Masker` | Shape-keeping fake values, kept values, user pseudonyms, the old -> new record id map |

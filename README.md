@@ -44,7 +44,7 @@ This section is the single place for what each setting does, who gets what, and 
 | Who can view all recordings | admins only | |
 | Who can delete any recording | admins only | Only recordings they can view |
 | Uploaders can view and delete their own recordings | Yes | |
-| Max file size (MB) | 500 | Video and session.json each |
+| Max file size (MB) | 500 | Video and session.json each; session.json at most 100 MB |
 
 **System logs** (all need **Capture system logs**)
 
@@ -137,7 +137,7 @@ settings and environment variables.
 
 When the recording stops, BlackBox exports the Joget apps the tab used as `.jwa` files (definition only: no form data,
 plugins or groups), **as they were at that moment**. Apps with problems come first, then the most used, up to **Most
-apps to export**. The version is the one the URL names, else the published one. App Center is only exported when it had problems or was the only app. If no system log was captured,
+apps to export**. The version is the one the URL names, else the published one. App Center is only exported when it had problems or was the only app. If the export runs long, the recording uploads without waiting and the apps are added when it ends (the replay page shows **Exporting apps…**). If no system log was captured,
 the export runs at upload instead.
 
 - **App** tab: each app's requests, time in use, **Download .jwa**, sample data and processes. Apps not exported are

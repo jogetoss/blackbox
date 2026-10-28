@@ -326,6 +326,9 @@ final class AppExport {
         if (apps.isEmpty()) {
             return summary;
         }
+        if (!Files.isDirectory(recordingDir)) {
+            throw new IOException("Gone: " + recordingDir.getFileName()); // deleted before a background export ran
+        }
         Path dir = recordingDir.resolve(DIR);
         Files.createDirectories(dir);
         try {

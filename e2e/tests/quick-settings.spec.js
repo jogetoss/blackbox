@@ -1,6 +1,6 @@
 // Popup quick settings and the app export at recording stop: the choices made before recording reach the server
 // at stop (recording-stop) or, without a system log capture, at the upload, also when nobody clicks Send.
-const { test, expect, JOGET, loginJoget, api } = require('./fixtures');
+const { test, expect, JOGET, loginJoget, api, appsWhenExported } = require('./fixtures');
 
 const ASSIGNMENT = `${JOGET}/web/client/app/iService/2/assignment/82809_70801_iService_supportRequest_requestAcceptByDepartment`;
 
@@ -112,7 +112,7 @@ test('stop exports the apps; the upload keeps that export', async ({ context, ex
   try {
     expect(rec.systemLog.status).toBe('attached');
     expect(rec.apps.map((a) => a.id)).toContain('iService');
-    const apps = await api(joget, 'apps', { id: rec.id });
+    const apps = await appsWhenExported(joget, rec.id);
     const iService = apps.apps.find((a) => a.id === 'iService');
     expect(iService.state).toBe('saved');
     expect(iService.sample.mode).toBe('masked');
@@ -171,7 +171,7 @@ test('no capture: the auto-upload sends the choices saved with the recording', a
   expect(await ok).toBe(true);
   const rec = await uploaded(joget, id);
   try {
-    const iService = (await api(joget, 'apps', { id: rec.id })).apps.find((a) => a.id === 'iService');
+    const iService = (await appsWhenExported(joget, rec.id)).apps.find((a) => a.id === 'iService');
     expect(iService.state).toBe('saved');
     expect(iService.sample).toBeUndefined();
   } finally {

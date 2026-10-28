@@ -113,7 +113,9 @@ final class GlowrootData {
         login.setProperty("user", "sa");
         login.setProperty("password", "");
         // a small cache: this runs inside Joget's JVM
-        String url = "jdbc:h2:" + outData.resolve("data").toAbsolutePath() + ";CACHE_SIZE=8192";
+        // DB_CLOSE_ON_EXIT=FALSE: H2's own shutdown hook would close the copy under a build still running; the build
+        // then stops with the JVM and stays "building", so it is built again after the restart (GlowrootPackager.recover)
+        String url = "jdbc:h2:" + outData.resolve("data").toAbsolutePath() + ";CACHE_SIZE=8192;DB_CLOSE_ON_EXIT=FALSE";
         try (Connection c = h2.connect(url, login)) {
             if (c == null) {
                 throw new SQLException("The H2 driver does not accept " + url);

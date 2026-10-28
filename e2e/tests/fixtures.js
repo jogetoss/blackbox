@@ -58,4 +58,15 @@ async function api(page, action, params = {}, method = 'GET') {
   }, { base: JOGET, action, params, method });
 }
 
-module.exports = { test, expect, JOGET, loginJoget, api };
+/** The apps of a recording once its app export, which runs in the background on the server, has finished. */
+async function appsWhenExported(page, id, timeoutMs = 90_000) {
+  const until = Date.now() + timeoutMs;
+  for (;;) {
+    const meta = await api(page, 'meta', { id });
+    if (meta.appExport?.state !== 'exporting') return api(page, 'apps', { id });
+    if (Date.now() > until) throw new Error('app export still running after ' + timeoutMs + ' ms');
+    await page.waitForTimeout(1000);
+  }
+}
+
+module.exports = { test, expect, JOGET, loginJoget, api, appsWhenExported };

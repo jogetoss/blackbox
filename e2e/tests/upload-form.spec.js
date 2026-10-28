@@ -1,5 +1,5 @@
 // The upload form's sample data choice: offered as the server allows, sent with the upload, used by the server.
-const { test, expect, JOGET, loginJoget, api } = require('./fixtures');
+const { test, expect, JOGET, loginJoget, api, appsWhenExported } = require('./fixtures');
 
 // A recording that opened an iService assignment (j8213's test data); no video
 function report(now, title) {
@@ -55,7 +55,7 @@ test('upload form offers masked sample data and the server builds it', async ({ 
   const rec = list.recordings.find((r) => r.title === id);
   expect(rec, 'uploaded recording in the list').toBeTruthy();
   try {
-    const apps = await api(joget, 'apps', { id: rec.id });
+    const apps = await appsWhenExported(joget, rec.id);
     const iService = apps.apps.find((a) => a.id === 'iService');
     expect(iService.state).toBe('saved');
     expect(iService.sample.mode).toBe('masked');
@@ -86,7 +86,7 @@ test('unticking sample data sends sampleData=none', async ({ context, extensionI
   expect(res.status()).toBe(200);
   const rec = (await api(joget, 'list')).recordings.find((r) => r.title === id);
   try {
-    const apps = await api(joget, 'apps', { id: rec.id });
+    const apps = await appsWhenExported(joget, rec.id);
     expect(apps.apps.find((a) => a.id === 'iService').sample).toBeUndefined();
   } finally {
     await api(joget, 'delete', { id: rec.id }, 'POST');

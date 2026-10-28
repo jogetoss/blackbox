@@ -66,6 +66,12 @@ final class GlowrootPackager {
             }
         }, 1, TimeUnit.SECONDS);
         jobs.scheduleWithFixedDelay(GlowrootPackager::tick, TICK_S, TICK_S, TimeUnit.SECONDS);
+        try {
+            shutdownFlag = new Thread(() -> jvmStopping = true, "BlackBox shutdown flag");
+            Runtime.getRuntime().addShutdownHook(shutdownFlag);
+        } catch (IllegalStateException | SecurityException e) {
+            shutdownFlag = null; // already shutting down, or not allowed: only the plugin's own stop is noticed
+        }
     }
 
     /**
@@ -112,6 +118,27 @@ final class GlowrootPackager {
             jobs = null;
         }
         WATCHED.clear();
+        if (shutdownFlag != null) {
+            try {
+                Runtime.getRuntime().removeShutdownHook(shutdownFlag);
+            } catch (IllegalStateException | SecurityException e) {
+                // the JVM is shutting down: the hook runs anyway
+            }
+            shutdownFlag = null;
+        }
+    }
+
+    private static volatile boolean jvmStopping;
+    private static Thread shutdownFlag; // registered while started, so a reloaded plugin leaves none behind
+
+    /** The plugin stopped (jobs gone), this thread was interrupted, or the JVM is shutting down. */
+    private static boolean stopping() {
+        synchronized (GlowrootPackager.class) {
+            if (jobs == null) {
+                return true;
+            }
+        }
+        return jvmStopping || Thread.currentThread().isInterrupted();
     }
 
     /** A capture is open on this node: build its package after it stops. */
@@ -206,6 +233,11 @@ final class GlowrootPackager {
             status(id, "saved", r.lostBlocks > 0 ? r.lostBlocks + " details were overwritten in Glowroot before they could be copied" : "", done);
             moveIfUploaded(id, dir);
         } catch (Exception | LinkageError e) {
+            if (stopping()) {
+                // Joget or the plugin is stopping: left "building", so recover builds it again after the restart
+                LogUtil.info(GlowrootPackager.class.getName(), "Glowroot data of capture " + id + " not built: stopping (" + e + ")");
+                return;
+            }
             LogUtil.warn(GlowrootPackager.class.getName(), "Could not build the Glowroot data of capture " + id + ": " + e);
             status(id, "failed", e.getMessage() != null ? e.getMessage() : e.toString(), null);
         } finally {

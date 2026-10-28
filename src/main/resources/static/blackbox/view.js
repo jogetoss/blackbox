@@ -74,6 +74,7 @@ window.blackboxPage = 'server'; // for the Features list
     });
     if (traces) followTraces(traces);
     if (meta.systemLog && meta.systemLog.status === 'attached' && meta.canViewSystemLog) glowrootData().catch(() => { /* no button */ });
+    if (meta.canViewSystemLog && meta.appExport && meta.appExport.state === 'exporting') appsPending();
     $('recStatus').hidden = false;
     neighbours().catch(() => { /* no Older / Newer, the recording still plays */ });
     if (systemLogError) window.blackboxShowError('Could not load the system logs: ' + (systemLogError.message || systemLogError));
@@ -135,6 +136,15 @@ window.blackboxPage = 'server'; // for the Features list
       $('dlZip').title = zipTitle + ' (includes the Glowroot data)';
       zipTitle = '';
     }
+  }
+  // The apps are still being exported in the background (ExportJobs): reload once they are in
+  function appsPending() {
+    $('appsPending').hidden = false;
+    setTimeout(async () => {
+      const m = await BB.getJson('meta', { id }).catch(() => null);
+      if (m && !(m.appExport && m.appExport.state === 'exporting')) location.reload();
+      else appsPending();
+    }, 5000);
   }
   $('dlZip').addEventListener('click', (e) => {
     if ($('dlZip').classList.contains('busy')) e.preventDefault();
