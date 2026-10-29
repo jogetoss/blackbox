@@ -61,8 +61,11 @@ final class ServerCapture {
     private ServerCapture() {
     }
 
+    /** Makes the store; tests (no Joget running) swap it. */
+    static java.util.function.Supplier<ServerCaptureStore> stores = () -> new ServerCaptureStore(Paths.get(SetupManager.getBaseDirectory(), "blackbox", "pending"));
+
     static ServerCaptureStore store() {
-        return new ServerCaptureStore(Paths.get(SetupManager.getBaseDirectory(), "blackbox", "pending"));
+        return stores.get();
     }
 
     /** Called by the bundle activator. */

@@ -82,8 +82,11 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         return AppUtil.readPluginResource(getClassName(), "/properties/blackboxPlugin.json", null, true, null);
     }
 
+    /** Makes the store; tests (no Joget running) swap it. */
+    static java.util.function.Supplier<RecordingStore> stores = () -> new RecordingStore(Paths.get(SetupManager.getBaseDirectory(), "blackbox"));
+
     static RecordingStore store() {
-        return new RecordingStore(Paths.get(SetupManager.getBaseDirectory(), "blackbox"));
+        return stores.get();
     }
 
     // ---------- API ----------
@@ -732,7 +735,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     }
 
     /** Saves the end of a stop's app export and hands it to a recording uploaded meanwhile. */
-    private static void endStopExport(String id, JSONObject end) {
+    static void endStopExport(String id, JSONObject end) {
         try {
             ServerCapture.store().put(id, "appExport", end);
         } catch (IOException e) {
@@ -771,12 +774,16 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     }
 
     private static final Object DELIVERING = new Object();
+    /** Runs after a reader finds an export lost and before it saves that; tests use it to end the job in between. */
+    static Runnable afterLostCheck = () -> {
+    };
 
     /** The capture's meta, with an app export whose job is gone ({@link ExportJobs#lost}) saved as failed. */
-    private static JSONObject captureMeta(String id) {
+    static JSONObject captureMeta(String id) {
         ServerCaptureStore logs = ServerCapture.store();
         JSONObject pending = logs.readMeta(id);
         if (pending != null && ExportJobs.lost(pending.optJSONObject("appExport"))) {
+            afterLostCheck.run();
             try {
                 logs.put(id, "appExport", ExportJobs.lostState());
                 LogUtil.info(BlackBoxPlugin.class.getName(), "The app export of server capture " + id + " was lost (restart, or its job died): failed");
@@ -793,7 +800,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
      * A recording still waiting for an app export whose job is gone (a restart dropped it, or its capture's pending
      * folder was swept): saved as failed, so its page stops waiting. Returns the latest meta.
      */
-    private static JSONObject settleAppExport(RecordingStore store, String id, JSONObject meta) {
+    static JSONObject settleAppExport(RecordingStore store, String id, JSONObject meta) {
         JSONObject state = meta.optJSONObject("appExport");
         if (state == null || !"exporting".equals(state.optString("state"))) {
             return meta;
@@ -807,6 +814,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                     store.updateMeta(id, new JSONObject().put("appExport", new JSONObject().put("state", "failed")));
                 }
             } else if (ExportJobs.lost(state)) {
+                afterLostCheck.run();
                 store.updateMeta(id, new JSONObject().put("appExport", ExportJobs.lostState()));
                 LogUtil.info(BlackBoxPlugin.class.getName(), "The app export of recording " + id + " was lost (restart, or its job died): failed");
             } else {
