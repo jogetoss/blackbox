@@ -778,8 +778,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         JSONObject pending = logs.readMeta(id);
         if (pending != null && ExportJobs.lost(pending.optJSONObject("appExport"))) {
             try {
-                logs.put(id, "appExport", new JSONObject().put("state", "failed"));
-                LogUtil.info(BlackBoxPlugin.class.getName(), "The app export of server capture " + id + " was lost (restart): failed");
+                logs.put(id, "appExport", ExportJobs.lostState());
+                LogUtil.info(BlackBoxPlugin.class.getName(), "The app export of server capture " + id + " was lost (restart, or its job died): failed");
             } catch (IOException | JSONException e) {
                 LogUtil.warn(BlackBoxPlugin.class.getName(), "Could not save the lost app export of server capture " + id + ": " + e);
             }
@@ -807,8 +807,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                     store.updateMeta(id, new JSONObject().put("appExport", new JSONObject().put("state", "failed")));
                 }
             } else if (ExportJobs.lost(state)) {
-                store.updateMeta(id, new JSONObject().put("appExport", new JSONObject().put("state", "failed")));
-                LogUtil.info(BlackBoxPlugin.class.getName(), "The app export of recording " + id + " was lost (restart): failed");
+                store.updateMeta(id, new JSONObject().put("appExport", ExportJobs.lostState()));
+                LogUtil.info(BlackBoxPlugin.class.getName(), "The app export of recording " + id + " was lost (restart, or its job died): failed");
             } else {
                 return meta;
             }
@@ -823,7 +823,9 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     /**
      * A stop export that ended after its recording was uploaded: moves its apps in and lists them. Runs from both
      * sides (the export's end, and the upload in case it ended just before), so it acts once: only while the
-     * recording still says appExport exporting from this capture.
+     * recording still says appExport exporting from this capture, or failed as lost (a late end replaces that).
+     * DELIVERING is per plugin copy: during a reload both copies may run it at once; the second then finds the apps
+     * moved and saves the same state again.
      */
     static void deliverStopExport(String captureId) {
         synchronized (DELIVERING) {
@@ -838,10 +840,16 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 RecordingStore store = store();
                 JSONObject meta = store.readMeta(rec);
                 JSONObject waiting = meta != null ? meta.optJSONObject("appExport") : null;
-                if (waiting == null || !"exporting".equals(waiting.optString("state")) || !captureId.equals(waiting.optString("capture"))) {
+                // Still waiting for this capture's export, or saved as lost while its job still ran (a late end replaces it)
+                boolean open = waiting != null && ("exporting".equals(waiting.optString("state")) || ExportJobs.wasLost(waiting));
+                if (!open || !captureId.equals(waiting.optString("capture"))) {
                     return;
                 }
-                JSONObject changes = new JSONObject().put("appExport", new JSONObject().put("state", state.optString("state")));
+                JSONObject end = new JSONObject().put("state", state.optString("state"));
+                if (ExportJobs.wasLost(state)) {
+                    end.put("reason", "lost").put("capture", captureId); // keeps it open for a late end
+                }
+                JSONObject changes = new JSONObject().put("appExport", end);
                 if ("done".equals(state.optString("state"))) {
                     TraceStore.moveFolder(logs.dir(captureId), store.dir(rec), AppExport.DIR, name -> true);
                     JSONArray saved = state.optJSONArray("saved");

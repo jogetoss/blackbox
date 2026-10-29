@@ -2,14 +2,10 @@ package org.joget.marketplace.blackbox;
 
 import java.io.BufferedReader;
 import java.io.IOException;
-import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
-import java.nio.channels.OverlappingFileLockException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -292,36 +288,10 @@ public class ServerCaptureStore {
         Path dir = root.resolve(id);
         Object lock = META_LOCKS.computeIfAbsent(dir.toAbsolutePath().toString(), k -> new Object());
         synchronized (lock) {
-            try (FileChannel ch = FileChannel.open(dir.resolve(META_LOCK), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-                    FileLock fl = fileLock(ch)) {
-                return work.run();
+            try {
+                return FileLocks.locked(dir.resolve(META_LOCK), work::run);
             } catch (JSONException e) {
                 throw new IOException(e);
-            }
-        }
-    }
-
-    /**
-     * The file lock, or null where the file system has none (the JVM lock still holds). Another copy of the plugin in
-     * this JVM (the old bundle's export job during a plugin reload) may hold it: then waits for it a while.
-     */
-    private static FileLock fileLock(FileChannel ch) {
-        long until = System.currentTimeMillis() + 10_000;
-        while (true) {
-            try {
-                return ch.lock();
-            } catch (IOException | UnsupportedOperationException e) {
-                return null;
-            } catch (OverlappingFileLockException e) {
-                if (System.currentTimeMillis() > until) {
-                    return null;
-                }
-                try {
-                    Thread.sleep(50);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    return null;
-                }
             }
         }
     }

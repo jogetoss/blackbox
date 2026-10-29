@@ -187,6 +187,59 @@ public class ServerCaptureStoreTest {
     }
 
     @Test
+    public void putFailsWithoutWritingWhenAnotherCopyKeepsTheLock() throws Exception {
+        assertTrue(store.start(ID, "admin", 1024, DAY));
+        long wait = FileLocks.waitMs;
+        FileLocks.waitMs = 200;
+        try (java.nio.channels.FileChannel ch = java.nio.channels.FileChannel.open(root.resolve(ID).resolve(".meta.lock"),
+                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE);
+                java.nio.channels.FileLock held = ch.lock()) {
+            try {
+                store.put(ID, "k", true);
+                fail("written without the lock");
+            } catch (java.io.IOException expected) {
+                // locked by another copy for over waitMs
+            }
+        } finally {
+            FileLocks.waitMs = wait;
+        }
+        assertFalse(store.readMeta(ID).has("k"));
+    }
+
+    @Test
+    public void anInterruptedThreadStillLocksAndKeepsItsInterrupt() throws Exception {
+        assertTrue(store.start(ID, "admin", 1024, DAY));
+        java.util.concurrent.atomic.AtomicBoolean heldDuringPut = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicBoolean stillInterrupted = new java.util.concurrent.atomic.AtomicBoolean();
+        java.util.concurrent.atomic.AtomicReference<Exception> failed = new java.util.concurrent.atomic.AtomicReference<>();
+        Thread t = new Thread(() -> {
+            Thread.currentThread().interrupt(); // as an old job interrupted by a stopping executor would be
+            try {
+                FileLocks.locked(root.resolve(ID).resolve(".meta.lock"), () -> {
+                    // The lock is held: a second lock in this JVM overlaps
+                    try (java.nio.channels.FileChannel other = java.nio.channels.FileChannel.open(root.resolve(ID).resolve(".meta.lock"),
+                            java.nio.file.StandardOpenOption.WRITE)) {
+                        other.tryLock();
+                    } catch (java.nio.channels.OverlappingFileLockException e) {
+                        heldDuringPut.set(true);
+                    }
+                    return null;
+                });
+                store.put(ID, "k", true);
+            } catch (Exception e) {
+                failed.set(e);
+            }
+            stillInterrupted.set(Thread.currentThread().isInterrupted());
+        });
+        t.start();
+        t.join(5000);
+        assertNull(failed.get());
+        assertTrue("locked although interrupted", heldDuringPut.get());
+        assertTrue("its interrupt is kept", stillInterrupted.get());
+        assertTrue(store.readMeta(ID).optBoolean("k"));
+    }
+
+    @Test
     public void sweepDeletesExpiredCaptures() throws Exception {
         String other = "1b4e28ba-2fa1-11d2-883f-0016d3cca427";
         store.start(ID, "u", 1024, DAY);

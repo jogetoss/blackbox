@@ -4,16 +4,12 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
-import java.nio.channels.OverlappingFileLockException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.StandardOpenOption;
 import java.security.SecureRandom;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
@@ -250,8 +246,7 @@ public class RecordingStore {
             if (!Files.isDirectory(dir)) {
                 throw new IOException("Recording not found: " + id);
             }
-            try (FileChannel ch = FileChannel.open(dir.resolve(META_LOCK), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-                    FileLock fl = fileLock(ch)) {
+            return FileLocks.<JSONObject, InvalidUpload>locked(dir.resolve(META_LOCK), () -> {
                 JSONObject meta = readMeta(id);
                 if (meta == null) {
                     throw new IOException("Recording not found: " + id);
@@ -263,32 +258,7 @@ public class RecordingStore {
                 }
                 writeMeta(id, meta);
                 return meta;
-            }
-        }
-    }
-
-    /**
-     * The file lock, or null where the file system has none (the JVM lock still holds). Another copy of the plugin in
-     * this JVM (the old bundle's export job during a plugin reload) may hold it: then waits for it a while.
-     */
-    private static FileLock fileLock(FileChannel ch) {
-        long until = System.currentTimeMillis() + 10_000;
-        while (true) {
-            try {
-                return ch.lock();
-            } catch (IOException | UnsupportedOperationException e) {
-                return null;
-            } catch (OverlappingFileLockException e) {
-                if (System.currentTimeMillis() > until) {
-                    return null;
-                }
-                try {
-                    Thread.sleep(50);
-                } catch (InterruptedException ie) {
-                    Thread.currentThread().interrupt();
-                    return null;
-                }
-            }
+            });
         }
     }
 

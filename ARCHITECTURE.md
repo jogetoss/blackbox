@@ -328,11 +328,15 @@ Sections:
    (with `saved` and `sampleData`) or `failed`. `ServerCaptureStore` changes `meta.json` under a per-capture lock (JVM
    and file lock, like `RecordingStore.modifyMeta`), so the job's `put` and the upload's `attach` never undo each other.
    A plugin reload or shutdown (`ExportJobs.stop`) saves the jobs that haven't started as `failed` (each job's dropped
-   callback); a running one is interrupted, goes on (or fails) in the old bundle and saves its own end. While both copies
-   run, a file lock the other copy holds (`OverlappingFileLockException`) is waited for up to 10 s, then only the
-   JVM lock holds. A restart or crash loses every job: an `exporting` state from this node older than the JVM is lost
-   (`ExportJobs.lost`; no `node`: older versions, counted as this node's), and its readers (`app-export`,
-   `recording-stop`, `create`, the recording's `meta`) save it as `failed`.
+   callback, run on a thread of its own that `stop` waits up to 5 s for, not on the stopping request's thread); the
+   running one isn't interrupted: it goes on (or fails) in the old bundle and saves its own end. The JVM lock is per
+   plugin copy; the file lock (`FileLocks`) is per JVM, so it also keeps the two copies apart during a reload: one
+   the other copy holds (`OverlappingFileLockException`) is waited for up to 10 s, then the change fails (logged)
+   instead of being saved unlocked. Only where the file system has no locks does the JVM lock alone hold.
+   An `exporting` state is lost (`ExportJobs.lost`) when it is from this node and older than the JVM (a restart or
+   crash lost its job; no `node`: older versions, counted as this node's), or older than 2 h (`MAX_EXPORT_MS`) on
+   any node (its job died without saving its end). Its readers (`app-export`, `recording-stop`, `create`, the
+   recording's `meta`) save it as `failed` with `reason: lost`; a late end of that job still replaces it.
 4. `recording-stop` waits up to 20 s (`STOP_SYNC_MS`, under common proxy timeouts such as nginx's 60 s) and answers
    the state, `exporting` if it runs on. The recorder then polls `GET app-export&id=<capture>` (owner only) every 3 s,
    up to 150 s, and saves a summary in `recording.serverCapture.appExport`: `{state, sampleData, apps}` (`apps` = how many).
@@ -340,7 +344,9 @@ Sections:
    - `done`: `attach` moves `app/` into the recording and `meta.apps` takes `saved`; `off` exports nothing.
    - still `exporting`: `attach` leaves `app/` (`withApps` false), the recording gets `appExport: {state: exporting,
      capture}`, and `deliverStopExport` moves `app/` in and sets `apps` when the export ends (called by the job at its
-     end and by `create` once more; it acts only while the recording still waits for that capture). No second export.
+     end and by `create` once more; it acts only while the recording still waits for that capture, or has it as
+     `failed` with `reason: lost`, which a late end replaces). No second export. During a reload both plugin copies
+     may run it at once: the second finds the apps moved and saves the same state.
 6. Fallback: with no usable export at stop (no capture, a body that never arrived, `failed`, a capture of another
    user), `create` queues an export of the uploaded files (`apps` / `sampleData` from the upload: the form, or
    `recording.options` when automatic) and answers at once; `meta.appExport` says `exporting` until it ends, then
@@ -425,6 +431,7 @@ in its rows (activity ids resolved with `getActivityById`), kept when the proces
 | `AppExport` | Finds the apps in the recorded URLs, exports them (at stop, else at upload), lists them in `app/apps.json` |
 | `AppAdmins` | An app's own admins from `app_src/<app>/app.properties`, as App Composer reads them |
 | `ExportJobs` | The background thread app exports run on, so requests answer within about 20 s |
+| `FileLocks` | The file lock around a `meta.json` change (both stores): across nodes and across plugin copies in one JVM |
 | `SampleData` | Picks the sample rows of an exported app, masks / remaps them, adds them to the `.jwa` |
 | `ProcessData` | The touched process instances of an exported app, read only, masked like the sample |
 | `Masker` | Shape-keeping fake values, kept values, user pseudonyms, the old -> new record id map |
