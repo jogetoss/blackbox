@@ -455,6 +455,12 @@ unless turned off), `recordPageAudio`, `recordMic`, `quick` (quick settings), `q
 `me.options`). **`chrome.storage.session`:** `rec` = `{tabId, windowId, mode, startedAt?, serverCapture?}`, the
 recording in progress (`startedAt` once a source is picked).
 
+**Incognito:** the manifest sets `"incognito": "split"`, so an incognito window gets its own service worker and
+extension pages with incognito's cookies: calls to the Upload URL use that window's login. `chrome.storage.local` is
+shared with normal windows; `chrome.storage.session` and IndexedDB belong to the incognito copy and go when incognito
+closes. The two copies can't message each other. `chrome.extension.inIncognitoContext` shows the note in the popup and
+on the Recordings page.
+
 **IndexedDB** `blackbox` (version 4):
 
 - `recordings`: kept recordings `{id, savedAt, video, report, uploaded, imported?, recovered?}`. Only the newest 10

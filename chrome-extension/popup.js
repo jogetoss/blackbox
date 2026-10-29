@@ -167,3 +167,9 @@ $('settings').onclick = (e) => {
 
 bg({ type: 'get-state' }).then(render, showError);
 initQuick().catch(showError);
+// Incognito runs its own copy of the extension ("incognito": "split"): its own logins, and its recordings live only
+// in memory until the last incognito window closes
+if (chrome.extension.inIncognitoContext) {
+  $('incognitoNote').textContent = 'Incognito: uploads use this window\'s login. Recordings kept here are lost when you close incognito: upload or download them first.';
+  $('incognitoNote').hidden = false;
+}

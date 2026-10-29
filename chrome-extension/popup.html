@@ -13,7 +13,7 @@
     .start button { background: var(--accent); }
     #stop { background: var(--danger); }
     #status { margin-top: 8px; color: var(--muted); min-height: 1em; }
-    #serverNote { margin-top: 8px; color: var(--warn); overflow-wrap: anywhere; }
+    #serverNote, #incognitoNote { margin-top: 8px; color: var(--warn); overflow-wrap: anywhere; }
     #error { margin-top: 8px; color: var(--danger); white-space: pre-wrap; }
     #viewer, #settings { display: block; margin-top: 10px; }
     #quick { margin: 10px 0 0; padding: 6px 8px 8px; border: 1px solid var(--line); border-radius: 6px; }
@@ -53,6 +53,7 @@
   <button id="stop" hidden>Stop &amp; save</button>
   <div id="status"></div>
   <div id="serverNote" hidden></div>
+  <div id="incognitoNote" hidden></div>
   <a href="#" id="viewer">Recordings</a>
   <a href="#" id="settings">Settings</a>
   <div id="error"></div>

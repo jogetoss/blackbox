@@ -104,6 +104,7 @@ body.page-recordings { overflow: auto; }
 body.page-recordings .library { max-height: none; border-bottom: 0; background: var(--bg); }
 .actions { display: flex; gap: 8px; }
 #error { background: var(--error-bg); color: var(--error); padding: 8px 16px; }
+.incognito-note { margin: 0; background: var(--warn-bg); color: var(--warn); padding: 8px 16px; }
 .empty { flex: 1; display: grid; place-items: center; color: var(--fg-2); padding: 16px; text-align: center; }
 
 #app {

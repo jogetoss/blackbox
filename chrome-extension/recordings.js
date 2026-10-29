@@ -7,6 +7,8 @@
   let shown = PAGE;
 
   $('settings').onclick = () => chrome.runtime.openOptionsPage();
+  // Incognito has its own copy of the extension ("incognito": "split") whose browser storage is gone when it closes
+  $('incognitoNote').hidden = !chrome.extension.inIncognitoContext;
   $('showMore').onclick = () => { shown += PAGE; run(render); };
   Actions.initUploadForm(async (row, title) => {
     message('Uploaded "' + title + '".');

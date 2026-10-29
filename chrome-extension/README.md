@@ -49,6 +49,17 @@ Popup → **Settings** (this browser only; server options are in the plugin READ
   the server isn't capturing (the tooltip says why).
 - **Crash safety:** saved to browser storage every 5 s. After a crash, the recording is listed as **Recovered**.
 
+## Incognito
+
+To record in incognito, turn on **Allow in Incognito** on the extension's details page. Incognito windows run their
+own copy of the extension (`"incognito": "split"`):
+
+- **Logins:** uploads and server data use the incognito window's Joget login, so the server shows the user who was
+  recording there, not the normal window's user.
+- **Settings** (Upload URL, theme, quick settings) are shared with normal windows.
+- **Recordings** kept in incognito are not listed in normal windows and are gone when the last incognito window
+  closes. Upload, download or move them to a folder first. The popup and the Recordings page say so.
+
 ## Recordings page
 
 Popup → **Recordings**: recordings in browser storage, with **Browser issues** (console errors, failed and slow
