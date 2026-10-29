@@ -134,7 +134,7 @@ remembered for later recordings.
 Shown on this plugin's replay page and included in the ZIP and HTML downloads, only for the users in
 [Who sees what](#who-sees-what).
 
-- **System logs** tab: Joget log lines (as `joget.log` shows them) written while serving the recorded tab's requests, plus one entry
+- **System logs** tab: Joget log lines (the same as `joget.log`: info and up by default) written while serving the recorded tab's requests, plus one entry
   per request, lined up with the video; a network request's details show its own lines. Not captured: work a request hands to another thread.
 - **Other server threads** (opt-in): every other log line during the recording (scheduler, email, other users), on
   the nodes the recording reached. Greyed under the filter **This tab + other server threads**, not counted as errors.

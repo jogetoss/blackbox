@@ -148,7 +148,8 @@ Info and the app export at stop (their own sections).
    worker re-fetches almost every userview request, so those are tagged too; while recording, other tabs on the same
    server can add lines.
 2. `ServerCaptureFilter` marks the threads of those requests; an appender on log4j's root logger keeps their log lines (what
-   reaches the root logger's appenders, as `joget.log` shows it) plus one entry per request (method, URL, status, time). They go to
+   reaches the root logger's appenders, the same as `joget.log`: info and up with Joget's own `log4j2.xml`, whose
+   global `ThresholdFilter` drops debug everywhere) plus one entry per request (method, URL, status, time). They go to
    `<wflow>/blackbox/pending/<id>/system-log.<node>.jsonl`, flushed every 2 seconds. Each node stops at
    **Max size of system logs per node per recording** and writes a `truncated` entry.
 3. Stop removes the rule; the recorder calls `recording-stop` with the app export's input (see "App export"), or the
