@@ -57,6 +57,8 @@ own copy of the extension (`"incognito": "split"`):
 - **Logins:** uploads and server data use the incognito window's Joget login, so the server shows the user who was
   recording there, not the normal window's user.
 - **Settings** (Upload URL, theme, quick settings) are shared with normal windows.
+- **Recording:** a normal and an incognito window can each record at the same time; the REC badge shows while either
+  records.
 - **Recordings** kept in incognito are not listed in normal windows and are gone when the last incognito window
   closes. Upload, download or move them to a folder first. The popup and the Recordings page say so.
 

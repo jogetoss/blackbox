@@ -22,7 +22,8 @@ const FORWARDED_EVENTS = new Set([
 
 // Server capture: requests from the recorded tab to the Upload URL's server carry this header, so the
 // BlackBox plugin can keep their log lines and other server data (see ARCHITECTURE.md "Server capture").
-const CAPTURE_RULE = 1;
+// Session rules are shared with the incognito copy of the extension: each copy has its own rule.
+const CAPTURE_RULE = chrome.extension.inIncognitoContext ? 2 : 1;
 const CAPTURE_HEADER = 'X-BlackBox-Id';
 const ALL_RESOURCE_TYPES = ['main_frame', 'sub_frame', 'stylesheet', 'script', 'image', 'font', 'object',
   'xmlhttprequest', 'ping', 'csp_report', 'media', 'websocket', 'other'];
@@ -32,12 +33,13 @@ const ALL_RESOURCE_TYPES = ['main_frame', 'sub_frame', 'stylesheet', 'script', '
 const resourceTypes = new Map();
 
 // rec = { tabId, windowId, startedAt?, serverCapture? }  (startedAt is set once the user has picked a source)
+// Kept under REC_KEY (report.js): 'rec', or 'recIncognito' in the incognito copy of the extension
 async function getState() {
-  return (await chrome.storage.session.get('rec')).rec || null;
+  return (await chrome.storage.session.get(REC_KEY))[REC_KEY] || null;
 }
 
 function setState(rec) {
-  return rec ? chrome.storage.session.set({ rec }) : chrome.storage.session.remove('rec');
+  return rec ? chrome.storage.session.set({ [REC_KEY]: rec }) : chrome.storage.session.remove(REC_KEY);
 }
 
 function cdp(tabId, method, params = {}) {
@@ -107,7 +109,11 @@ async function showRecordingBadge(capture) {
   await chrome.action.setTitle({ title: on ? 'BlackBox: recording' : `BlackBox: recording, server data off (${capture?.message || 'not started'})` });
 }
 
+// The badge is shared with the incognito copy of the extension: keep it while the other copy is recording
 async function clearBadge() {
+  const otherKey = REC_KEY === 'rec' ? 'recIncognito' : 'rec';
+  const other = (await chrome.storage.session.get(otherKey))[otherKey];
+  if (other?.startedAt) return showRecordingBadge(other.serverCapture);
   await chrome.action.setBadgeText({ text: '' });
   await chrome.action.setTitle({ title: 'BlackBox' });
 }

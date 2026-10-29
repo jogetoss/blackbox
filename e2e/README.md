@@ -26,6 +26,7 @@ open one of its assignments).
 | `BB_JOGET` | `http://localhost:3128/jw` | The Joget to test against (j8213) |
 | `BB_USER` | `admin` | |
 | `BB_PASSWORD` | the user name | Local test servers use the user name as password |
+| `BB_INCOGNITO_USER` | `cat` | The user `incognito.spec.js` logs in as in the incognito window (password = user name) |
 | `BB_EXTENSION` | `../chrome-extension` | The extension to load, e.g. an older release to test this plugin with it |
 | `BB_CONTAINER`, `BB_WFLOW` | `j8213`, `/opt/wflow` | Where `legacy-names.spec.js` edits a `meta.json` (`docker exec`) |
 
@@ -43,6 +44,11 @@ open one of its assignments).
   with `systemLog`, and an old ZIP imported on the server and in the extension. Run the whole suite a second time with
   the previous extension (`git archive <tag> chrome-extension | tar -x -C /some/dir`, then
   `BB_EXTENSION=/some/dir/chrome-extension npx playwright test`); its ZIP test is skipped there.
+- `tests/incognito.spec.js`: turns on Allow in Incognito, logs in as `BB_INCOGNITO_USER` (default `cat`) in an
+  incognito window and checks that the incognito copy of the extension calls the server as that user (the normal copy
+  as `BB_USER`), shows its note, and keeps its own recording state, capture rule and badge. Playwright can't see
+  incognito windows, so it uses the browser's DevTools port (`--remote-debugging-port=0` in `fixtures.js`). Skipped
+  for an extension from before `"incognito": "split"`.
 - `tests/upload-form.spec.js`: the sample data choice on the upload form, the `sampleData` parameter it sends, and the
   App data the server builds.
 

@@ -17,21 +17,25 @@ const CAPTURE_KEY = LEGACY_EXTENSION ? 'systemLog' : 'serverCapture';
 
 const test = base.extend({
   // eslint-disable-next-line no-empty-pattern
-  context: async ({}, use) => {
+  profile: async ({}, use) => {
+    const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'bb-profile-'));
+    await use(profile);
+    fs.rmSync(profile, { recursive: true, force: true });
+  },
+  context: async ({ profile }, use) => {
     const ext = fs.mkdtempSync(path.join(os.tmpdir(), 'bb-ext-'));
     fs.cpSync(EXTENSION, ext, { recursive: true });
     const manifest = JSON.parse(fs.readFileSync(path.join(ext, 'manifest.json'), 'utf8'));
     manifest.host_permissions = [new URL(JOGET).origin + '/*'];
     fs.writeFileSync(path.join(ext, 'manifest.json'), JSON.stringify(manifest, null, 2));
-    const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'bb-profile-'));
     const context = await chromium.launchPersistentContext(profile, {
       channel: 'chromium', // the full Chromium: headless mode that runs extensions
       headless: !process.env.BB_HEADED,
-      args: [`--disable-extensions-except=${ext}`, `--load-extension=${ext}`],
+      // A DevTools port (written to <profile>/DevToolsActivePort) for incognito.spec.js: Playwright can't see incognito windows
+      args: [`--disable-extensions-except=${ext}`, `--load-extension=${ext}`, '--remote-debugging-port=0'],
     });
     await use(context);
     await context.close();
-    fs.rmSync(profile, { recursive: true, force: true });
     fs.rmSync(ext, { recursive: true, force: true });
   },
   extensionId: async ({ context }, use) => {
@@ -124,5 +128,5 @@ async function uploaded(joget, title) {
 }
 
 module.exports = {
-  test, expect, JOGET, LEGACY_EXTENSION, CAPTURE_KEY, ASSIGNMENT, loginJoget, api, appsWhenExported, report, keep, captureAndStop, uploaded,
+  test, expect, JOGET, EXTENSION, LEGACY_EXTENSION, CAPTURE_KEY, ASSIGNMENT, loginJoget, api, appsWhenExported, report, keep, captureAndStop, uploaded,
 };

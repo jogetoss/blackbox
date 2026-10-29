@@ -39,13 +39,17 @@ function recordingId(startedAtMs) {
   return new Date(startedAtMs).toISOString().replace(/[:.]/g, '-').slice(0, 19);
 }
 
+// The recording in progress, in chrome.storage.session. Incognito runs its own copy of the extension ("incognito":
+// "split") but shares chrome.storage.session with the normal one, so each copy keeps its own key.
+const REC_KEY = chrome.extension.inIncognitoContext ? 'recIncognito' : 'rec';
+
 // Turns every partial recording that is not running right now into a normal recording, marked recovered.
 // Returns the recovered ids.
 async function recoverPartials() {
   const keys = await idbPartialKeys();
   const ids = [...new Set(keys.filter((k) => k.endsWith(':meta')).map((k) => k.slice(0, -5)))];
   if (!ids.length) return [];
-  const running = (await chrome.storage.session.get('rec')).rec;
+  const running = (await chrome.storage.session.get(REC_KEY))[REC_KEY];
   const runningId = running?.startedAt ? recordingId(running.startedAt) : null;
   const recovered = [];
   for (const id of ids) {

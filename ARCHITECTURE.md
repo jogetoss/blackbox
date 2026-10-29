@@ -452,14 +452,17 @@ for in Settings or on the first upload.
 
 **`chrome.storage.local`:** `uploadUrl`, `viewUrl` (Recording page URL), `theme`, `textSize`, `openOnServer` (on
 unless turned off), `recordPageAudio`, `recordMic`, `quick` (quick settings), `quickOffer` (the server's last
-`me.options`). **`chrome.storage.session`:** `rec` = `{tabId, windowId, mode, startedAt?, serverCapture?}`, the
-recording in progress (`startedAt` once a source is picked).
+`me.options`). **`chrome.storage.session`:** `rec` (`recIncognito` in incognito) = `{tabId, windowId, mode, startedAt?,
+serverCapture?}`, the recording in progress (`startedAt` once a source is picked).
 
 **Incognito:** the manifest sets `"incognito": "split"`, so an incognito window gets its own service worker and
-extension pages with incognito's cookies: calls to the Upload URL use that window's login. `chrome.storage.local` is
-shared with normal windows; `chrome.storage.session` and IndexedDB belong to the incognito copy and go when incognito
-closes. The two copies can't message each other. `chrome.extension.inIncognitoContext` shows the note in the popup and
-on the Recordings page.
+extension pages with incognito's cookies: calls to the Upload URL use that window's login. The two copies can't
+message each other. IndexedDB belongs to each copy (incognito's goes when incognito closes). Shared by both copies
+(checked by `e2e/tests/incognito.spec.js`): `chrome.storage.local`, `chrome.storage.session`, the session rules and
+the toolbar badge. So the recording in progress is `rec`, or `recIncognito` in the incognito copy (`REC_KEY` in
+`report.js`); the capture rule is id 1, or 2 in incognito; and clearing the badge keeps it while the other copy
+records. A normal and an incognito recording can run at the same time. `chrome.extension.inIncognitoContext` also
+shows the note in the popup and on the Recordings page.
 
 **IndexedDB** `blackbox` (version 4):
 
