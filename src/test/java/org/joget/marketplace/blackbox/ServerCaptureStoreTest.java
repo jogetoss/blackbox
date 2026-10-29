@@ -136,6 +136,40 @@ public class ServerCaptureStoreTest {
     }
 
     @Test
+    public void concurrentPutsAndAttachKeepEveryChange() throws Exception {
+        assertTrue(store.start(ID, "admin", 1024, DAY));
+        lines("node-a", "{\"ts\":100,\"kind\":\"log\",\"level\":\"INFO\",\"message\":\"a\"}");
+        Path rec = Files.createDirectories(root.resolve("rec"));
+        int n = 40;
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(8);
+        java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+        java.util.List<java.util.concurrent.Future<?>> done = new java.util.ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            String key = "k" + i;
+            done.add(pool.submit(() -> {
+                go.await();
+                return store.put(ID, key, true);
+            }));
+            if (i == n / 2) {
+                done.add(pool.submit(() -> {
+                    go.await();
+                    return store.attach(ID, "admin", rec.resolve(ServerCaptureStore.FILE));
+                }));
+            }
+        }
+        go.countDown();
+        for (java.util.concurrent.Future<?> f : done) {
+            f.get();
+        }
+        pool.shutdown();
+        JSONObject meta = store.readMeta(ID);
+        assertEquals("rec", meta.optString("recording"));
+        for (int i = 0; i < n; i++) {
+            assertTrue("k" + i + " kept", meta.optBoolean("k" + i));
+        }
+    }
+
+    @Test
     public void sweepDeletesExpiredCaptures() throws Exception {
         String other = "1b4e28ba-2fa1-11d2-883f-0016d3cca427";
         store.start(ID, "u", 1024, DAY);

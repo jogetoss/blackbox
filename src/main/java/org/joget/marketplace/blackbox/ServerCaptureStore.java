@@ -2,13 +2,17 @@ package org.joget.marketplace.blackbox;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -29,6 +33,13 @@ public class ServerCaptureStore {
     private static final Pattern ID = Pattern.compile("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
     static final long FORWARD_MS = 24L * 3600 * 1000; // > TraceCollector.GIVE_UP_MS
     private static final Pattern NODE_FILE = Pattern.compile("^system-log\\.[A-Za-z0-9.-]+\\.jsonl$");
+    private static final String META_LOCK = ".meta.lock";
+    private static final ConcurrentHashMap<String, Object> META_LOCKS = new ConcurrentHashMap<>();
+
+    /** Work on a capture's meta.json under its lock (see {@link #locked}). */
+    private interface Locked<T> {
+        T run() throws IOException, JSONException;
+    }
 
     private final Path root;
 
@@ -60,13 +71,16 @@ public class ServerCaptureStore {
     /** allServer: also keep the log lines of every other thread on the nodes the recording reaches. */
     public boolean start(String id, String owner, long maxBytes, long keepMs, boolean traces, String glowrootUrl, boolean gauges,
             boolean glowrootData, boolean allServer) throws IOException {
-        JSONObject meta = readMeta(id);
-        if (meta != null) {
-            return owner.equals(meta.optString("owner"));
+        if (!isValidId(id)) {
+            return false;
         }
-        long now = System.currentTimeMillis();
         Files.createDirectories(root.resolve(id));
-        try {
+        return locked(id, () -> {
+            JSONObject meta = readMeta(id);
+            if (meta != null) {
+                return owner.equals(meta.optString("owner"));
+            }
+            long now = System.currentTimeMillis();
             writeMeta(id, new JSONObject()
                     .put("id", id)
                     .put("owner", owner)
@@ -78,25 +92,21 @@ public class ServerCaptureStore {
                     .put("gauges", gauges)
                     .put("glowrootData", glowrootData)
                     .put("allServer", allServer));
-        } catch (JSONException e) {
-            throw new IOException(e);
-        }
-        return true;
+            return true;
+        });
     }
 
     /** Marks a capture as stopped. Returns false when it is missing or belongs to another user. */
     public boolean stop(String id, String owner) throws IOException {
-        JSONObject meta = readMeta(id);
-        if (meta == null || !owner.equals(meta.optString("owner"))) {
-            return false;
-        }
-        try {
+        return Boolean.TRUE.equals(lockedIfExists(id, () -> {
+            JSONObject meta = readMeta(id);
+            if (meta == null || !owner.equals(meta.optString("owner"))) {
+                return false;
+            }
             meta.put("stoppedAt", System.currentTimeMillis());
-        } catch (JSONException e) {
-            throw new IOException(e);
-        }
-        writeMeta(id, meta);
-        return true;
+            writeMeta(id, meta);
+            return true;
+        }));
     }
 
     public JSONObject readMeta(String id) {
@@ -139,6 +149,11 @@ public class ServerCaptureStore {
      * failed, or is still running after the wait): a late export then stays here and goes with the pending folder.
      */
     public JSONObject attach(String id, String owner, Path target, boolean withApps) throws IOException {
+        // Under the lock throughout: a put() at the same time (the stop's export ending) must not lose "recording"
+        return lockedIfExists(id, () -> attachLocked(id, owner, target, withApps));
+    }
+
+    private JSONObject attachLocked(String id, String owner, Path target, boolean withApps) throws IOException {
         JSONObject meta = readMeta(id);
         if (meta == null || !owner.equals(meta.optString("owner")) || meta.has("recording")) {
             return null;
@@ -251,17 +266,47 @@ public class ServerCaptureStore {
 
     /** Sets one key of the capture's meta.json. Returns false when the capture is missing. */
     public boolean put(String id, String key, Object value) throws IOException {
-        JSONObject meta = readMeta(id);
-        if (meta == null) {
-            return false;
-        }
-        try {
+        return Boolean.TRUE.equals(lockedIfExists(id, () -> {
+            JSONObject meta = readMeta(id);
+            if (meta == null) {
+                return false;
+            }
             meta.put(key, value);
-        } catch (JSONException e) {
-            throw new IOException(e);
+            writeMeta(id, meta);
+            return true;
+        }));
+    }
+
+    /** locked() when the capture's folder exists, else null (nothing to change; don't create it). */
+    private <T> T lockedIfExists(String id, Locked<T> work) throws IOException {
+        return isValidId(id) && Files.isDirectory(root.resolve(id)) ? locked(id, work) : null;
+    }
+
+    /**
+     * Runs work holding the capture's lock, so read-change-write of meta.json never puts back an older copy (like
+     * RecordingStore.modifyMeta): per capture in this JVM, and a file lock for nodes sharing the folder where the file
+     * system supports it. Not reentrant across the file lock: work must not call another locked method.
+     */
+    private <T> T locked(String id, Locked<T> work) throws IOException {
+        Path dir = root.resolve(id);
+        Object lock = META_LOCKS.computeIfAbsent(dir.toAbsolutePath().toString(), k -> new Object());
+        synchronized (lock) {
+            try (FileChannel ch = FileChannel.open(dir.resolve(META_LOCK), StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                    FileLock fl = fileLock(ch)) {
+                return work.run();
+            } catch (JSONException e) {
+                throw new IOException(e);
+            }
         }
-        writeMeta(id, meta);
-        return true;
+    }
+
+    /** The file lock, or null where the file system has none (the JVM lock still holds). */
+    private static FileLock fileLock(FileChannel ch) {
+        try {
+            return ch.lock();
+        } catch (IOException | UnsupportedOperationException e) {
+            return null;
+        }
     }
 
     /**
