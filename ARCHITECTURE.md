@@ -322,9 +322,14 @@ Sections:
 2. `exportAtStop` writes the body and the capture's lines so far (`ServerCaptureStore.writeLines`; lines other nodes
    haven't flushed are missing) next to the capture, decides which apps the user may have exported (`exportJob`, on
    the request thread: the checks need the request and its user), and queues the export into the pending folder's
-   `app/` on `ExportJobs` (one background thread).
-3. The state is kept in the capture's `meta.json` as `appExport`: `off`, `exporting` (with `at`), `done` (with `saved`
-   and `sampleData`) or `failed`.
+   `app/` on `ExportJobs` (one background thread). Each job runs as a `PluginThread` made on the request thread, so it
+   has that request's profile and user: with virtual hosts on, the one thread serves every tenant.
+3. The state is kept in the capture's `meta.json` as `appExport`: `off`, `exporting` (with `at` and `node`), `done`
+   (with `saved` and `sampleData`) or `failed`. `ServerCaptureStore` changes `meta.json` under a per-capture lock (JVM
+   and file lock, like `RecordingStore.modifyMeta`), so the job's `put` and the upload's `attach` never undo each other.
+   Jobs don't survive a restart or plugin reload (`ExportJobs.stop` drops them): an `exporting` state from this node
+   older than the queue's start is lost (`ExportJobs.lost`; no `node`: older versions, counted as this node's), and
+   its readers (`app-export`, `recording-stop`, `create`, the recording's `meta`) save it as `failed`.
 4. `recording-stop` waits up to 20 s (`STOP_SYNC_MS`, under common proxy timeouts such as nginx's 60 s) and answers
    the state, `exporting` if it runs on. The recorder then polls `GET app-export&id=<capture>` (owner only) every 3 s,
    up to 150 s, and saves a summary in `recording.serverCapture.appExport`: `{state, sampleData, apps}` (`apps` = how many).
@@ -336,7 +341,8 @@ Sections:
 6. Fallback: with no usable export at stop (no capture, a body that never arrived, `failed`, a capture of another
    user), `create` queues an export of the uploaded files (`apps` / `sampleData` from the upload: the form, or
    `recording.options` when automatic) and answers at once; `meta.appExport` says `exporting` until it ends, then
-   `done` or `failed`. The replay page shows **Exporting apps…** and reloads when it is done.
+   `done` or `failed`. The replay page shows **Exporting apps…** and reloads when it is done; `meta` ends a lost
+   export as `failed` (its capture's export lost or its pending folder gone), and the page stops asking after 30 min.
 
 `me.options` (`quickSettings`) says what this user may get, for the popup and the upload form alike: `serverCapture`,
 `apps` (upload rights and `Access.mayExportApps`: admin, an app admin of some app, or **Who can export apps they

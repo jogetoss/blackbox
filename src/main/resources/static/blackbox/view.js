@@ -137,9 +137,16 @@ window.blackboxPage = 'server'; // for the Features list
       zipTitle = '';
     }
   }
-  // The apps are still being exported in the background (ExportJobs): reload once they are in
+  // The apps are still being exported in the background (ExportJobs): reload once they are in. The server ends a
+  // lost export (restart) as failed; past APPS_WAIT_MS the page stops asking anyway
+  const APPS_WAIT_MS = 30 * 60 * 1000;
+  const appsSince = Date.now();
   function appsPending() {
     $('appsPending').hidden = false;
+    if (Date.now() - appsSince > APPS_WAIT_MS) {
+      $('appsPending').textContent = 'Still exporting apps: reload the page later';
+      return;
+    }
     setTimeout(async () => {
       const m = await BB.getJson('meta', { id }).catch(() => null);
       if (m && !(m.appExport && m.appExport.state === 'exporting')) location.reload();

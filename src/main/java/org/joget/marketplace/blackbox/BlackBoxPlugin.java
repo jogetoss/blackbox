@@ -134,6 +134,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             } else if ("meta".equals(action) && !post) {
                 JSONObject meta = viewable(response, store, access, id);
                 if (meta != null) {
+                    meta = settleAppExport(store, id, meta);
                     meta.put("canDelete", access.canDelete(meta));
                     meta.put("canViewServerData", access.canViewServerData(meta));
                     if (!access.canViewServerData(meta)) {
@@ -170,7 +171,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 stopServerCapture(request, response, access, id);
             } else if ("app-export".equals(action) && !post) {
                 // The recorder polls this while the app export at stop runs on (recording-stop answered "exporting")
-                JSONObject pending = ServerCaptureStore.isValidId(id) ? ServerCapture.store().readMeta(id) : null;
+                JSONObject pending = ServerCaptureStore.isValidId(id) ? captureMeta(id) : null;
                 if (pending == null || !access.user.getUsername().equals(pending.optString("owner"))) {
                     error(response, HttpServletResponse.SC_NOT_FOUND, "Server capture not found.");
                 } else {
@@ -284,7 +285,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             boolean appsAtStop = atStop != null && "done".equals(atStop.optString("state"));
             if (atStop != null && "exporting".equals(atStop.optString("state"))) {
                 // Still running: the recording gets it when it ends (deliverStopExport), no second export
-                meta.put("appExport", new JSONObject().put("state", "exporting").put("capture", captureId));
+                meta.put("appExport", ExportJobs.exporting().put("capture", captureId));
                 store.updateMeta(recId, new JSONObject().put("appExport", meta.get("appExport")));
             }
             meta.put(RecordingStore.CAPTURE, attachServerCapture(store, recId, captureId, access.user.getUsername(), appsAtStop));
@@ -315,7 +316,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             // background; the recording lists them when it ends
             java.util.concurrent.Callable<JSONArray> job = exportJob(store.dir(recId), store.file(recId, RecordingStore.SESSION),
                     store.file(recId, RecordingStore.SYSTEM_LOG), sampleMode(request), recId, access);
-            meta.put("appExport", new JSONObject().put("state", "exporting"));
+            meta.put("appExport", ExportJobs.exporting());
             store.updateMeta(recId, new JSONObject().put("appExport", meta.get("appExport")));
             ExportJobs.submit(() -> finishUploadExport(recId, job));
         }
@@ -650,7 +651,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
      */
     private JSONObject exportAtStop(HttpServletRequest request, Access access, String id) throws IOException, JSONException {
         ServerCaptureStore logs = ServerCapture.store();
-        JSONObject pending = logs.readMeta(id);
+        JSONObject pending = captureMeta(id);
         if (pending == null) {
             return new JSONObject().put("state", "off");
         }
@@ -663,7 +664,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         Path systemLog = dir.resolve("stop-system-log.json");
         JSONObject state = new JSONObject().put("state", "failed");
         boolean queued = false;
-        logs.put(id, "appExport", new JSONObject().put("state", "exporting").put("at", System.currentTimeMillis()));
+        logs.put(id, "appExport", ExportJobs.exporting());
         try {
             try (InputStream in = request.getInputStream()) {
                 SessionFile.copy(in, session, maxSizeMb() * 1024 * 1024, "The recording's requests"); // to disk, never whole in memory
@@ -733,7 +734,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     private static JSONObject waitForStopExport(String id, long ms) throws JSONException {
         long until = System.currentTimeMillis() + ms;
         while (true) {
-            JSONObject pending = ServerCapture.store().readMeta(id);
+            JSONObject pending = captureMeta(id);
             JSONObject state = pending != null ? pending.optJSONObject("appExport") : null;
             if (state == null) {
                 return new JSONObject().put("state", "failed");
@@ -751,6 +752,54 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     }
 
     private static final Object DELIVERING = new Object();
+
+    /** The capture's meta, with an app export whose job is gone ({@link ExportJobs#lost}) saved as failed. */
+    private static JSONObject captureMeta(String id) {
+        ServerCaptureStore logs = ServerCapture.store();
+        JSONObject pending = logs.readMeta(id);
+        if (pending != null && ExportJobs.lost(pending.optJSONObject("appExport"))) {
+            try {
+                logs.put(id, "appExport", new JSONObject().put("state", "failed"));
+                LogUtil.info(BlackBoxPlugin.class.getName(), "The app export of server capture " + id + " was lost (restart): failed");
+            } catch (IOException | JSONException e) {
+                LogUtil.warn(BlackBoxPlugin.class.getName(), "Could not save the lost app export of server capture " + id + ": " + e);
+            }
+            deliverStopExport(id);
+            pending = logs.readMeta(id);
+        }
+        return pending;
+    }
+
+    /**
+     * A recording still waiting for an app export whose job is gone (a restart dropped it, or its capture's pending
+     * folder was swept): saved as failed, so its page stops waiting. Returns the latest meta.
+     */
+    private static JSONObject settleAppExport(RecordingStore store, String id, JSONObject meta) {
+        JSONObject state = meta.optJSONObject("appExport");
+        if (state == null || !"exporting".equals(state.optString("state"))) {
+            return meta;
+        }
+        try {
+            String capture = state.optString("capture");
+            if (!capture.isEmpty()) {
+                if (captureMeta(capture) != null) {
+                    deliverStopExport(capture); // acts only once the stop's export has ended
+                } else {
+                    store.updateMeta(id, new JSONObject().put("appExport", new JSONObject().put("state", "failed")));
+                }
+            } else if (ExportJobs.lost(state)) {
+                store.updateMeta(id, new JSONObject().put("appExport", new JSONObject().put("state", "failed")));
+                LogUtil.info(BlackBoxPlugin.class.getName(), "The app export of recording " + id + " was lost (restart): failed");
+            } else {
+                return meta;
+            }
+            JSONObject latest = store.readMeta(id);
+            return latest != null ? latest : meta;
+        } catch (IOException | JSONException e) {
+            LogUtil.warn(BlackBoxPlugin.class.getName(), "Could not settle the app export of recording " + id + ": " + e);
+            return meta;
+        }
+    }
 
     /**
      * A stop export that ended after its recording was uploaded: moves its apps in and lists them. Runs from both
@@ -814,7 +863,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     private JSONObject appExportAtStop(String captureId, String owner) {
         long until = System.currentTimeMillis() + STOP_EXPORT_WAIT_MS;
         while (true) {
-            JSONObject pending = ServerCapture.store().readMeta(captureId);
+            JSONObject pending = captureMeta(captureId);
             JSONObject state = pending != null && owner.equals(pending.optString("owner")) ? pending.optJSONObject("appExport") : null;
             if (state == null || !"exporting".equals(state.optString("state"))) {
                 return state;
