@@ -33,8 +33,8 @@ Info (license key, system properties) and the exported apps. Also renamed: the `
 recording JSON is now `canViewServerData`.
 
 **Also renamed: the capture summary `systemLog` is now `serverCapture`** (in `meta.json`, in `session.json`'s
-`recording`, and in the `recording-start` answer, which still also sends `systemLog` for extension 1.1). Existing
-recordings, ZIPs and extension 1.1 keep working: their `systemLog` is still read. One case breaks: **extension 1.2 with plugin 8.2.1 or older** uploads recordings without
+`recording`, and in the `recording-start` answer, which still also sends `systemLog` for the extension of plugin 8.2.1). Existing
+recordings, ZIPs and the extension of plugin 8.2.1 keep working: their `systemLog` is still read. One case breaks: **the current extension with plugin 8.2.1 or older** uploads recordings without
 their server data. Upgrade the plugin before (or with) the extension.
 
 ## Use

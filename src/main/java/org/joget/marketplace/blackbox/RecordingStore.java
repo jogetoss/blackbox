@@ -40,7 +40,7 @@ public class RecordingStore {
     public static final String SYSTEM_LOG = ServerCaptureStore.FILE;
     /** meta.json and session.json's recording: the server capture's summary (status, id, entries, errors...). */
     public static final String CAPTURE = "serverCapture";
-    /** CAPTURE's name in recordings and ZIPs made by plugin 8.2.1 and older or extension 1.1 and older: read, never written. */
+    /** CAPTURE's name in recordings and ZIPs made by plugin 8.2.1 and older or their extension: read, never written. */
     static final String LEGACY_CAPTURE = "systemLog";
 
     // yyyyMMdd-HHmmss-<8 hex>: sorts by upload time and can never contain a path separator

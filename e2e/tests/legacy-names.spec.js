@@ -1,6 +1,6 @@
-// Names from before the "server capture" rename: plugin 8.2.1 and extension 1.1 keep the capture summary under
+// Names from before the "server capture" rename: plugin 8.2.1 and its extension keep the capture summary under
 // "systemLog" (meta.json, session.json's recording, the recording-start answer). This plugin and extension still read
-// them. Run the suite with BB_EXTENSION=<an extension 1.1 folder> too, to test this plugin with the old extension.
+// them. Run the suite with BB_EXTENSION=<the extension folder of plugin 8.2.1> too, to test this plugin with the old extension.
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
@@ -42,7 +42,7 @@ test('the extension starts a server capture; the upload attaches its requests', 
   await page.evaluate((uploadUrl) => chrome.storage.local.set({ uploadUrl }), `${JOGET}/api/blackbox`);
   const worker = context.serviceWorkers()[0];
 
-  // background.js's own start (startSystemLog in extension 1.1): reads the slow threshold from the plugin's answer
+  // background.js's own start (startSystemLog in the extension of plugin 8.2.1): reads the slow threshold from the plugin's answer
   const capture = await worker.evaluate(async (origin) => {
     const [tab] = await chrome.tabs.query({ url: origin + '/*' });
     const start = typeof startServerCapture === 'function' ? startServerCapture : startSystemLog;
@@ -78,7 +78,7 @@ test('the extension starts a server capture; the upload attaches its requests', 
   }
 });
 
-test('a recording kept by extension 1.1 (systemLog in session.json) uploads with its server data', async ({ context, extensionId }) => {
+test('a recording kept by the extension of plugin 8.2.1 (systemLog in session.json) uploads with its server data', async ({ context, extensionId }) => {
   const joget = await context.newPage();
   await loginJoget(joget);
   const { page, id } = await uploadWithCapture(context, extensionId, joget, 'e2e-old-session-', 'systemLog');

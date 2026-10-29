@@ -62,17 +62,17 @@ Recordings the user can't view answer 404 (not 403), so ids of other people's re
 
 ### Old names (`systemLog`)
 
-Plugin 8.2.1 and older and extension 1.1 and older call the capture summary `systemLog`. It is never written to
+Plugin 8.2.1 and older and their extension call the capture summary `systemLog`. It is never written to
 files (`RecordingStore.LEGACY_CAPTURE`), only read:
 
 - `meta.json`: `readMeta` moves `systemLog` to `serverCapture`; the next change saves the file with the new name.
 - `session.json` of an upload: `create` takes the capture id from `recording.serverCapture`, else
   `recording.systemLog`. The file itself is kept as it is. (A ZIP import drops the capture id and builds the summary
   from the ZIP's `system-log.json`; the ZIP's `meta.json` has no summary.)
-- `recording-start` answers under both `serverCapture` and `systemLog`: extension 1.1 reads its slow threshold there.
-- The extension reads `systemLog` in recordings it kept before 1.2 (upload form, viewer, Import ZIP, crash
+- `recording-start` answers under both `serverCapture` and `systemLog`: the extension of plugin 8.2.1 reads its slow threshold there.
+- The extension reads `systemLog` in recordings kept by the extension of plugin 8.2.1 (upload form, viewer, Import ZIP, crash
   recovery) and in the `recording-start` answer of older plugins.
-- An older plugin doesn't read `recording.serverCapture`, so recordings from extension 1.2 get no server data there.
+- An older plugin doesn't read `recording.serverCapture`, so recordings from the current extension get no server data there.
 
 ## Permissions
 

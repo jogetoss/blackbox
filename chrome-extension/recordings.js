@@ -212,7 +212,7 @@
     const report = JSON.parse(await parts.get('session.json').text());
     if (!Array.isArray(report.console) || !Array.isArray(report.network)) throw new Error('This is not a BlackBox session.json.');
     // The capture id belongs to the server it was recorded on: an upload elsewhere must not try to attach it
-    for (const key of ['serverCapture', 'systemLog']) delete report.recording?.[key]?.id; // systemLog: ZIPs before plugin 8.2.2
+    for (const key of ['serverCapture', 'systemLog']) delete report.recording?.[key]?.id; // systemLog: ZIPs of plugin 8.2.1 and older
     const started = Date.parse(report.recording?.startedAt);
     const id = started ? recordingId(started) : file.name.replace(/\.zip$/i, '');
     if (await idbGet(id)) throw new Error('This recording is already in the extension.');

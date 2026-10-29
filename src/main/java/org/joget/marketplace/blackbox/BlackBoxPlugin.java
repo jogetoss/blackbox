@@ -587,7 +587,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         JSONObject started = new JSONObject().put("id", id).put("maxMb", maxBytes / (1024 * 1024))
                 .put("traces", traces).put("gauges", gauges).put("glowrootData", glowrootData).put("allServer", allServer)
                 .put("slowThresholdMs", slowMs());
-        // RecordingStore.LEGACY_CAPTURE: extension 1.1 and older read the slow threshold from there
+        // RecordingStore.LEGACY_CAPTURE: the extension of plugin 8.2.1 and older reads the slow threshold from there
         json(response, new JSONObject().put(RecordingStore.CAPTURE, started).put(RecordingStore.LEGACY_CAPTURE, started));
     }
 

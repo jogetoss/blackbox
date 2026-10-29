@@ -11,7 +11,7 @@ const USER = process.env.BB_USER || 'admin';
 const PASSWORD = process.env.BB_PASSWORD || USER; // local test servers: the password is the username
 // The extension under test: this repo's, or BB_EXTENSION (e.g. an older release, to test this plugin with it)
 const EXTENSION = process.env.BB_EXTENSION || path.join(__dirname, '..', '..', 'chrome-extension');
-// Extension 1.1 and older keep the server capture under recording.systemLog; later ones under serverCapture
+// The extension of plugin 8.2.1 and older keeps the server capture under recording.systemLog; later ones under serverCapture
 const LEGACY_EXTENSION = !fs.readFileSync(path.join(EXTENSION, 'report.js'), 'utf8').includes('serverCapture');
 const CAPTURE_KEY = LEGACY_EXTENSION ? 'systemLog' : 'serverCapture';
 

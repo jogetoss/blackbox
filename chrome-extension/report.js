@@ -4,7 +4,7 @@
 // meta: { startedAt (ms), settings: { displaySurface }, tab: { url, title } }
 function buildReport(meta, consoleEntries, navigations, network, stoppedAt, reason) {
   // "Slow" = Glowroot's slow threshold, sent by the plugin at recording start; 2 s without a server
-  const capture = meta.serverCapture || meta.systemLog; // systemLog: a crashed recording of extension 1.1 and older
+  const capture = meta.serverCapture || meta.systemLog; // systemLog: a crashed recording of the extension of plugin 8.2.1 and older
   const slowMs = capture?.slowMs || 2000;
   return {
     tool: 'blackbox ' + (chrome.runtime.getManifest().version_name || chrome.runtime.getManifest().version),

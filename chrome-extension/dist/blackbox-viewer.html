@@ -1986,7 +1986,7 @@ function renderInfo() {
       'Failed requests': s.failedRequests,
       'Navigations': (report.navigations || []).length,
       // the counts are on the tabs; a capture that didn't reach the server still says why here
-      'Server data': current.systemLog ? undefined : captureInfo(rec.serverCapture || rec.systemLog), // systemLog: extension 1.1 and older
+      'Server data': current.systemLog ? undefined : captureInfo(rec.serverCapture || rec.systemLog), // systemLog: extension of plugin 8.2.1 and older
       'Server clock offset': serverOffset ? `${serverOffset} ms (corrected)` : undefined,
       'User agent': rec.userAgent,
       'Recorded with': report.tool,
