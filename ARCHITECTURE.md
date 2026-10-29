@@ -493,8 +493,8 @@ shows the note in the popup and on the Recordings page.
 2. The recorder builds `session.json`, POSTs `recording-stop` with the app export's input and polls `app-export`
    (see "App export"), then saves the recording in IndexedDB. If it can't, it downloads `recording.webm` and
    `session.json` to `Downloads/blackbox/<id>/`.
-3. If the recorder didn't send the stop (`stopSent` false, or it is gone), `background.js` sends a plain
-   `recording-stop`.
+3. If the recorder didn't send the stop (`stopSent` false: no answer, or not HTTP 2xx such as 401, 413 or 5xx; or
+   the recorder is gone), `background.js` sends a plain `recording-stop`. A time-out still counts as sent.
 4. The recorder opens `viewer.html?id=<id>&upload=server` (without `upload` when **Open recordings on the server
    when you are logged in** is off). `replay.js` then uploads it when the user is logged in to the server and opens the server's copy;
    otherwise it replays it in the extension.

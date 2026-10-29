@@ -241,8 +241,8 @@ const STOP_POLL_MS = 3000;
 
 // Ends the server capture and sends what it needs to export the apps the recording used, as they are
 // now, with their sample and process data (the requests and console errors, as in session.json). Waits for it, so the
-// upload that follows finds the export done. Returns false when the server never got the stop (the service worker
-// then sends a plain one). report.recording.serverCapture.appExport says what the server did.
+// upload that follows finds the export done. Returns false when the server never got the stop or refused it (not
+// HTTP 2xx; the service worker then sends a plain one). report.recording.serverCapture.appExport says what the server did.
 async function stopOnServer(report) {
   const log = meta.serverCapture;
   if (log?.status !== 'on' || !log.uploadUrl) return false;
@@ -259,6 +259,12 @@ async function stopOnServer(report) {
   try {
     const res = await fetch(log.uploadUrl + '?' + new URLSearchParams({ action: 'recording-stop', id: log.id, ...Quick.exportParams(meta.options) }),
       { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: abort.signal });
+    if (!res.ok) {
+      // 401 (logged out), 413 (a proxy's body limit), 5xx: the capture may still run, so the service worker sends a
+      // plain stop (no body)
+      console.warn('Could not stop the server capture: HTTP', res.status);
+      return false;
+    }
     const out = await res.json().catch(() => null);
     let e = out?.appExport;
     const until = Date.now() + STOP_WAIT_MS;
