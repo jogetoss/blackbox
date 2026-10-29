@@ -151,7 +151,8 @@ Shown on this plugin's replay page and included in the ZIP and HTML downloads, o
   - **Joget** (start time, uptime), **Plugin** (every jar in `app_plugins`; "not loaded" = failed, see the Joget log),
     host, Java, database settings, **DB pool**, license, system properties.
   - **Cluster**: its nodes and the requests each served. **Node switches** counts requests that moved between nodes;
-    Joget logins don't follow, so the load balancer needs sticky sessions.
+    Joget logins don't follow unless **Session replication** is on (a Tomcat cluster, Enterprise only), so the load
+    balancer needs sticky sessions.
 
 **Sensitive data:** traces and Glowroot data hold SQL with parameter values and request details; Info holds JVM
 arguments and system properties, which can include secrets passed as `-D` options; app definitions can hold plugin

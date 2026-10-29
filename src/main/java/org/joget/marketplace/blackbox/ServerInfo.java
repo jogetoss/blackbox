@@ -30,7 +30,7 @@ import org.json.JSONObject;
  * <li>systemProperties: its system table (SysInfo.getSystemProperties(): all Java system properties plus JVM memory
  * and processors; on Community the same values read directly)</li>
  * </ul>
- * Cluster holds Joget's node name and node lists (ServerUtil) and Tomcat's jvmRoute.
+ * Cluster holds Joget's node name and node lists (ServerUtil) and Tomcat's jvmRoute and session replication.
  * Plugins lists every jar in app_plugins with its date and size, marking jars that loaded no plugin.
  * Database and connectionPool hold the current profile's app_datasource file and the pool settings Joget really uses.
  * Apart from the database password (left out, and masked in JDBC URLs), nothing is left out or masked, so it can hold
@@ -237,8 +237,8 @@ final class ServerInfo {
     /**
      * Joget's cluster view (ServerUtil: this node's wflow.name, the nodes in the shared servers.json and the licensed
      * active nodes, with their serversIP.properties address) and Tomcat's: the Engine's jvmRoute (the suffix load
-     * balancers use for sticky sessions). No session replication check: Joget's web.xml isn't distributable, so Tomcat
-     * never copies its sessions between nodes, even with a Catalina Cluster set up.
+     * balancers use for sticky sessions) and whether it replicates sessions: only with a Catalina Cluster and a
+     * distributable web app (Enterprise's web.xml has &lt;distributable/&gt;, Community's doesn't).
      */
     static JSONObject cluster(HttpServletRequest request) throws JSONException {
         JSONObject c = new JSONObject();
@@ -249,11 +249,34 @@ final class ServerInfo {
         put(c, "Active nodes", nodes(org.joget.commons.util.ServerUtil.getActiveServerList()));
         Object route = mbean("Catalina:type=Engine", "jvmRoute");
         put(c, "Tomcat jvmRoute", route != null ? String.valueOf(route) : "(not set)");
+        put(c, "Session replication", replication(request.getContextPath()));
         String session = request.getRequestedSessionId();
         if (session != null && session.contains(".")) {
             put(c, "This session's route", session.substring(session.indexOf('.') + 1));
         }
         return c;
+    }
+
+    /** On only with a Catalina Cluster and this web app distributable (its WebModule MBean); null when unknown. */
+    private static String replication(String contextPath) {
+        try {
+            javax.management.MBeanServer server = ManagementFactory.getPlatformMBeanServer();
+            if (server.queryNames(new javax.management.ObjectName("Catalina:type=Cluster,*"), null).isEmpty()) {
+                return "Off";
+            }
+            String path = contextPath.isEmpty() ? "/" : contextPath;
+            for (javax.management.ObjectName n : server.queryNames(new javax.management.ObjectName("Catalina:j2eeType=WebModule,*"), null)) {
+                String name = n.getKeyProperty("name"); // //host/path
+                int at = name != null && name.startsWith("//") ? name.indexOf('/', 2) : -1;
+                if (at >= 0 && name.substring(at).equals(path)) {
+                    return Boolean.TRUE.equals(server.getAttribute(n, "distributable")) ? "On (Tomcat cluster)"
+                            : "Off (Tomcat cluster, but the web app isn't distributable)";
+                }
+            }
+            return "Tomcat cluster (whether the web app is distributable is unknown)";
+        } catch (Exception | LinkageError e) {
+            return null;
+        }
     }
 
     private static String nodes(String[] names) {

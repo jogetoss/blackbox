@@ -289,9 +289,10 @@ Sections:
 - **Cluster**:
   - Saved: `ServerUtil` (this node's `wflow.name`, the registered nodes in the shared `servers.json`, the active
     nodes, each with its `serversIP.properties` address), `wflow.cluster` (set by the wflow-cluster agent), Tomcat's
-    Engine `jvmRoute` and the requested session id's route suffix.
-  - No session replication row: Joget's `web.xml` has no `<distributable/>`, so Tomcat never copies sessions between
-    nodes and logins need sticky sessions.
+    Engine `jvmRoute`, the requested session id's route suffix and **Session replication**: `On (Tomcat cluster)`
+    only when a `Catalina:type=Cluster` MBean exists and this web app's `WebModule` MBean says `distributable`.
+    Enterprise's `web.xml` has `<distributable/>`, Community's doesn't; without replication, logins need sticky
+    sessions.
   - Shown: **Cluster** (`Yes: N nodes` or `No: one node`) and **Nodes**, the registered and active nodes in one list,
     each with its address and the recorded requests it served; with several nodes, `this node` (where the snapshot
     was taken) and `not active`. With no node list, this node alone (the wflow-cluster agent alone isn't a cluster).
