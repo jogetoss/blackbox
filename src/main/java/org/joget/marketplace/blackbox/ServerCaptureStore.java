@@ -274,6 +274,22 @@ public class ServerCaptureStore {
         }));
     }
 
+    /**
+     * Saves the app export as lost ({@link ExportJobs#lostState}) if it still is {@link ExportJobs#lost}, checked again
+     * under the lock: a job's end saved since the caller's check wins. Returns whether it saved.
+     */
+    public boolean markExportLost(String id) throws IOException {
+        return Boolean.TRUE.equals(lockedIfExists(id, () -> {
+            JSONObject meta = readMeta(id);
+            if (meta == null || !ExportJobs.lost(meta.optJSONObject("appExport"))) {
+                return false;
+            }
+            meta.put("appExport", ExportJobs.lostState());
+            writeMeta(id, meta);
+            return true;
+        }));
+    }
+
     /** locked() when the capture's folder exists, else null (nothing to change; don't create it). */
     private <T> T lockedIfExists(String id, Locked<T> work) throws IOException {
         return isValidId(id) && Files.isDirectory(root.resolve(id)) ? locked(id, work) : null;

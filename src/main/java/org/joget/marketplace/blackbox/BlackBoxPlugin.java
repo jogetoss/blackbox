@@ -785,9 +785,10 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         if (pending != null && ExportJobs.lost(pending.optJSONObject("appExport"))) {
             afterLostCheck.run();
             try {
-                logs.put(id, "appExport", ExportJobs.lostState());
-                LogUtil.info(BlackBoxPlugin.class.getName(), "The app export of server capture " + id + " was lost (restart, or its job died): failed");
-            } catch (IOException | JSONException e) {
+                if (logs.markExportLost(id)) {
+                    LogUtil.info(BlackBoxPlugin.class.getName(), "The app export of server capture " + id + " was lost (restart, or its job died): failed");
+                }
+            } catch (IOException e) {
                 LogUtil.warn(BlackBoxPlugin.class.getName(), "Could not save the lost app export of server capture " + id + ": " + e);
             }
             deliverStopExport(id);
@@ -798,31 +799,56 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
     /**
      * A recording still waiting for an app export whose job is gone (a restart dropped it, or its capture's pending
-     * folder was swept): saved as failed, so its page stops waiting. Returns the latest meta.
+     * folder was swept): saved as failed, so its page stops waiting. A recording saved as lost while its stop's export
+     * still ran gets that export once it has ended (its own delivery may have failed). Returns the latest meta.
      */
     static JSONObject settleAppExport(RecordingStore store, String id, JSONObject meta) {
         JSONObject state = meta.optJSONObject("appExport");
-        if (state == null || !"exporting".equals(state.optString("state"))) {
+        if (state == null) {
             return meta;
         }
+        String capture = state.optString("capture");
         try {
-            String capture = state.optString("capture");
-            if (!capture.isEmpty()) {
+            if (ExportJobs.wasLost(state) && !capture.isEmpty()) {
+                JSONObject pending = ServerCapture.store().readMeta(capture);
+                JSONObject end = pending != null ? pending.optJSONObject("appExport") : null;
+                String ended = end != null ? end.optString("state") : "";
+                // Only an end to deliver: a capture still saying lost would just save the same state again
+                if (!"done".equals(ended) && !("failed".equals(ended) && !ExportJobs.wasLost(end))) {
+                    return meta;
+                }
+                deliverStopExport(capture);
+            } else if (!"exporting".equals(state.optString("state"))) {
+                return meta;
+            } else if (!capture.isEmpty()) {
                 if (captureMeta(capture) != null) {
                     deliverStopExport(capture); // acts only once the stop's export has ended
+                } else if (!ServerCaptureStore.isValidId(capture) || !Files.isDirectory(ServerCapture.store().dir(capture))) {
+                    // Swept, not just unreadable now (that is asked again next time); checked again on the latest meta
+                    store.modifyMeta(id, m -> {
+                        JSONObject waiting = m.optJSONObject("appExport");
+                        if (waiting != null && "exporting".equals(waiting.optString("state")) && capture.equals(waiting.optString("capture"))) {
+                            m.put("appExport", new JSONObject().put("state", "failed"));
+                        }
+                    });
                 } else {
-                    store.updateMeta(id, new JSONObject().put("appExport", new JSONObject().put("state", "failed")));
+                    return meta;
                 }
             } else if (ExportJobs.lost(state)) {
                 afterLostCheck.run();
-                store.updateMeta(id, new JSONObject().put("appExport", ExportJobs.lostState()));
-                LogUtil.info(BlackBoxPlugin.class.getName(), "The app export of recording " + id + " was lost (restart, or its job died): failed");
+                // Checked again on the latest meta: the upload's job may have saved its end since
+                store.modifyMeta(id, m -> {
+                    if (ExportJobs.lost(m.optJSONObject("appExport"))) {
+                        m.put("appExport", ExportJobs.lostState());
+                        LogUtil.info(BlackBoxPlugin.class.getName(), "The app export of recording " + id + " was lost (restart, or its job died): failed");
+                    }
+                });
             } else {
                 return meta;
             }
             JSONObject latest = store.readMeta(id);
             return latest != null ? latest : meta;
-        } catch (IOException | JSONException e) {
+        } catch (IOException | JSONException | RecordingStore.InvalidUpload e) {
             LogUtil.warn(BlackBoxPlugin.class.getName(), "Could not settle the app export of recording " + id + ": " + e);
             return meta;
         }
