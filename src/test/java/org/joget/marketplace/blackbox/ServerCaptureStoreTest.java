@@ -170,6 +170,23 @@ public class ServerCaptureStoreTest {
     }
 
     @Test
+    public void putWaitsForALockHeldByAnotherPluginCopy() throws Exception {
+        assertTrue(store.start(ID, "admin", 1024, DAY));
+        // Another bundle copy in this JVM (plugin reload) holding the file lock: put waits instead of failing
+        try (java.nio.channels.FileChannel ch = java.nio.channels.FileChannel.open(root.resolve(ID).resolve(".meta.lock"),
+                java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE)) {
+            java.nio.channels.FileLock held = ch.lock();
+            java.util.concurrent.Future<?> put = java.util.concurrent.Executors.newSingleThreadExecutor()
+                    .submit(() -> store.put(ID, "k", true));
+            Thread.sleep(300);
+            assertFalse("waits while the other copy holds it", put.isDone());
+            held.release();
+            put.get(5, java.util.concurrent.TimeUnit.SECONDS);
+        }
+        assertTrue(store.readMeta(ID).optBoolean("k"));
+    }
+
+    @Test
     public void sweepDeletesExpiredCaptures() throws Exception {
         String other = "1b4e28ba-2fa1-11d2-883f-0016d3cca427";
         store.start(ID, "u", 1024, DAY);

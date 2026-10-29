@@ -327,9 +327,12 @@ Sections:
 3. The state is kept in the capture's `meta.json` as `appExport`: `off`, `exporting` (with `at` and `node`), `done`
    (with `saved` and `sampleData`) or `failed`. `ServerCaptureStore` changes `meta.json` under a per-capture lock (JVM
    and file lock, like `RecordingStore.modifyMeta`), so the job's `put` and the upload's `attach` never undo each other.
-   Jobs don't survive a restart or plugin reload (`ExportJobs.stop` drops them): an `exporting` state from this node
-   older than the queue's start is lost (`ExportJobs.lost`; no `node`: older versions, counted as this node's), and
-   its readers (`app-export`, `recording-stop`, `create`, the recording's `meta`) save it as `failed`.
+   A plugin reload or shutdown (`ExportJobs.stop`) saves the jobs that haven't started as `failed` (each job's dropped
+   callback); a running one is interrupted, goes on (or fails) in the old bundle and saves its own end. While both copies
+   run, a file lock the other copy holds (`OverlappingFileLockException`) is waited for up to 10 s, then only the
+   JVM lock holds. A restart or crash loses every job: an `exporting` state from this node older than the JVM is lost
+   (`ExportJobs.lost`; no `node`: older versions, counted as this node's), and its readers (`app-export`,
+   `recording-stop`, `create`, the recording's `meta`) save it as `failed`.
 4. `recording-stop` waits up to 20 s (`STOP_SYNC_MS`, under common proxy timeouts such as nginx's 60 s) and answers
    the state, `exporting` if it runs on. The recorder then polls `GET app-export&id=<capture>` (owner only) every 3 s,
    up to 150 s, and saves a summary in `recording.serverCapture.appExport`: `{state, sampleData, apps}` (`apps` = how many).

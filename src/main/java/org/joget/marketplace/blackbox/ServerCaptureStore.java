@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -300,12 +301,28 @@ public class ServerCaptureStore {
         }
     }
 
-    /** The file lock, or null where the file system has none (the JVM lock still holds). */
+    /**
+     * The file lock, or null where the file system has none (the JVM lock still holds). Another copy of the plugin in
+     * this JVM (the old bundle's export job during a plugin reload) may hold it: then waits for it a while.
+     */
     private static FileLock fileLock(FileChannel ch) {
-        try {
-            return ch.lock();
-        } catch (IOException | UnsupportedOperationException e) {
-            return null;
+        long until = System.currentTimeMillis() + 10_000;
+        while (true) {
+            try {
+                return ch.lock();
+            } catch (IOException | UnsupportedOperationException e) {
+                return null;
+            } catch (OverlappingFileLockException e) {
+                if (System.currentTimeMillis() > until) {
+                    return null;
+                }
+                try {
+                    Thread.sleep(50);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    return null;
+                }
+            }
         }
     }
 

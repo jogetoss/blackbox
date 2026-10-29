@@ -318,7 +318,13 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                     store.file(recId, RecordingStore.SYSTEM_LOG), sampleMode(request), recId, access);
             meta.put("appExport", ExportJobs.exporting());
             store.updateMeta(recId, new JSONObject().put("appExport", meta.get("appExport")));
-            ExportJobs.submit(() -> finishUploadExport(recId, job));
+            ExportJobs.submit(() -> finishUploadExport(recId, job), () -> {
+                try {
+                    store().updateMeta(recId, new JSONObject().put("appExport", new JSONObject().put("state", "failed")));
+                } catch (IOException | JSONException e) {
+                    LogUtil.warn(getClassName(), "Could not save the dropped app export of " + recId + ": " + e);
+                }
+            });
         }
         LogUtil.info(getClassName(), "Recording " + recId + " uploaded by " + access.user.getUsername());
         // url: where the extension's "Open uploaded" link points
@@ -702,12 +708,15 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                     deleteQuietly(session);
                     deleteQuietly(systemLog);
                 }
+                endStopExport(id, end);
+            }, () -> {
+                deleteQuietly(session);
+                deleteQuietly(systemLog);
                 try {
-                    logs.put(id, "appExport", end);
-                } catch (IOException e) {
-                    LogUtil.warn(getClassName(), "Could not save the app export state of server capture " + id + ": " + e);
+                    endStopExport(id, new JSONObject().put("state", "failed"));
+                } catch (JSONException ignored) {
+                    // a constant key: never
                 }
-                deliverStopExport(id); // the upload came first and is waiting for it
             });
             return waitForStopExport(id, STOP_SYNC_MS);
         } catch (IOException | RuntimeException e) {
@@ -720,6 +729,16 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             }
         }
         return state;
+    }
+
+    /** Saves the end of a stop's app export and hands it to a recording uploaded meanwhile. */
+    private static void endStopExport(String id, JSONObject end) {
+        try {
+            ServerCapture.store().put(id, "appExport", end);
+        } catch (IOException e) {
+            LogUtil.warn(BlackBoxPlugin.class.getName(), "Could not save the app export state of server capture " + id + ": " + e);
+        }
+        deliverStopExport(id); // the upload came first and is waiting for it
     }
 
     private static void deleteQuietly(Path f) {

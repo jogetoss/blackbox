@@ -1,5 +1,6 @@
 package org.joget.marketplace.blackbox;
 
+import java.lang.management.ManagementFactory;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.joget.commons.util.LogUtil;
@@ -13,21 +14,26 @@ import org.json.JSONObject;
  * need the request (who may have which app exported) are made before a job is queued.
  *
  * Each job runs with the profile (and user) of the request that queued it (PluginThread), not the thread's: with virtual
- * hosts on, the one export thread serves every tenant. Jobs don't survive a restart: stop() drops them, and an
- * "exporting" state from this node older than start() is {@link #lost} (the readers then save it as failed).
+ * hosts on, the one export thread serves every tenant. stop() (plugin reload or shutdown) drops the jobs that haven't
+ * started, saving each as failed (its dropped callback); a running one is interrupted but ends (or fails) on its own and saves
+ * its end state, even after a reload. An "exporting" state from this node older than the JVM is {@link #lost} (a
+ * restart or crash ended its job; the readers then save it as failed).
  */
 final class ExportJobs {
 
     private static ExecutorService jobs;
     private static volatile long startedAt;
     private static volatile String node;
+    /** Wraps a job with the request's profile and user; tests (no Joget running) swap it. */
+    static java.util.function.UnaryOperator<Runnable> withRequest = PluginThread::new;
 
     private ExportJobs() {
     }
 
     static synchronized void start() {
         if (jobs == null) {
-            startedAt = System.currentTimeMillis();
+            // The JVM's start, not the queue's: a plugin reload leaves the old bundle's running job going
+            startedAt = ManagementFactory.getRuntimeMXBean().getStartTime();
             node = ServerCapture.nodeName();
             jobs = Executors.newSingleThreadExecutor(r -> {
                 Thread t = new Thread(r, "BlackBox app export");
@@ -40,7 +46,11 @@ final class ExportJobs {
 
     static synchronized void stop() {
         if (jobs != null) {
-            jobs.shutdownNow();
+            for (Runnable r : jobs.shutdownNow()) {
+                if (r instanceof Job) {
+                    ((Job) r).dropped();
+                }
+            }
             jobs = null;
         }
     }
@@ -51,8 +61,8 @@ final class ExportJobs {
     }
 
     /**
-     * True when state says exporting but its job is gone: queued on this node before the queue last started (a restart
-     * or plugin reload dropped it). States without a node (older versions) count as this node's.
+     * True when state says exporting but its job is gone: queued on this node before this JVM started (a restart or
+     * crash). States without a node (older versions) count as this node's.
      */
     static boolean lost(JSONObject state) {
         if (state == null || !"exporting".equals(state.optString("state")) || startedAt == 0) {
@@ -67,29 +77,54 @@ final class ExportJobs {
         return n != null ? n : ServerCapture.nodeName();
     }
 
-    /** Queues a job; runs it on the calling thread when the queue is stopped (plugin stopping). */
-    static void submit(Runnable job) {
+    /**
+     * Queues a job; runs it on the calling thread when the queue is stopped (plugin stopping). dropped saves the job as
+     * failed when stop() drops it before it starts; it must be quick (it runs on the stopping thread).
+     */
+    static void submit(Runnable job, Runnable dropped) {
         ExecutorService ex;
         synchronized (ExportJobs.class) {
             ex = jobs;
         }
-        Runnable safe = () -> {
-            try {
-                job.run();
-            } catch (RuntimeException | LinkageError e) {
-                LogUtil.warn(ExportJobs.class.getName(), "App export job failed: " + e);
-            }
-        };
         if (ex == null) {
-            safe.run();
+            safely(job, "App export job failed: ");
             return;
         }
-        // Made here, on the request's thread: it keeps the request's profile and user; run() sets them for the job
-        PluginThread withProfile = new PluginThread(safe);
+        // Made here, on the request's thread: they keep the request's profile and user; run() sets them for the job
+        Job queued = new Job(withRequest.apply(() -> safely(job, "App export job failed: ")),
+                withRequest.apply(() -> safely(dropped, "Could not save a dropped app export job: ")));
         try {
-            ex.execute(withProfile::run);
+            ex.execute(queued);
         } catch (java.util.concurrent.RejectedExecutionException e) {
-            safe.run();
+            safely(job, "App export job failed: ");
+        }
+    }
+
+    private static void safely(Runnable r, String warning) {
+        try {
+            r.run();
+        } catch (RuntimeException | LinkageError e) {
+            LogUtil.warn(ExportJobs.class.getName(), warning + e);
+        }
+    }
+
+    /** A queued job and what saves it as failed if stop() drops it. */
+    private static final class Job implements Runnable {
+        private final Runnable job;
+        private final Runnable dropped;
+
+        Job(Runnable job, Runnable dropped) {
+            this.job = job;
+            this.dropped = dropped;
+        }
+
+        @Override
+        public void run() {
+            job.run();
+        }
+
+        void dropped() {
+            dropped.run();
         }
     }
 }
