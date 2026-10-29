@@ -32,7 +32,9 @@ const test = base.extend({
       channel: 'chromium', // the full Chromium: headless mode that runs extensions
       headless: !process.env.BB_HEADED,
       // A DevTools port (written to <profile>/DevToolsActivePort) for incognito.spec.js: Playwright can't see incognito windows
-      args: [`--disable-extensions-except=${ext}`, `--load-extension=${ext}`, '--remote-debugging-port=0'],
+      // Chrome's screen picker can't be clicked: Chromium picks the whole screen by itself (incognito-recording.spec.js)
+      args: [`--disable-extensions-except=${ext}`, `--load-extension=${ext}`, '--remote-debugging-port=0',
+        '--auto-select-desktop-capture-source=Entire screen'],
     });
     await use(context);
     await context.close();
@@ -127,6 +129,80 @@ async function uploaded(joget, title) {
   return rec;
 }
 
+const INCOGNITO_USER = process.env.BB_INCOGNITO_USER || 'cat'; // a non-admin user who can log in (password = username)
+
+/** A browser-level DevTools connection: targets() and evaluate(targetId, expression). */
+async function devtools(profile) {
+  const [port, wsPath] = fs.readFileSync(path.join(profile, 'DevToolsActivePort'), 'utf8').trim().split('\n');
+  const ws = new WebSocket(`ws://127.0.0.1:${port}${wsPath}`);
+  await new Promise((ok, fail) => { ws.onopen = ok; ws.onerror = fail; });
+  let seq = 0;
+  const waiting = new Map();
+  ws.onmessage = (e) => {
+    const d = JSON.parse(e.data);
+    if (waiting.has(d.id)) { waiting.get(d.id)(d); waiting.delete(d.id); }
+  };
+  const send = (method, params = {}, sessionId) => new Promise((ok) => {
+    const id = ++seq;
+    waiting.set(id, ok);
+    ws.send(JSON.stringify({ id, method, params, sessionId }));
+  });
+  return {
+    targets: async () => (await send('Target.getTargets')).result.targetInfos,
+    async evaluate(targetId, expression) {
+      const { result: { sessionId } } = await send('Target.attachToTarget', { targetId, flatten: true });
+      const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sessionId);
+      if (r.result.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description || r.result.exceptionDetails.text);
+      return r.result.result.value;
+    },
+    close: () => ws.close(),
+  };
+}
+
+/**
+ * Turns on Allow in Incognito, opens an incognito window logged in to Joget as INCOGNITO_USER (plus `urls`, e.g. an
+ * extension page, in more incognito windows) and returns the DevTools connection to drive it: Playwright can't see
+ * incognito windows. `page` is a normal window's page; it ends on the extension's Recordings page.
+ */
+async function openIncognito(page, extensionId, profile, urls = []) {
+  // As on chrome://extensions. It reloads the extension, which Chromium then disables unless Developer mode is on.
+  await page.goto('chrome://extensions');
+  await page.evaluate((id) => new Promise((ok) => chrome.developerPrivate.updateProfileConfiguration({ inDeveloperMode: true },
+    () => chrome.developerPrivate.updateExtensionConfiguration({ extensionId: id, incognitoAccess: true }, ok))), extensionId);
+  await expect.poll(() => page.evaluate((id) => new Promise((ok) => chrome.developerPrivate.getExtensionInfo(id, (e) => ok(e.state))), extensionId))
+    .toBe('ENABLED');
+  await page.goto(`chrome-extension://${extensionId}/recordings.html`);
+  await page.evaluate(async ({ uploadUrl, urls }) => {
+    await chrome.storage.local.set({ uploadUrl });
+    for (const url of urls) await chrome.windows.create({ incognito: true, url });
+  }, { uploadUrl: `${JOGET}/api/blackbox`, urls: [`${JOGET}/web/login`, ...urls] });
+
+  const dt = await devtools(profile);
+  dt.find = async (type, part) => (await dt.targets()).filter((t) => t.type === type && t.url.includes(part));
+  let login;
+  await expect.poll(async () => (login = (await dt.find('page', '/web/login'))[0])).toBeTruthy();
+  dt.incognito = login.browserContextId; // the normal window's pages are in Playwright's context
+  dt.loginPage = login.targetId;
+  await expect.poll(() => dt.evaluate(login.targetId, `document.readyState === 'complete' && !!document.querySelector('#j_password')`)).toBe(true);
+  await dt.evaluate(login.targetId, `(() => {
+    document.querySelector('#j_username').value = ${JSON.stringify(INCOGNITO_USER)};
+    document.querySelector('#j_password').value = ${JSON.stringify(INCOGNITO_USER)};
+    document.querySelector('#j_password').form.querySelector('[type=submit]').click();
+  })()`);
+  // The extension's service worker in each copy
+  dt.workers = async () => {
+    const all = await dt.find('service_worker', `chrome-extension://${extensionId}/`);
+    return { normal: all.find((t) => t.browserContextId !== dt.incognito), incognito: all.find((t) => t.browserContextId === dt.incognito) };
+  };
+  await expect.poll(async () => !!(await dt.workers()).incognito).toBe(true);
+  return dt;
+}
+
+/** Who a service worker (or page) of the extension calls the server as. */
+const WHO_AM_I = `fetch(${JSON.stringify(JOGET + '/api/blackbox?action=me')}, { credentials: 'include' })
+  .then((r) => r.ok ? r.json().then((me) => me.user.username) : 'HTTP ' + r.status)`;
+
 module.exports = {
+  INCOGNITO_USER, openIncognito, WHO_AM_I,
   test, expect, JOGET, EXTENSION, LEGACY_EXTENSION, CAPTURE_KEY, ASSIGNMENT, loginJoget, api, appsWhenExported, report, keep, captureAndStop, uploaded,
 };
