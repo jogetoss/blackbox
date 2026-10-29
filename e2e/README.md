@@ -18,6 +18,9 @@ npx playwright test              # headless
 BB_HEADED=1 npx playwright test  # watch it in a window
 ```
 
+Needs a Joget with the BlackBox plugin, **Capture server data** on, and j8213's iService app (the tests' recordings
+open one of its assignments).
+
 | Variable | Default | |
 |---|---|---|
 | `BB_JOGET` | `http://localhost:3128/jw` | The Joget to test against (j8213) |
@@ -34,13 +37,13 @@ BB_HEADED=1 npx playwright test  # watch it in a window
   recording needs Chrome's screen picker.
 - `tests/quick-settings.spec.js`: the popup's quick settings (shown as `me.options` allows, remembered), the app export
   at `recording-stop` kept by the upload, apps turned off at stop, and the automatic upload sending the choices saved
-  with the recording (needs "Capture server data" on).
+  with the recording; Mask data unticked keeps real values (skipped when the user may not).
 - `tests/legacy-names.spec.js`: recordings, ZIPs and extensions from before the `systemLog` -> `serverCapture`
   rename still work: the extension's own capture start and upload, a kept recording with `systemLog`, a `meta.json`
   with `systemLog`, and an old ZIP imported on the server and in the extension. Run the whole suite a second time with
   the previous extension (`git archive <tag> chrome-extension | tar -x -C /some/dir`, then
   `BB_EXTENSION=/some/dir/chrome-extension npx playwright test`); its ZIP test is skipped there.
 - `tests/upload-form.spec.js`: the sample data choice on the upload form, the `sampleData` parameter it sends, and the
-  App data the server builds (needs j8213's iService app).
+  App data the server builds.
 
 A failed test keeps a trace in `test-results/` (`npx playwright show-trace <trace.zip>`).

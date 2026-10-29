@@ -33,8 +33,8 @@ Info (license key, system properties) and the exported apps. Also renamed: the `
 recording JSON is now `canViewServerData`.
 
 **Also renamed: the capture summary `systemLog` is now `serverCapture`** (in `meta.json`, in `session.json`'s
-`recording`, and in the `recording-start` answer). Existing recordings, ZIPs and extension 1.1 keep working: their
-`systemLog` is still read. One case breaks: **extension 1.2 with plugin 8.2.1 or older** uploads recordings without
+`recording`, and in the `recording-start` answer, which still also sends `systemLog` for extension 1.1). Existing
+recordings, ZIPs and extension 1.1 keep working: their `systemLog` is still read. One case breaks: **extension 1.2 with plugin 8.2.1 or older** uploads recordings without
 their server data. Upgrade the plugin before (or with) the extension.
 
 ## Use
@@ -66,14 +66,14 @@ This section is the single place for what each setting does, who gets what, and 
 | Uploaders can view and delete their own recordings | Yes | |
 | Max file size (MB) | 500 | Video and session.json each |
 
-**Server data** (all need **Capture server data**)
+**Server data** (the capture settings need **Capture server data**)
 
 | Setting | Default | Notes | Popup checkbox |
 |---|---|---|---|
 | Capture server data during recordings | No | Logs, Info tab, and the settings below; apps exported at stop | |
 | Who can view server data | admins only | See [Who sees what](#who-sees-what) | |
 | Uploaders can view the server data of their own recordings | No | See [Who sees what](#who-sees-what) | |
-| Max size of system logs per recording (MB) | 20 | Later lines are dropped; the viewer says so | |
+| Max size of system logs per node per recording (MB) | 20 | Each server node's lines; later lines are dropped and the viewer says so | |
 | Delete server data not uploaded after (days) | 7 | Logs, load, traces, Info and app exports never uploaded | |
 | Sample server load during recordings | Yes | | |
 | Copy Glowroot traces of slow and failed requests | Yes | | |
@@ -85,12 +85,12 @@ This section is the single place for what each setting does, who gets what, and 
 
 | Setting | Default | Notes | Popup checkbox |
 |---|---|---|---|
-| Recent changes period (days) | 7 | Info tab: changed app versions and wflow files | |
+| Recent changes period (days) | 7 | Info tab: changed app versions and wflow files; needs **Capture server data**; at most 365 | |
 | Export the apps used in the recording | Yes | | **Export the apps used** |
-| Most apps to export | 5 | 0 = no limit; apps not allowed don't count | |
+| Most apps to export | 5 | 0 = no limit (0–9999; anything else means 5); apps not allowed don't count | |
 | Who can export apps they don't administer | nobody | Users chosen here get only apps Joget lets them access | |
 | Allow capturing form data | Yes | Needs **Export the apps used** | **Sample form data**, **Mask data** |
-| Newest rows per table when the recording touched none | 20 | | |
+| Newest rows per table when the recording touched none | 20 | At most 500 | |
 | Record ids in sample data | New unique ids | New ids: importing never overwrites rows. Or **Keep the original ids** | |
 | Always-masked column names | password, ic, email, phone, address… | Words in column names; masked even with real values | |
 
@@ -101,6 +101,7 @@ Admins can always do everything.
 | What | Who |
 |---|---|
 | Upload | **Who can upload** (others get **Upload selected** disabled in the extension) |
+| Import a ZIP | **Who can upload** |
 | View a recording | **Who can view all recordings**, or its uploader (**Uploaders can view and delete…**) |
 | Delete a recording | **Who can delete any recording** (if they can view it), or its uploader (same setting) |
 | See a recording's server data: system logs, traces, server load, Glowroot data, Info, exported apps | **Who can view server data** (if they can view the recording), or its uploader with **Uploaders can view the server data…** |
@@ -112,7 +113,8 @@ Admins can always do everything.
 ### Per-recording choices (popup)
 
 The popup's **Next recording** shows a server option only when the settings and the user's rights allow it (the user
-must be logged in to the Upload URL's server). All are ticked by default.
+must be logged in to the Upload URL's server). All are ticked until the user changes them; the choices are
+remembered for later recordings.
 
 | Popup checkbox | Shown when |
 |---|---|
@@ -121,7 +123,7 @@ must be logged in to the Upload URL's server). All are ticked by default.
 | **All server log lines** | **Capture server data** + **Also capture all other server log lines** are on, and the user is in **Who can view server data** and can upload |
 | **Glowroot data** | **Capture server data** + **Copy Glowroot data** are on, and the user can upload |
 
-- Each choice can only turn a setting off for one recording, except **Mask data**: unticking it keeps real values.
+- Each choice can only turn a setting off, except **Mask data**: unticking it keeps real values (the popup warns).
 - **Sample form data** needs **Export the apps used**; **Mask data** needs both.
 - The server checks every choice again. The recording keeps the choices, so automatic uploads use them too.
 - If the apps weren't exported at stop, the upload form offers the same three app choices.
@@ -129,21 +131,23 @@ must be logged in to the Upload URL's server). All are ticked by default.
 
 ## Server data
 
-Shown only on this plugin's replay page, to the users in [Who sees what](#who-sees-what).
+Shown on this plugin's replay page and included in the ZIP and HTML downloads, only for the users in
+[Who sees what](#who-sees-what).
 
-- **System logs** tab: Joget log lines (info and up) written while serving the recorded tab's requests, plus one entry
+- **System logs** tab: Joget log lines (as `joget.log` shows them) written while serving the recorded tab's requests, plus one entry
   per request, lined up with the video; a network request's details show its own lines. Not captured: work a request hands to another thread.
 - **Other server threads** (opt-in): every other log line during the recording (scheduler, email, other users), on
   the nodes the recording reached. Greyed under the filter **This tab + other server threads**, not counted as errors.
 - **Traces** tab: the [Glowroot](https://glowroot.org) trace of each recorded request Glowroot kept (slow or failed,
   by Glowroot's own settings). Failed lookups have **Retry**. Glowroot must allow anonymous access.
-- **Download Glowroot data**: the recording's slice of Glowroot's data, ready about a minute after the stop, to open in
+- **Download Glowroot data**: the recording's slice of Glowroot's data, ready 30–90 s after the stop, to open in
   a standalone Glowroot 0.14.2 (see its `README.txt`). About 1 MB for 35 s. Building it needs free temp space about the
   size of Glowroot's `data.h2.db`: check that on busy servers.
 - **Server load** strip: CPU, heap, busy request threads, DB connections and GC time per node, every second. No
   Glowroot needed.
 - **Info** tab: the server at recording start.
-  - **Changes in the last 7 days** (hidden when none): app versions edited or published, changed wflow files.
+  - **Changes in the last *N* days** (**Recent changes period**; hidden when none): versions edited or published of
+    the apps the recording used and of apps sharing their tables, changed wflow files.
   - **Joget** (start time, uptime), **Plugin** (every jar in `app_plugins`; "not loaded" = failed, see the Joget log),
     host, Java, database settings, **DB pool**, license, system properties.
   - **Cluster**: its nodes and the requests each served. **Node switches** counts requests that moved between nodes;
@@ -157,8 +161,8 @@ settings and environment variables.
 
 When the recording stops, BlackBox exports the Joget apps the tab used as `.jwa` files (definition only: no form data,
 plugins or groups), **as they were at that moment**. Apps with problems come first, then the most used, up to **Most
-apps to export**. The version is the one the URL names, else the published one. App Center is only exported when it had problems or was the only app. If the export runs long, the recording uploads without waiting and the apps are added when it ends (the replay page shows **Exporting apps…**). If no system log was captured,
-the export runs at upload instead.
+apps to export**. The version is the one the URL names, else the published one, else the latest. App Center is only exported when it had problems or was the only app. If the export runs long, the recording uploads without waiting and the apps are added when it ends (the replay page shows **Exporting apps…**). If server data wasn't
+captured (or the export at stop failed), the export runs at upload instead.
 
 - **App** tab: each app's requests, time in use, **Download .jwa**, sample data and processes. Apps not exported are
   one grey line.
@@ -178,7 +182,7 @@ Each `.jwa` gets sample rows the way Joget's own export adds them, so **importin
 
 **Masked** (default): letters and digits are replaced with the same kind, so length and format stay; the same value
 gets the same fake throughout. Kept: option values, values in the app definition, yes/no/true/false, numbers up to 5
-digits, UUIDs, process ids. Dates keep their year. User names become `user1`, `user2`…. Uploaded files become
+digits, UUIDs, process ids. Dates keep their year. User names (from created by / modified by) become `user1`, `user2`… wherever they appear. Uploaded files become
 placeholders. Always-masked columns stay masked even with **real values** (Mask data unticked), where files over 5 MB
 (50 MB per app) also become placeholders.
 
@@ -191,5 +195,7 @@ per app and 100 activities each; archived processes are not found.
 
 ## Storage
 
-One folder per recording under `<wflow>/blackbox/<id>/`, no database tables. A shared `wflow` folder works for
-clusters. Back it up like other `wflow` data; deleting a recording removes its folder.
+One folder per recording under `<wflow>/blackbox/<id>/`, no database tables. Server data waiting for its recording's
+upload is in `<wflow>/blackbox/pending/` (deleted after **Delete server data not uploaded after**), trace retries in
+`<wflow>/blackbox/retry/`. A shared `wflow` folder works for clusters. Back it up like other `wflow` data; deleting a
+recording removes its folder.

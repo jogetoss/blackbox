@@ -84,8 +84,8 @@
         },
         {
             "name" : "systemLogMaxMb",
-            "label" : "Max size of system logs per recording (MB)",
-            "description" : "Lines after this are dropped; the viewer says the log was cut off.",
+            "label" : "Max size of system logs per node per recording (MB)",
+            "description" : "Each server node keeps up to this much of a recording's log lines; lines after this are dropped and the viewer says the log was cut off.",
             "type" : "textfield",
             "value" : "20",
             "regex_validation" : "^[1-9][0-9]*$",
@@ -158,14 +158,14 @@
         {
             "name" : "recentChangesDays",
             "label" : "Recent changes period (days)",
-            "description" : "The Info tab's first section lists the app versions, plugin jars and wflow files changed in this period, and a Joget restart. Taken at recording start, with the System Info snapshot.",
+            "description" : "Needs \"Capture server data during recordings\". The Info tab's first section lists the app versions and wflow files changed in this period (the app versions narrowed to the apps the recording used and apps sharing their tables). Taken at recording start, with the System Info snapshot. At most 365.",
             "type" : "textfield",
             "value" : "7"
         },
         {
             "name" : "includeAppExport",
             "label" : "Export the apps used in the recording",
-            "description" : "At upload, the apps found in the recorded tab's URLs (apps with problems first, then the most used; App Center only when it had problems or was the only app) are exported with Joget's own app export (.jwa, without form data, plugins or groups) and kept with the recording. App definitions can hold plugin settings and environment variables.",
+            "description" : "When the recording stops (at upload when server data was not captured or that export failed), the apps found in the recorded tab's URLs (apps with problems first, then the most used; App Center only when it had problems or was the only app) are exported with Joget's own app export (.jwa, without form data, plugins or groups) and kept with the recording. App definitions can hold plugin settings and environment variables.",
             "type" : "selectbox",
             "value" : "true",
             "options" : [

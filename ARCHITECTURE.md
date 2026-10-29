@@ -443,7 +443,7 @@ for in Settings or on the first upload.
 | `server.js` | Calls the Upload endpoint with the browser's cookies; Upload URL and Recording page URL, host access, 15 s timeout on GETs |
 | `zip.js` | Reads and writes recording ZIPs (no library: `CompressionStream` / `DecompressionStream`; top-level files only, no ZIP64) |
 | `idb.js` | IndexedDB (see below) |
-| `options.html/js` | Settings: Upload URL, Recording page URL, Theme, Text size, Open on the server when logged in |
+| `options.html/js` | Settings: Upload URL, Recording page URL, Theme, Text size, Open recordings on the server when you are logged in |
 | `theme.js`, `ui.css` | `theme.js`: Theme and Text size (as `zoom`) for every extension page, cached in `localStorage`; also the content script on the Upload URL server's `<context>/blackbox/*` pages, registered by `background.js` while BlackBox has access to that server. `ui.css`: styles of the popup, Settings and recorder (the other pages use `viewer.css`) |
 | `build-standalone.py` | Builds `dist/blackbox-viewer.html`: `viewer.css`, `viewer.js` and `zip.js` inlined, without storage, server and upload code; re-run after viewer changes |
 
@@ -478,8 +478,8 @@ recording in progress (`startedAt` once a source is picked).
    `session.json` to `Downloads/blackbox/<id>/`.
 3. If the recorder didn't send the stop (`stopSent` false, or it is gone), `background.js` sends a plain
    `recording-stop`.
-4. The recorder opens `viewer.html?id=<id>&upload=server` (without `upload` when **Open on the server when logged
-   in** is off). `replay.js` then uploads it when the user is logged in to the server and opens the server's copy;
+4. The recorder opens `viewer.html?id=<id>&upload=server` (without `upload` when **Open recordings on the server
+   when you are logged in** is off). `replay.js` then uploads it when the user is logged in to the server and opens the server's copy;
    otherwise it replays it in the extension.
 
 **Crash recovery:** closing the recorder window stops the recording and runs `recoverPartials()`, as do browser

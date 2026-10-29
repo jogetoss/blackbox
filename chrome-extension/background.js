@@ -20,8 +20,8 @@ const FORWARDED_EVENTS = new Set([
   'Page.frameNavigated',
 ]);
 
-// System log capture: requests from the recorded tab to the Upload URL's server carry this header, so the
-// BlackBox plugin can keep their log lines (see README "System logs").
+// Server capture: requests from the recorded tab to the Upload URL's server carry this header, so the
+// BlackBox plugin can keep their log lines and other server data (see ARCHITECTURE.md "Server capture").
 const CAPTURE_RULE = 1;
 const CAPTURE_HEADER = 'X-BlackBox-Id';
 const ALL_RESOURCE_TYPES = ['main_frame', 'sub_frame', 'stylesheet', 'script', 'image', 'font', 'object',

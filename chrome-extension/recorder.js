@@ -210,7 +210,7 @@ async function stopAndSave(reason) {
   const report = buildReport(meta, consoleEntries, navigations, network, stoppedAt, reason);
   const stopSent = await stopOnServer(report);
 
-  // Nothing is downloaded: the recording stays in the extension until the user uploads or downloads it.
+  // Nothing is downloaded: the recording is kept in the extension (the newest MAX_KEPT stay).
   const id = recId;
   meta = null; // allow the window to close without the "leave page" prompt
   const video = new Blob(chunks, { type: 'video/webm' });

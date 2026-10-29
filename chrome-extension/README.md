@@ -1,7 +1,8 @@
 # BlackBox
 
 Chrome extension (Manifest V3). It records a video of a **tab, a window or the whole screen**, plus the console and
-network activity of the tab you started from. Recordings stay in the extension until you upload, export or delete them.
+network activity of the tab you started from. The extension keeps the newest 10 recordings; to keep more, move them
+to a folder, download them as ZIP or upload them.
 
 - `recording.webm`: the video, with the page's sound and, if on, your microphone.
 - `session.json`: console logs, uncaught exceptions, browser log entries, navigations and network requests (headers,
@@ -11,7 +12,7 @@ Internals and the upload API: [ARCHITECTURE.md](../ARCHITECTURE.md). Server side
 
 ## Install
 
-1. Open `chrome://extensions` and turn on **Developer mode**.
+1. Use Chrome 116 or later. Open `chrome://extensions` and turn on **Developer mode**.
 2. **Load unpacked** → this folder. After an update, click the reload icon on the extension card.
 3. Pin the extension.
 
@@ -35,7 +36,8 @@ Popup → **Settings** (this browser only; server options are in the plugin READ
      `chrome://settings/content/siteDetails?site=chrome-extension://<extension id>`.
    - Server options (**Export the apps used**, **Sample form data**, **Mask data**, **All server log lines**,
      **Glowroot data**), shown only when the server allows them: see
-     [Per-recording choices](../README.md#per-recording-choices-popup).
+     [Per-recording choices](../README.md#per-recording-choices-popup). The choices are remembered for later
+     recordings; unticking **Mask data** shows a warning (real customer data).
 2. For a window or the screen, pick it in the recorder window. Chrome's "started debugging this browser" banner is
    expected.
 3. Stop with the icon → **Stop & save**, the recorder window's button, or Chrome's **Stop sharing**. Closing the tab or
@@ -49,8 +51,9 @@ Popup → **Settings** (this browser only; server options are in the plugin READ
 
 ## Recordings page
 
-Popup → **Recordings**: recordings in browser storage (newest 10), with **Browser issues** (console errors, failed
-and slow requests).
+Popup → **Recordings**: recordings in browser storage, with **Browser issues** (console errors, failed and slow
+requests). Only the newest 10 stay: saving a new one drops older ones. An uploaded one stays listed as upload history;
+one never uploaded is gone, so move it to a folder or download it first.
 
 - **Link folder…**: also list recordings in `Downloads/blackbox` (read in place). After a browser restart, click
   **Allow access**.

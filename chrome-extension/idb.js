@@ -1,5 +1,5 @@
 // IndexedDB helper shared by the recorder and the viewer (same extension origin).
-// Recordings are kept here until the user downloads or deletes them; only the newest MAX_KEPT are kept.
+// Recordings are kept here; only the newest MAX_KEPT stay (older uploaded ones remain as upload history).
 // Record: { id, savedAt, video: Blob, report, uploaded: { url, id, at } | null }
 // id = recording start time, e.g. 2026-10-13T16-47-29 (also the folder name under Downloads/blackbox/)
 

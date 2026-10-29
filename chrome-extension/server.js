@@ -1,4 +1,4 @@
-// Talks to the upload server: a BlackBox upload endpoint at the "Upload URL" from Settings (see README "Upload endpoint").
+// Talks to the upload server: a BlackBox upload endpoint at the "Upload URL" from Settings (see ARCHITECTURE.md "Upload endpoint (API)").
 // Requests carry the browser's cookies, so the user's existing login on that server is used.
 // Needs host permission for the server's origin (asked for in Settings or on the first upload).
 
