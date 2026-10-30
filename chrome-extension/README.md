@@ -46,8 +46,18 @@ Popup → **Settings** (this browser only; server options are in the plugin READ
 
 - **Server data:** with the plugin's **Capture server data** on, the server keeps its log lines (and the other server data) for the tab. The popup
   warns when there is no Upload URL or the tab is on another server. While recording, an orange **REC** badge means
-  the server isn't capturing (the tooltip says why).
-- **Crash safety:** saved to browser storage every 5 s. After a crash, the recording is listed as **Recovered**.
+  the server isn't capturing (the tooltip says why). The recorder pings the server while recording (every 30 s by
+  default): when the server has ended the capture, the recording stops and saves; when you are logged out, the
+  recorder shows **Server capture ended: logged out** and goes on recording without server data. If the pings stop for
+  3 minutes (crash, killed browser, no network), the server ends the capture at the last ping.
+- **Time limit:** every recording is at most the plugin's **Max recording length** (30 minutes by default), also
+  without server data (the server's start answer still carries it). With no answer from a server (no Upload URL,
+  logged out, server down, an older plugin) the limit is 30 minutes. The recorder shows the time left, warns 2 minutes
+  before, and then stops and saves the recording (stop reason `time-limit`).
+- **Size limit:** video is recorded at 1.5 Mbit/s. With server data, the recorder stops and saves at 90% of the plugin's
+  upload limit (**Max file size (MB)**), with stop reason `size-limit`, so the upload is not refused as too large.
+- **Crash safety:** saved to browser storage every 5 s. After a crash, the recording is listed as **Recovered**, and
+  its server capture is ended at the last save.
 
 ## Incognito
 

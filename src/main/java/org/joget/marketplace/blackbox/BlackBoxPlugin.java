@@ -48,6 +48,10 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     private static final long DEFAULT_MAX_MB = 500;
     private static final long DEFAULT_SYSTEM_LOG_MB = 20;
     private static final long DEFAULT_KEEP_DAYS = 7;
+    // maxRecordingMinutes: the hard limit; at most GaugeSampler's 2 h
+    static final long DEFAULT_MAX_RECORDING_MIN = 30;
+    static final long MIN_RECORDING_MIN = 5;
+    static final long MAX_RECORDING_MIN = 120;
     private static final Pattern RANGE = Pattern.compile("^bytes=(\\d*)-(\\d*)$");
     private static final long RETRY_COOLDOWN_MS = 20 * 1000L;
     private static final Map<String, Long> RETRIED_AT = new java.util.concurrent.ConcurrentHashMap<>();
@@ -172,6 +176,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 startServerCapture(request, response, access, id);
             } else if ("recording-stop".equals(action) && post) {
                 stopServerCapture(request, response, access, id);
+            } else if ("recording-ping".equals(action) && post) {
+                pingServerCapture(request, response, access, id);
             } else if ("app-export".equals(action) && !post) {
                 // The recorder polls this while the app export at stop runs on (recording-stop answered "exporting")
                 JSONObject pending = ServerCaptureStore.isValidId(id) ? captureMeta(id) : null;
@@ -566,12 +572,15 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     /** The extension starts capturing when a recording starts; id is its random UUID, sent on the tab's requests. */
     private void startServerCapture(HttpServletRequest request, HttpServletResponse response, Access access, String id)
             throws IOException, JSONException {
+        long maxRecordingMs = maxRecordingMs(getPropertyString("maxRecordingMinutes"));
         if (!"true".equals(getPropertyString("captureServerData"))) {
-            error(response, HttpServletResponse.SC_FORBIDDEN, "Server data capture is turned off in the BlackBox plugin settings.");
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            json(response, captureOff(HttpServletResponse.SC_FORBIDDEN, "Server data capture is turned off in the BlackBox plugin settings.", maxRecordingMs));
             return;
         }
         if (!access.canUpload()) {
-            error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to upload recordings.");
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            json(response, captureOff(HttpServletResponse.SC_FORBIDDEN, "You are not allowed to upload recordings.", maxRecordingMs));
             return;
         }
         if (!ServerCaptureStore.isValidId(id)) {
@@ -588,7 +597,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         boolean allServer = "true".equals(getPropertyString("captureAllServerLogs")) && access.canViewServerData()
                 && !"false".equals(request.getParameter("allServer"));
         if (!ServerCapture.store().start(id, access.user.getUsername(), maxBytes, keepMs, traces, getPropertyString("glowrootUrl"), gauges,
-                glowrootData, allServer)) {
+                glowrootData, allServer, maxRecordingMs)) {
             error(response, HttpServletResponse.SC_CONFLICT, "This server capture id is already in use.");
             return;
         }
@@ -597,8 +606,73 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         JSONObject started = new JSONObject().put("id", id).put("maxMb", maxBytes / (1024 * 1024))
                 .put("traces", traces).put("gauges", gauges).put("glowrootData", glowrootData).put("allServer", allServer)
                 .put("slowThresholdMs", slowMs());
+        withLiveness(started, maxRecordingMs, maxSizeMb());
         // RecordingStore.LEGACY_CAPTURE: the extension of plugin 8.2.1 and older reads the slow threshold from there
         json(response, new JSONObject().put(RecordingStore.CAPTURE, started).put(RecordingStore.LEGACY_CAPTURE, started));
+    }
+
+    /**
+     * Error body of a start without server capture (turned off, or the user may not upload), with the hard limit: the
+     * recording goes on without server data but still stops itself at maxRecordingMs. No maxSizeMb: no size guard.
+     */
+    static JSONObject captureOff(int status, String message, long maxRecordingMs) throws JSONException {
+        return new JSONObject().put("error", new JSONObject().put("code", String.valueOf(status)).put("message", message))
+                .put(RecordingStore.CAPTURE, new JSONObject().put("maxRecordingMs", maxRecordingMs));
+    }
+
+    /** The recorder's heartbeat timing for the start response, so the extension needs no constants of its own. */
+    static JSONObject withLiveness(JSONObject started) throws JSONException {
+        return started.put("pingMs", LivenessKnobs.pingMs()).put("lostMs", LivenessKnobs.lostMs());
+    }
+
+    /** The same, with the hard limit: the recorder stops itself after maxRecordingMs. */
+    static JSONObject withLiveness(JSONObject started, long maxRecordingMs) throws JSONException {
+        return withLiveness(started).put("maxRecordingMs", maxRecordingMs);
+    }
+
+    /** The same, with the upload size limit: the recorder stops itself at 90% of it (reason size-limit). */
+    static JSONObject withLiveness(JSONObject started, long maxRecordingMs, long maxSizeMb) throws JSONException {
+        return withLiveness(started, maxRecordingMs).put("maxSizeMb", maxSizeMb);
+    }
+
+    /**
+     * The maxRecordingMinutes setting in ms: 5 to 120 (outside: the nearest), 30 when empty or not a number. The test
+     * override's minLimitMs may lower it.
+     */
+    static long maxRecordingMs(String setting) {
+        long min = DEFAULT_MAX_RECORDING_MIN;
+        try {
+            min = Long.parseLong(setting == null ? "" : setting.trim());
+        } catch (NumberFormatException e) {
+            // the default
+        }
+        min = Math.max(MIN_RECORDING_MIN, Math.min(MAX_RECORDING_MIN, min));
+        return Math.min(min * 60_000L, LivenessKnobs.minLimitMs());
+    }
+
+    /**
+     * The recorder's heartbeat, every pingMs while it records: marks the capture seen (lastSeenAt) and answers its state,
+     * {state: on | stopped, reason}. lastSavedAt and videoBytes are the recorder's last crash-safety save and video size.
+     */
+    private void pingServerCapture(HttpServletRequest request, HttpServletResponse response, Access access, String id)
+            throws IOException, JSONException {
+        JSONObject state = ServerCaptureStore.isValidId(id)
+                ? ServerCapture.store().ping(id, access.user.getUsername(), longParam(request, "lastSavedAt"), longParam(request, "videoBytes"))
+                : null;
+        if (state == null) {
+            error(response, HttpServletResponse.SC_NOT_FOUND, "Server capture not found.");
+            return;
+        }
+        json(response, state);
+    }
+
+    /** A whole number parameter, or -1 when missing or invalid. */
+    private static long longParam(HttpServletRequest request, String name) {
+        try {
+            return Math.max(-1, Long.parseLong(request.getParameter(name)));
+        } catch (NumberFormatException e) {
+            return -1;
+        }
     }
 
     /** "Slow" for the recordings lists: Glowroot's slow threshold (ServerData.slowMs), or 2 s without Glowroot. */
@@ -615,12 +689,14 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     }
 
     /**
-     * Ends a capture. With a body (the recording's network and console entries, see {@link #exportAtStop}) it also
+     * Ends a capture. stoppedAt (optional, ms): the browser's stop time, sent when the extension recovers a crashed
+     * recording (see {@link ServerCaptureStore#stop(String, String, long, long)} for the bounds). With a body (the recording's network and console entries, see {@link #exportAtStop}) it also
      * exports the apps the recording used, with their sample and process data, as they are now.
      */
     private void stopServerCapture(HttpServletRequest request, HttpServletResponse response, Access access, String id)
             throws IOException, JSONException {
-        if (!ServerCaptureStore.isValidId(id) || !ServerCapture.store().stop(id, access.user.getUsername())) {
+        if (!ServerCaptureStore.isValidId(id)
+                || !ServerCapture.store().stop(id, access.user.getUsername(), longParam(request, "stoppedAt"), LivenessKnobs.lostMs())) {
             error(response, HttpServletResponse.SC_NOT_FOUND, "Server capture not found.");
             return;
         }

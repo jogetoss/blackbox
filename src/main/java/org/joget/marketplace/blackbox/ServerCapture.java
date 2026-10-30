@@ -13,11 +13,19 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
+import org.joget.commons.util.HostManager;
 import org.joget.commons.util.LogUtil;
 import org.joget.commons.util.SetupManager;
 import org.json.JSONException;
@@ -68,6 +76,31 @@ final class ServerCapture {
         return stores.get();
     }
 
+    /**
+     * The blackbox folders the timer checks and sweeps; tests swap it. The timer thread only has the profile it inherited
+     * at plugin start, so with virtual hosts it goes through every profile's folder by path instead of store().
+     */
+    static Supplier<List<Path>> checkDirs = () -> blackboxDirs(HostManager.isVirtualHostEnabled(),
+            SetupManager.getBaseDirectory(), SetupManager.getBaseSharedDirectory());
+
+    /** With virtual hosts: <shared>/app_profiles/<each profile>/blackbox (as SetupManager.getBaseDirectory). Else <base>/blackbox. */
+    static List<Path> blackboxDirs(boolean virtualHosts, String base, String shared) {
+        if (!virtualHosts) {
+            return Collections.singletonList(Paths.get(base, "blackbox"));
+        }
+        List<Path> dirs = new ArrayList<>();
+        try (java.nio.file.DirectoryStream<Path> profiles = Files.newDirectoryStream(Paths.get(shared, SetupManager.DIRECTORY_PROFILES))) {
+            for (Path p : profiles) {
+                if (Files.isDirectory(p)) {
+                    dirs.add(p.resolve("blackbox"));
+                }
+            }
+        } catch (IOException e) {
+            LogUtil.warn(ServerCapture.class.getName(), "Could not list the profiles: " + e.getMessage());
+        }
+        return dirs;
+    }
+
     /** Called by the bundle activator. */
     static synchronized void start() {
         if (running) {
@@ -85,7 +118,8 @@ final class ServerCapture {
             return t;
         });
         timer.scheduleWithFixedDelay(ServerCapture::flushAll, FLUSH_MS, FLUSH_MS, TimeUnit.MILLISECONDS);
-        timer.scheduleWithFixedDelay(ServerCapture::sweep, 60 * 1000L, SWEEP_MS, TimeUnit.MILLISECONDS);
+        timer.scheduleWithFixedDelay(ServerCapture::sweepAll, 60 * 1000L, SWEEP_MS, TimeUnit.MILLISECONDS);
+        scheduleCheck(timer);
         TraceCollector.start();
         GaugeSampler.start();
         GlowrootPackager.start();
@@ -190,9 +224,103 @@ final class ServerCapture {
         MISSES.entrySet().removeIf(e -> now - e.getValue() > MISS_MS);
     }
 
-    private static void sweep() {
+    /**
+     * Runs {@link #checkLost} every checkMs (the shortest any profile's test override sets), read again each time so the
+     * override applies without a restart.
+     */
+    private static void scheduleCheck(ScheduledExecutorService t) {
+        long delay;
         try {
-            int n = store().sweep(System.currentTimeMillis());
+            delay = checkMs(checkDirs.get());
+        } catch (Exception e) {
+            delay = LivenessKnobs.CHECK_MS;
+        }
+        try {
+            t.schedule(() -> {
+                try {
+                    checkLost(System.currentTimeMillis());
+                } catch (Exception e) {
+                    LogUtil.warn(ServerCapture.class.getName(), "Could not check server captures for a lost browser: " + e.getMessage());
+                }
+                scheduleCheck(t);
+            }, delay, TimeUnit.MILLISECONDS);
+        } catch (RejectedExecutionException e) {
+            // the plugin stopped
+        }
+    }
+
+    static long checkMs(List<Path> dirs) {
+        long ms = LivenessKnobs.CHECK_MS;
+        for (Path dir : dirs) {
+            ms = Math.min(ms, LivenessKnobs.checkMs(dir.resolve(LivenessKnobs.FILE)));
+        }
+        return ms;
+    }
+
+    /** {@link #checkLost(long, ServerCaptureStore, long)} for every profile's captures, each with its own lostMs. */
+    static void checkLost(long now) {
+        for (Path dir : checkDirs.get()) {
+            checkLost(now, new ServerCaptureStore(dir.resolve("pending")), LivenessKnobs.lostMs(dir.resolve(LivenessKnobs.FILE)));
+        }
+    }
+
+    /**
+     * The lost-browser check of one profile's captures, on every node. Reads each capture's meta from disk (a ping can
+     * land on any node): a capture not seen for lostMs is stopped at its last ping ({@link ServerCaptureStore#stopIfLost},
+     * once, under the lock), and this node closes its copy of every stopped capture, whichever node stopped it. The same
+     * run is the hard limit's backup: a capture past maxUntil + 2 min is stopped at maxUntil
+     * ({@link ServerCaptureStore#stopIfOverLimit}).
+     */
+    static void checkLost(long now, ServerCaptureStore store, long lostMs) {
+        Set<String> ids = new HashSet<>();
+        for (Capture c : OPEN.values()) {
+            if (c.file.startsWith(store.root())) {
+                ids.add(c.id);
+            }
+        }
+        try {
+            ids.addAll(store.ids()); // also captures no node has open (closed when idle, node restarted)
+        } catch (IOException e) {
+            LogUtil.warn(ServerCapture.class.getName(), "Could not list server captures: " + e.getMessage());
+        }
+        for (String id : ids) {
+            JSONObject meta = store.readMeta(id);
+            if (meta == null) {
+                continue;
+            }
+            if (!meta.has("stoppedAt")) {
+                try {
+                    if (store.stopIfLost(id, now, lostMs)) {
+                        LogUtil.info(ServerCapture.class.getName(), "Stopped server capture " + id + ": no ping from the browser for " + lostMs / 1000 + " s");
+                    } else if (store.stopIfOverLimit(id, now)) {
+                        LogUtil.info(ServerCapture.class.getName(), "Stopped server capture " + id + ": past its time limit");
+                    } else {
+                        continue;
+                    }
+                } catch (IOException e) {
+                    LogUtil.warn(ServerCapture.class.getName(), "Could not stop server capture " + id + ": " + e.getMessage());
+                    continue;
+                }
+            }
+            if (OPEN.containsKey(id)) {
+                close(id);
+            }
+        }
+    }
+
+    private static void sweepAll() {
+        try {
+            for (Path dir : checkDirs.get()) {
+                sweep(new ServerCaptureStore(dir.resolve("pending")));
+            }
+        } catch (Exception e) {
+            LogUtil.warn(ServerCapture.class.getName(), "Could not clean up server captures: " + e.getMessage());
+        }
+    }
+
+    private static void sweep(ServerCaptureStore store) {
+        try {
+            int n = store.sweep(System.currentTimeMillis());
             if (n > 0) {
                 LogUtil.info(ServerCapture.class.getName(), "Deleted " + n + " server capture(s) that were never uploaded");
             }

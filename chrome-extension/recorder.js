@@ -5,6 +5,7 @@ const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const tabId = Number(params.get('tabId'));
 const mode = params.get('mode') || 'window'; // 'tab' | 'window' | 'screen'
+const TITLE = document.title;
 
 let recorder = null;
 let stream = null;            // what MediaRecorder records: the video track plus one mixed sound track
@@ -27,6 +28,32 @@ let savedChunks = 0;          // chunks[0 .. savedChunks-1] are saved
 let saved = { console: 0, navigations: 0, network: 0 };
 let finishedNetwork = [];     // network entries in the order they finished (only finished ones are saved)
 let saving = Promise.resolve();
+
+// Heartbeat: every serverCapture.pingMs the server hears that this recording is alive (recording-ping), so it can
+// close a capture whose browser is gone. Runs here, not in the service worker, which Chrome suspends.
+let pingTimer = null;
+let pinging = false;
+let lastSavedAt = 0;          // the last crash-safety save
+let videoBytes = 0;           // the video recorded so far
+let serverNote = '';          // shown after the timer, e.g. when the server capture ended
+
+// Hard limit: every recording has one, serverCapture.maxRecordingMs (the plugin's maxRecordingMinutes, also sent when
+// server capture is off) or DEFAULT_LIMIT when no server answered (no Upload URL, logged out, server down, a plugin
+// without it). The status shows the time left, warns WARN_BEFORE ms before, and the recording stops and saves itself at
+// the limit (reason time-limit). With server capture the server stops it 2 minutes past the limit if this never happens.
+const WARN_BEFORE = 2 * 60 * 1000;
+const DEFAULT_LIMIT = 30 * 60 * 1000; // the plugin's default maxRecordingMinutes
+let limitAt = 0;
+let limitHit = false;
+
+// Size guard: with serverCapture.maxSizeMb the recording stops itself (reason size-limit) at 90% of the server's upload
+// limit, so the upload doesn't fail after a long recording. Without it (server capture off): only the time limit.
+// The bitrate is set so the time limit fits under the size limit at the default settings (30 min, 500 MB).
+const VIDEO_BITS_PER_SECOND = 1_500_000;
+const SIZE_GUARD = 0.9;
+let sizeLimitBytes = 0;       // 0: no size guard
+let sizeHit = false;
+function sizeLimitReached(bytes, limitBytes) { return limitBytes > 0 && bytes >= limitBytes * SIZE_GUARD; }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.target !== 'recorder') return;
@@ -103,9 +130,17 @@ async function pickAndStart() {
     : ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'])
     .find((m) => MediaRecorder.isTypeSupported(m));
   chunks = []; consoleEntries = []; navigations = []; network = []; inFlight.clear();
-  recorder = new MediaRecorder(stream, { mimeType });
+  recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: VIDEO_BITS_PER_SECOND });
   finishedNetwork = []; savedChunks = 0; saveSeq = 0; saved = { console: 0, navigations: 0, network: 0 };
-  recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+  videoBytes = 0; serverNote = '';
+  sizeLimitBytes = 0; sizeHit = false;
+  recorder.ondataavailable = (e) => {
+    if (e.data.size > 0) { chunks.push(e.data); videoBytes += e.data.size; }
+    if (!sizeHit && sizeLimitReached(videoBytes, sizeLimitBytes)) {
+      sizeHit = true;
+      chrome.runtime.sendMessage({ target: 'background', type: 'stop', reason: 'size-limit' });
+    }
+  };
   const startedAt = Date.now();
   recorder.start(1000); // one chunk per second
 
@@ -131,13 +166,27 @@ async function pickAndStart() {
   meta.options = Quick.options(await Quick.get()); // the popup's app export choices, used at stop and at upload
   meta.userAgent = navigator.userAgent;
   recId = recordingId(startedAt);
-  await idbPartialPut(recId + ':meta', { ...meta, lastSavedAt: startedAt });
+  lastSavedAt = startedAt;
+  await idbPartialPut(recId + ':meta', { ...meta, lastSavedAt });
   saveTimer = setInterval(() => { saving = saving.then(savePart).catch((e) => console.warn('Could not save progress:', e)); }, SAVE_EVERY);
+  if (meta.serverCapture?.status === 'on' && meta.serverCapture.pingMs > 0) pingTimer = setInterval(ping, meta.serverCapture.pingMs);
+
+  if (meta.serverCapture?.status === 'on' && meta.serverCapture.maxSizeMb > 0) sizeLimitBytes = meta.serverCapture.maxSizeMb * 1024 * 1024;
+  limitAt = startedAt + (meta.serverCapture?.maxRecordingMs > 0 ? meta.serverCapture.maxRecordingMs : DEFAULT_LIMIT);
 
   $('stop').hidden = false;
   const tick = () => {
-    const s = Math.floor((Date.now() - startedAt) / 1000);
-    $('status').textContent = `Recording… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} (logs from: ${res.title || res.url}; sound: ${soundLabel(meta.audio)})`;
+    const now = Date.now();
+    $('status').textContent = `Recording… ${clock(now - startedAt)}${limitAt ? ` (${clock(Math.max(0, limitAt - now))} left)` : ''} (logs from: ${res.title || res.url}; sound: ${soundLabel(meta.audio)})${serverNote ? ' ' + serverNote : ''}`;
+    if (!limitAt) return;
+    const warn = limitAt - now <= WARN_BEFORE;
+    $('limit').hidden = !warn;
+    if (warn) $('limit').textContent = `The recording stops and saves itself in ${clock(Math.max(0, limitAt - now))} (time limit).`;
+    document.title = warn ? `BlackBox: stops in ${clock(Math.max(0, limitAt - now))}` : TITLE; // seen in the taskbar while minimized
+    if (now >= limitAt && !limitHit) {
+      limitHit = true;
+      chrome.runtime.sendMessage({ target: 'background', type: 'stop', reason: 'time-limit' });
+    }
   };
   tick();
   timer = setInterval(tick, 1000);
@@ -161,7 +210,34 @@ async function savePart() {
   if (logs.console.length || logs.navigations.length || logs.network.length) await idbPartialPut(`${recId}:l:${n}`, logs);
   savedChunks += newChunks.length;
   saved = { console: saved.console + logs.console.length, navigations: saved.navigations + logs.navigations.length, network: saved.network + logs.network.length };
-  await idbPartialPut(recId + ':meta', { ...meta, lastSavedAt: Date.now() });
+  lastSavedAt = Date.now();
+  await idbPartialPut(recId + ':meta', { ...meta, lastSavedAt });
+}
+
+// One heartbeat. "stopped" (the server closed the capture): stop the recording. 401: the capture ends, the recording
+// goes on without server data. Other errors: try again on the next tick.
+async function ping() {
+  const log = meta?.serverCapture;
+  if (pinging || !log?.id) return;
+  pinging = true;
+  try {
+    const res = await fetch(log.uploadUrl + '?' + new URLSearchParams({ action: 'recording-ping', id: log.id, lastSavedAt, videoBytes }),
+      { method: 'POST', credentials: 'include' });
+    if (res.status === 401) {
+      clearInterval(pingTimer);
+      serverNote = 'Server capture ended: logged out';
+      return;
+    }
+    const out = res.ok ? await res.json().catch(() => null) : null;
+    if (out?.state === 'stopped' && meta) {
+      clearInterval(pingTimer);
+      chrome.runtime.sendMessage({ target: 'background', type: 'stop', reason: 'server-stopped: ' + (out.reason || 'stopped') });
+    }
+  } catch (e) {
+    console.warn('Could not reach the server (heartbeat):', e); // offline or server down: the next tick tries again
+  } finally {
+    pinging = false;
+  }
 }
 
 // Mixes the page sound and the microphone into one track (MediaRecorder records only the first sound track).
@@ -184,6 +260,12 @@ function playBack(tracks) {
   audioCtx.resume().catch(() => {});
 }
 
+// m:ss
+function clock(ms) {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
 function soundLabel(audio) {
   return [audio?.page ? (audio.pageSource === 'tab' && mode !== 'tab' ? 'tab' : 'page') : '', audio?.mic ? 'microphone' : ''].filter(Boolean).join(' + ') || 'none';
 }
@@ -198,7 +280,10 @@ function stopInputs() {
 async function stopAndSave(reason) {
   if (!meta) return null;
   clearInterval(timer);
+  $('limit').hidden = true;
+  document.title = TITLE;
   clearInterval(saveTimer);
+  clearInterval(pingTimer);
   await saving; // let a save in progress finish before the parts are cleared
   $('status').textContent = 'Saving…';
   const stoppedAt = Date.now();

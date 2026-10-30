@@ -44,8 +44,9 @@ or a known one with the wrong method, gets 400 "Unknown action". Who may do what
 | `download&format=zip\|html` | GET | viewers | Server data only for those allowed; the ZIP answers 409 while the Glowroot data is built |
 | `delete` | POST | viewers who may delete | 403 for viewers who may not |
 | `systemlog`, `serverinfo`, `apps`, `appfile&file=`, `traces`, `trace&file=`, `gauges`, `glowroot[&node=]`, `trace-retry[&keys=]` | GET (`trace-retry`: POST) | server data | 403 for viewers without it. `glowroot`: node statuses, or that node's ZIP. `trace-retry`: 429 within 20 s |
-| `recording-start` | POST | uploaders | 403 when **Capture server data** is off, 400 for an invalid id, 409 for another user's id |
+| `recording-start` | POST | uploaders | 403 when **Capture server data** is off or the user may not upload (the answer still carries `serverCapture.maxRecordingMs`, see "Hard limit"), 400 for an invalid id, 409 for another user's id |
 | `recording-stop`, `app-export` | POST, GET | the capture's owner | 404 for anyone else |
+| `recording-ping[&lastSavedAt=&videoBytes=]` | POST | the capture's owner | The recorder's heartbeat (see "Server capture"); 404 for anyone else |
 
 Recordings the user can't view answer 404 (not 403), so ids of other people's recordings can't be probed. A busy server
 (see "Storage") answers 503; a CSRF failure 403.
@@ -111,6 +112,17 @@ Captures waiting for an upload are in `<wflow>/blackbox/pending/<id>/`, trace re
 `<wflow>/blackbox/retry/`. No database tables. Folders on a shared `wflow` directory work for clustered nodes;
 deleting a recording removes its folder.
 
+### Test timing override
+
+`<wflow>/blackbox/liveness-test.json` (optional, for tests; not a plugin setting, admins don't see it) may set
+`pingMs`, `lostMs`, `checkMs` and `minLimitMs` in ms. `LivenessKnobs` reads it on every call (no cache, no restart), and
+a missing or invalid file, or a value below 1000, gives the default. `minLimitMs` only lowers the hard limit (see
+"Hard limit"), never raises it. While it sets a value, a warning is logged (at most
+once a minute). It is no recording folder (`RecordingStore.list` and `readMeta` need a valid id) and the capture sweep
+only looks inside `pending/`, so both skip it. On j8213 the host path is `~/Joget/docker/wflow8/blackbox/liveness-test.json`.
+With virtual hosts each profile has its own file (`<wflow>/app_profiles/<profile>/blackbox/`): the lost-browser check
+uses each profile's `lostMs` for that profile's captures, and runs every `checkMs` of the shortest one any profile sets.
+
 - `meta.json` changes go through `RecordingStore.modifyMeta`: the latest copy is changed and saved under a per-recording
   lock (in the JVM, plus a file lock on `.meta.lock` for nodes sharing the folder, where the file system supports it).
   `updateMeta` replaces only the keys it is given. So the trace and Glowroot refreshes, the video upload and the
@@ -158,12 +170,89 @@ Info and the app export at stop (their own sections).
    `system-log.json`. Only the user who started the capture can attach it. After the move, the pending folder keeps
    only `meta.json` pointing at the recording, for 24 hours (`FORWARD_MS`), so late traces still reach it. Captures
    never uploaded are deleted after the keep period (checked every hour).
+   While it records, the recorder also sends a heartbeat (below).
 4. The replay page loads `system-log.json` for allowed users and lines it up with the video. The plugin sends
    `X-BlackBox-Time` (server clock) on tagged responses; if the server clock differs from the browser's by more than
    250 ms, the viewer corrects it. The plugin's own request entries (not in `joget.log`) are only shown in a network
    request's details.
 
 Not captured: work a request hands to another thread, and log lines that never reach the root logger's appenders.
+
+### Heartbeat
+
+The `recording-start` answer carries `pingMs` and `lostMs` (`LivenessKnobs`: 30 s and 3 min, or the test override
+under "Storage"), so the extension has no timing constants of its own. Every `pingMs` the recorder window (not the
+service worker, which Chrome suspends) POSTs `recording-ping` with `lastSavedAt` (its last crash-safety save) and
+`videoBytes` (the video so far). `ServerCaptureStore.ping` checks the owner and, under the capture's lock, writes
+`lastSeenAt` (and the two values) into the pending `meta.json`, then answers `{state: "on"}`. A capture that is
+stopped or attached is not marked seen and answers `{state: "stopped", reason}` (`stopReason` from the meta, else
+`stopped`); the recorder then stops through the normal stop with reason `server-stopped: <reason>`. A 401 (logged
+out) stops the pings and shows "Server capture ended: logged out"; the recording goes on. Other errors (offline, 5xx)
+are retried on the next tick. Chrome may run a hidden page's timers only about once a minute after 5 minutes, which
+is why `lostMs` is 3 minutes. Pings keep the Joget session alive. Plugins without `pingMs` in their answer get no pings.
+
+### Lost browser
+
+Every `checkMs` (30 s, read again before each run so the test override applies) each node runs
+`ServerCapture.checkLost` on the server capture timer. It reads the meta from disk, not memory, since a ping can land
+on any node, for every pending capture: those open on this node and every folder in `pending/` (so a capture no node
+has open, after an idle close or a restart, still stops). The timer thread only has the profile it inherited when the
+plugin started (`SetupManager.getBaseDirectory()` follows the thread's profile), so it doesn't use the request-side
+store: `ServerCapture.checkDirs` lists the folders by path, `<wflow>/blackbox` without virtual hosts and
+`<wflow>/app_profiles/<each profile>/blackbox` with them, and the check and the hourly sweep run on each one's
+`pending/`. It doesn't switch the thread's profile (`HostManager.setCurrentProfile` is guarded in cloud installs). `ServerCaptureStore.stopIfLost` then, under the capture's
+lock, stops a capture with no `stoppedAt` whose `lastSeenAt` is older than `lostMs`: `stoppedAt = lastSeenAt`,
+`stopReason = "browser-lost"`, one info line in the log. The lock and the `stoppedAt` check make it happen once, on
+one node. A capture with no `lastSeenAt` (never pinged: an older extension) is never stopped this way. Each node then
+closes its own copy of every stopped capture, so it stops writing there too after a normal stop sent to another node.
+Gauges (`GaugeSampler`) and the Glowroot package (`GlowrootPackager`) read `stoppedAt` from the meta and follow it as
+for a normal stop. A later ping answers `{state: "stopped", reason: "browser-lost"}`.
+
+### Recovery stop time
+
+When the extension recovers a crashed recording (`recoverPartials`, report.js), it POSTs a plain `recording-stop` (no
+body, so no app export) for the partial meta's capture with `stoppedAt = lastSavedAt`, the last crash-safety save.
+`ServerCaptureStore.stop(id, owner, clientStoppedAt, lostMs)` takes that time only between `startedAt` and
+`lastSeenAt + lostMs` (both inclusive; with no `lastSeenAt`, between `startedAt` and now); otherwise it uses
+`lastSeenAt`, or now when there is none. A stop without `stoppedAt` (the recorder's normal stop, older extensions)
+uses now, as before. A capture that already has `stoppedAt` (for example stopped as `browser-lost`) keeps it; the
+owner's stop still answers 200. The extension doesn't retry a stop that fails (offline, logged out): the lost-browser
+check above closes the capture. Closing the recorder window sends a plain stop first, so that stop's time wins there.
+
+**Upload stop time:** `ServerCaptureStore.attach` sets `stoppedAt` when the capture has none (nothing stopped it: the
+upload came first). It uses `lastSeenAt` when the capture was pinged, else now. The value is set before
+`system-log.json` is written, so that file and the meta carry the same `stoppedAt`. A capture pinged at T and uploaded
+90 minutes later gets `stoppedAt = T`, not the upload time.
+
+### Hard limit
+
+Every recording has one, with or without server capture. The plugin setting `maxRecordingMinutes` (default 30) is read
+at `recording-start` by `BlackBoxPlugin.maxRecordingMs`:
+5 to 120 minutes (a value outside goes to the nearest bound; 120 is `GaugeSampler`'s 2 h cap), 30 when empty or not a
+number, then lowered to the test override's `minLimitMs` when that is smaller. The settings page refuses values outside
+5–120. The start answer carries it as `maxRecordingMs`, and `ServerCaptureStore.start` writes `maxUntil = startedAt +
+maxRecordingMs` into the meta. The recorder shows the time left next to the timer, shows a warning (and puts it in the
+window title, seen in the taskbar while minimized) in the last 2 minutes, and at the limit sends the background `stop`
+with reason `time-limit`, the same path as the Stop button, so `stopAndSave` and the app export run. The limit is
+counted from the recorder's own start time; a hidden window's timer may run late, up to about a minute. Server backup:
+`checkLost` also calls `ServerCaptureStore.stopIfOverLimit`, which, under the lock, stops a capture with no `stoppedAt`
+that is past `maxUntil + 2 min` (`LIMIT_GRACE_MS`): `stoppedAt = maxUntil`, `stopReason = "time-limit"`, one info line
+in the log, pings or not. The lost-browser check runs first, so a capture that also stopped pinging keeps
+`browser-lost` at its last ping. Captures without `maxUntil` (started by an older plugin) get no server backup.
+
+Without server capture: the 403 answers of `recording-start` (**Capture server data** off, or the user may not upload)
+are `BlackBoxPlugin.captureOff(status, message, maxRecordingMs)`, the usual error body plus
+`serverCapture: {maxRecordingMs}` (no `maxSizeMb`: no size guard), and `startServerCapture` in `background.js` passes it
+on with `status: "off"`. When the answer has no `maxRecordingMs` (no Upload URL, no host access, 401, network error,
+an older plugin), the recorder uses its built-in `DEFAULT_LIMIT` of 30 minutes, the setting's default. There is no
+server backup then: nothing is captured on the server. A capture that never got a ping (no `lastSeenAt`, an extension without
+the heartbeat) is never stopped as `browser-lost`; only this backup ends it (`NoHeartbeatTest`).
+
+**Size guard:** `recording-start` also answers `maxSizeMb` (`maxSizeMb()`, the upload limit; `withLiveness(started,
+maxRecordingMs, maxSizeMb)`). The recorder creates its `MediaRecorder` with `videoBitsPerSecond: 1_500_000` (about 340 MB
+for the default 30 minutes), adds up the chunk sizes in `ondataavailable`, and when `sizeLimitReached` (video bytes at
+90% of `maxSizeMb`) sends the background `stop` with reason `size-limit`, the same path as `time-limit`. No
+`maxSizeMb` in the answer (server capture off, older plugin): no size guard. The server has no part in it.
 
 **All server** (`captureAllServerLogs`, stored as `allServer` in the capture's meta, only for recorders allowed by
 **Who can view server data**, `canViewServerData()` without the uploader rule): while such a capture is open on a node, the appender also writes every other thread's events
@@ -222,6 +311,8 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
   where the capture is open builds `glowroot/<node>.zip`: the node that took `recording-start` and every node that
   served a recorded request. It goes in the pending folder, or in the recording once uploaded. `glowroot/<node>.json`
   holds the state (waiting, building, saved, failed) and the reason. A capture never stopped fails after 3 hours.
+  A `failed` status stays: if the capture reopens on the node later (a tagged request after the idle close),
+  `watch` leaves it `failed` and starts no build.
 - **Restart:** an in-memory list (`GlowrootPackager.WATCHED`) tracks what to build, so on start `recover` checks this
   node's status files left `waiting` or `building`: while the capture's pending `meta.json` exists, it is watched again
   and built as usual (blocks Glowroot overwrote meanwhile count as lost); in a recording whose capture is gone, it is
@@ -454,13 +545,13 @@ for in Settings or on the first upload.
 | Part | Job |
 |---|---|
 | `popup.html/js` | Record this tab / a window / the screen, Stop; gets the tab-capture stream id (the video for "this tab", the tab's sound for a window or the screen); Page sound and Microphone toggles; the server data note (`#serverNote`: no Upload URL, a tab on another server, or why the server isn't capturing); quick settings (from `me.options`, cached as `quickOffer`); links to Recordings and Settings |
-| `recorder.html/js` | The recorder window (minimized while recording; asks before closing): shows the `desktopCapture` picker (window/screen) or uses the tab stream, mixes page sound and microphone into one track, records with `MediaRecorder`, saves progress every 5 s, sends `recording-stop` with the app export's input, keeps the recording in IndexedDB (or downloads it when it can't), opens the Replay page |
+| `recorder.html/js` | The recorder window (minimized while recording; asks before closing): shows the `desktopCapture` picker (window/screen) or uses the tab stream, mixes page sound and microphone into one track, records with `MediaRecorder`, saves progress every 5 s, sends `recording-ping` every `pingMs`, shows the time left and stops at `maxRecordingMs`, sends `recording-stop` with the app export's input, keeps the recording in IndexedDB (or downloads it when it can't), opens the Replay page |
 | `background.js` | Service worker: owns the recording state, opens the recorder window, attaches the debugger (Network, Runtime, Log, Page), fetches response bodies (XHR, Fetch, Document, EventSource, Other; up to 1 MB, not binary), forwards events to the recorder; starts/stops the server capture and tags the tab's requests; REC badge (orange with the reason when the server capture is off); stops on debugger detach, tab closed or recorder closed; crash recovery |
 | `viewer.html/js`, `viewer.css` | Replay UI shared by every replay page (the extension's, the plugin's, downloaded HTML, standalone): video + synced lists, timeline, request details, Features drawer |
 | `recordings.html/js` | Recordings page: kept, on-disk and upload-history rows (100 at a time) with Browser issues; batch Upload, Download ZIP, Delete for ticked rows (Upload off when `me.canUpload` is false); Import ZIP; Link / Allow / Unlink folder; crash recovery on load |
 | `actions.js` | Upload (with its form; `uploadNow` without it, `uploadMany` for a batch), Move to folder, Download ZIP and Delete of one recording; links in messages |
 | `replay.js` | Replay page (`viewer.html?id=` or `?disk=`): loads the recording, its status bar, ⚠ Upload and the fix box, Move to folder / Download ZIP / Delete, Older / Newer; with `upload=server` it uploads and opens the server's copy |
-| `report.js` | Builds `session.json`; turns a recording interrupted by a crash or a closed recorder into a normal one (`recovered`, stop reason "interrupted") |
+| `report.js` | Builds `session.json`; turns a recording interrupted by a crash or a closed recorder into a normal one (`recovered`, stop reason "interrupted") and stops its server capture at the last save |
 | `quick.js` | Quick settings (`chrome.storage.local` `quick`): `apps`, `sample`, `real` are the per-recording app export choices (`recording.options`, the export parameters); `allServer` and `glowrootData` go to `recording-start` |
 | `store.js` | Row list (kept, on disk: newest 50, upload history), badges, loading a recording, the linked folder |
 | `server.js` | Calls the Upload endpoint with the browser's cookies; Upload URL and Recording page URL, host access, 15 s timeout on GETs |
@@ -516,7 +607,8 @@ shows the note in the popup and on the Recordings page.
 
 **Crash recovery:** closing the recorder window stops the recording and runs `recoverPartials()`, as do browser
 startup and the Recordings page. It turns `partial` parts (except the recording still running) into a kept recording
-with `recovered: true`.
+with `recovered: true`, then sends `recording-stop` with the last save time for its server capture (see "Recovery
+stop time").
 
 The recorder is a window, not an offscreen document: a `chooseDesktopMedia` stream id can only be opened by the page
 that showed the picker (tested early in the project).

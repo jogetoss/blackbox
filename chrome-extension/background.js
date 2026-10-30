@@ -129,15 +129,19 @@ async function startServerCapture(tabId) {
   }
   const id = crypto.randomUUID();
   let slowMs; // the server's "slow" (Glowroot's slow threshold) for the Recordings page's slow count
+  let pingMs, lostMs; // the recorder's heartbeat timing (recording-ping); missing from plugins without it: no pings
+  let maxSizeMb; // the upload size limit; the recorder stops at 90% of it (size-limit); missing: no size guard
+  let maxRecordingMs; // the hard limit (maxRecordingMinutes), also in the off answer; missing: the recorder's built-in 30 min
   try {
     // Quick settings can turn off the plugin's all-server logs and Glowroot data for this recording
     const q = await Quick.get();
     const res = await postAction(uploadUrl, 'recording-start', id, { allServer: String(q.allServer), glowrootData: String(q.glowrootData) });
     const body = await res.json().catch(() => null);
     slowMs = (body?.serverCapture || body?.systemLog)?.slowThresholdMs; // systemLog: plugin 8.2.1 and older
+    ({ pingMs, lostMs, maxRecordingMs, maxSizeMb } = body?.serverCapture || {});
     if (!res.ok) {
       const message = res.status === 401 ? `Not logged in to ${origin}.` : body?.error?.message || `HTTP ${res.status}`;
-      return { status: 'off', server: origin, message };
+      return { status: 'off', server: origin, message, maxRecordingMs }; // capture off or not allowed: the limit still applies
     }
   } catch (e) {
     // fetch() throws a TypeError ("Failed to fetch") for network errors: wrong host or port, server down, certificate
@@ -155,7 +159,7 @@ async function startServerCapture(tabId) {
       condition: { tabIds: [tabId, chrome.tabs.TAB_ID_NONE], urlFilter: '|' + origin + '/', resourceTypes: ALL_RESOURCE_TYPES },
     }],
   });
-  return { status: 'on', id, server: origin, uploadUrl, slowMs };
+  return { status: 'on', id, server: origin, uploadUrl, slowMs, pingMs, lostMs, maxRecordingMs, maxSizeMb };
 }
 
 function stopTagging() {

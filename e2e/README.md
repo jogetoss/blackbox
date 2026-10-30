@@ -54,6 +54,35 @@ open one of its assignments).
   the console and network logs, the server capture, stop, and the upload as `BB_INCOGNITO_USER` with its video. It
   records the screen, so it runs only with `BB_HEADED=1` (windows open on your desktop for about 15 s; page sound off,
   as tab sound needs a click on the icon). "Record this tab" can't be tested: `chrome.tabCapture` needs that click.
+- `tests/heartbeat.spec.js`: a headless screen recording (blank video) pings the server (`lastSeenAt`, `lastSavedAt`,
+  `videoBytes` in the capture's `meta.json`, read with `docker exec`), stops with `server-stopped: stopped` after the
+  server stopped the capture, and goes on after a 401 with "Server capture ended: logged out". Nothing is uploaded.
+  Set the test override first (`{"pingMs":2000}`, see the plugin README's Storage) or each test waits about a minute.
+- `tests/lost-browser.spec.js`: through the API, a capture pinged once and then left silent is stopped by the server
+  at its last ping (`stopReason` `browser-lost`, read with `docker exec`); one never pinged stays open. Set the test
+  override first (`{"lostMs":5000,"checkMs":2000}`) or it waits over 3 minutes. Nothing is uploaded.
+- `tests/recovery-stop.spec.js`: a partial recording left in IndexedDB as after a crash, for captures started and
+  pinged through the API: `recoverPartials()` stops each capture at its `lastSavedAt` when it is within the bounds,
+  else at `lastSeenAt` (read with `docker exec`). Needs no override (a short `lostMs` works too). Nothing is uploaded.
+- `tests/time-limit.spec.js`: a headless screen recording shows the time left and the 2-minute warning, the capture's
+  `meta.json` has `maxUntil`, and the recording stops itself with reason `time-limit`. Nothing is uploaded. Set the
+  test override first (`{"minLimitMs":20000}`) or it runs for the full **Max recording length** (30 min).
+- `tests/time-limit-no-capture.spec.js`: without server capture the recorder still has the time limit and no size
+  guard: 30 minutes with no Upload URL, and the server's `maxRecordingMs` from a 403 off answer (stubbed in the service
+  worker's `fetch`). Needs no override. Nothing is uploaded.
+- `tests/size-limit.spec.js`: the start response carries `maxSizeMb`, the recorder's bitrate is 1.5 Mbit/s, and with
+  its size limit lowered to 1 byte it stops itself with reason `size-limit`. A headless blank recording delivers 0-byte
+  chunks, so the spec feeds the real `ondataavailable` handler a 0-byte chunk (no stop) and then a 1 KB chunk (stop).
+  Needs no override. Nothing is uploaded.
+- `tests/liveness.spec.js`: recording liveness with real headless recordings, checked in the capture's `meta.json`:
+  a normal stop (the app export runs), a crash (`pkill -9` on the test's own Chromium) stopped by the server as
+  `browser-lost` at the last ping and kept through recovery and upload, a restart before `lostMs` whose recovery stop
+  sets the last save (it keeps the Joget login with Chrome's "Continue where you left off"; without it the restarted
+  browser is logged out and the server's lost-browser check closes the capture instead), the time limit with upload,
+  a server stop, the 8.2.1 extension (no pings: stopped only 2 minutes past its limit; `git archive 8.2.1`, or
+  `BB_OLD_TAG`), and the all-server log stopping after a crash (skipped when all-server logs are off, as for a user who may not view server data, like `cat`). The spec writes its own test override
+  (`{"pingMs":5000,"lostMs":20000,"checkMs":5000,"minLimitMs":60000}`, with `docker exec` as your user) and puts back
+  the file that was there after; about 7 minutes. Uploads are deleted.
 - `tests/upload-form.spec.js`: the sample data choice on the upload form, the `sampleData` parameter it sends, and the
   App data the server builds.
 

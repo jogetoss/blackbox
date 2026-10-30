@@ -65,6 +65,7 @@ This section is the single place for what each setting does, who gets what, and 
 | Who can delete any recording | admins only | Only recordings they can view |
 | Uploaders can view and delete their own recordings | Yes | |
 | Max file size (MB) | 500 | Video and session.json each |
+| Max recording length (minutes) (`maxRecordingMinutes`) | 30 | 5–120. Every recording, with or without server data, stops and saves at this length; see [Server data](#server-data) |
 
 **Server data** (the capture settings need **Capture server data**)
 
@@ -154,6 +155,31 @@ Shown on this plugin's replay page and included in the ZIP and HTML downloads, o
     Joget logins don't follow unless **Session replication** is on (a Tomcat cluster, Enterprise only), so the load
     balancer needs sticky sessions.
 
+While recording, the extension tells the server every 30 s that the recording is still running (`recording-ping`; the
+server keeps the time of the last one as `lastSeenAt` in the capture's `meta.json`). If the server has
+already ended the capture, the recording stops (reason `server-stopped: …`). If the user is logged out, the recorder
+shows **Server capture ended: logged out** and records on without server data. The pings keep the Joget session alive.
+When no ping arrives for 3 minutes (the browser crashed, was killed or lost the network), the server ends the
+capture itself, at the time of the last ping: its log lines, server load and Glowroot data stop there, with stop reason
+`browser-lost`. A capture that never got a ping (an older extension) is never ended this way; only the hard limit's server backup (below) ends it. When the extension
+recovers a recording after a crash, it ends the server capture at the recording's last save (every 5 s), so the
+server data ends where the video ends. The server only takes that time if it fits the capture (after its start, at
+most 3 minutes after the last ping); otherwise it uses the last ping.
+
+Every recording has a hard limit, **Max recording length** (`maxRecordingMinutes`, 30 minutes by default; at Chrome's
+default bitrate a longer video can pass the 500 MB upload limit). The recorder shows the time left, warns 2 minutes
+before, and at the limit stops and saves the recording as if the user pressed stop (stop reason `time-limit`; with
+server data the apps are exported as usual). Without server data the limit still applies: when **Capture server data**
+is off or the user may not upload, the server's start answer still carries the setting; when no server answers (no
+Upload URL, logged out, server down, an older plugin) the extension uses 30 minutes. With server data, if the browser
+doesn't stop it, the server ends the capture 2 minutes after the limit, at the limit, with stop reason `time-limit`,
+pings or not. This also bounds how long the pings keep the Joget session alive.
+
+The recorder records video at 1.5 Mbit/s (about 340 MB for 30 minutes) and, with server data, adds up the video size as it
+records. At 90% of the plugin's upload limit (**Max file size (MB)**, `maxSizeMb`) it stops and saves the recording as if the
+user pressed stop (stop reason `size-limit`), so the upload does not fail afterwards. Without server data there is no size
+guard, only the video bitrate.
+
 **Sensitive data:** traces and Glowroot data hold SQL with parameter values and request details; Info holds JVM
 arguments and system properties, which can include secrets passed as `-D` options; app definitions can hold plugin
 settings and environment variables.
@@ -200,3 +226,9 @@ One folder per recording under `<wflow>/blackbox/<id>/`, no database tables. Ser
 upload is in `<wflow>/blackbox/pending/` (deleted after **Delete server data not uploaded after**), trace retries in
 `<wflow>/blackbox/retry/`. A shared `wflow` folder works for clusters. Back it up like other `wflow` data; deleting a
 recording removes its folder.
+
+For tests only: an optional `<wflow>/blackbox/liveness-test.json` (`pingMs`, `lostMs`, `checkMs`, `minLimitMs`, each at
+least 1000 ms) shortens the liveness timings without a restart. It is not a setting and isn't shown in the plugin
+configuration. Delete it afterwards; while it is in use the log shows a warning. See ARCHITECTURE.md, Storage. With
+virtual hosts each profile has its own (`<wflow>/app_profiles/<profile>/blackbox/liveness-test.json`), and the server
+checks every profile's captures.
