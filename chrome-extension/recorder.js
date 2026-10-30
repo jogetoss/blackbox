@@ -44,6 +44,15 @@ const WARN_BEFORE = 2 * 60 * 1000;
 let limitAt = 0;              // 0: no limit
 let limitHit = false;
 
+// Size guard: with serverCapture.maxSizeMb the recording stops itself (reason size-limit) at 90% of the server's upload
+// limit, so the upload doesn't fail after a long recording. Without it (server capture off): only the time limit.
+// The bitrate is set so the time limit fits under the size limit at the default settings (30 min, 500 MB).
+const VIDEO_BITS_PER_SECOND = 1_500_000;
+const SIZE_GUARD = 0.9;
+let sizeLimitBytes = 0;       // 0: no size guard
+let sizeHit = false;
+function sizeLimitReached(bytes, limitBytes) { return limitBytes > 0 && bytes >= limitBytes * SIZE_GUARD; }
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.target !== 'recorder') return;
   if (msg.type === 'cdp') { if (meta) onCdp(msg); return; }
@@ -119,10 +128,17 @@ async function pickAndStart() {
     : ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'])
     .find((m) => MediaRecorder.isTypeSupported(m));
   chunks = []; consoleEntries = []; navigations = []; network = []; inFlight.clear();
-  recorder = new MediaRecorder(stream, { mimeType });
+  recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: VIDEO_BITS_PER_SECOND });
   finishedNetwork = []; savedChunks = 0; saveSeq = 0; saved = { console: 0, navigations: 0, network: 0 };
   videoBytes = 0; serverNote = '';
-  recorder.ondataavailable = (e) => { if (e.data.size > 0) { chunks.push(e.data); videoBytes += e.data.size; } };
+  sizeLimitBytes = 0; sizeHit = false;
+  recorder.ondataavailable = (e) => {
+    if (e.data.size > 0) { chunks.push(e.data); videoBytes += e.data.size; }
+    if (!sizeHit && sizeLimitReached(videoBytes, sizeLimitBytes)) {
+      sizeHit = true;
+      chrome.runtime.sendMessage({ target: 'background', type: 'stop', reason: 'size-limit' });
+    }
+  };
   const startedAt = Date.now();
   recorder.start(1000); // one chunk per second
 
@@ -153,6 +169,7 @@ async function pickAndStart() {
   saveTimer = setInterval(() => { saving = saving.then(savePart).catch((e) => console.warn('Could not save progress:', e)); }, SAVE_EVERY);
   if (meta.serverCapture?.status === 'on' && meta.serverCapture.pingMs > 0) pingTimer = setInterval(ping, meta.serverCapture.pingMs);
 
+  if (meta.serverCapture?.status === 'on' && meta.serverCapture.maxSizeMb > 0) sizeLimitBytes = meta.serverCapture.maxSizeMb * 1024 * 1024;
   if (meta.serverCapture?.status === 'on' && meta.serverCapture.maxRecordingMs > 0) limitAt = startedAt + meta.serverCapture.maxRecordingMs;
 
   $('stop').hidden = false;
