@@ -46,6 +46,7 @@ or a known one with the wrong method, gets 400 "Unknown action". Who may do what
 | `systemlog`, `serverinfo`, `apps`, `appfile&file=`, `traces`, `trace&file=`, `gauges`, `glowroot[&node=]`, `trace-retry[&keys=]` | GET (`trace-retry`: POST) | server data | 403 for viewers without it. `glowroot`: node statuses, or that node's ZIP. `trace-retry`: 429 within 20 s |
 | `recording-start` | POST | uploaders | 403 when **Capture server data** is off, 400 for an invalid id, 409 for another user's id |
 | `recording-stop`, `app-export` | POST, GET | the capture's owner | 404 for anyone else |
+| `recording-ping[&lastSavedAt=&videoBytes=]` | POST | the capture's owner | The recorder's heartbeat (see "Server capture"); 404 for anyone else |
 
 Recordings the user can't view answer 404 (not 403), so ids of other people's recordings can't be probed. A busy server
 (see "Storage") answers 503; a CSRF failure 403.
@@ -166,12 +167,26 @@ Info and the app export at stop (their own sections).
    `system-log.json`. Only the user who started the capture can attach it. After the move, the pending folder keeps
    only `meta.json` pointing at the recording, for 24 hours (`FORWARD_MS`), so late traces still reach it. Captures
    never uploaded are deleted after the keep period (checked every hour).
+   While it records, the recorder also sends a heartbeat (below).
 4. The replay page loads `system-log.json` for allowed users and lines it up with the video. The plugin sends
    `X-BlackBox-Time` (server clock) on tagged responses; if the server clock differs from the browser's by more than
    250 ms, the viewer corrects it. The plugin's own request entries (not in `joget.log`) are only shown in a network
    request's details.
 
 Not captured: work a request hands to another thread, and log lines that never reach the root logger's appenders.
+
+### Heartbeat
+
+The `recording-start` answer carries `pingMs` and `lostMs` (`LivenessKnobs`: 30 s and 3 min, or the test override
+under "Storage"), so the extension has no timing constants of its own. Every `pingMs` the recorder window (not the
+service worker, which Chrome suspends) POSTs `recording-ping` with `lastSavedAt` (its last crash-safety save) and
+`videoBytes` (the video so far). `ServerCaptureStore.ping` checks the owner and, under the capture's lock, writes
+`lastSeenAt` (and the two values) into the pending `meta.json`, then answers `{state: "on"}`. A capture that is
+stopped or attached is not marked seen and answers `{state: "stopped", reason}` (`stopReason` from the meta, else
+`stopped`); the recorder then stops through the normal stop with reason `server-stopped: <reason>`. A 401 (logged
+out) stops the pings and shows "Server capture ended: logged out"; the recording goes on. Other errors (offline, 5xx)
+are retried on the next tick. Chrome may run a hidden page's timers only about once a minute after 5 minutes, which
+is why `lostMs` is 3 minutes. Pings keep the Joget session alive. Plugins without `pingMs` in their answer get no pings.
 
 **All server** (`captureAllServerLogs`, stored as `allServer` in the capture's meta, only for recorders allowed by
 **Who can view server data**, `canViewServerData()` without the uploader rule): while such a capture is open on a node, the appender also writes every other thread's events
@@ -462,7 +477,7 @@ for in Settings or on the first upload.
 | Part | Job |
 |---|---|
 | `popup.html/js` | Record this tab / a window / the screen, Stop; gets the tab-capture stream id (the video for "this tab", the tab's sound for a window or the screen); Page sound and Microphone toggles; the server data note (`#serverNote`: no Upload URL, a tab on another server, or why the server isn't capturing); quick settings (from `me.options`, cached as `quickOffer`); links to Recordings and Settings |
-| `recorder.html/js` | The recorder window (minimized while recording; asks before closing): shows the `desktopCapture` picker (window/screen) or uses the tab stream, mixes page sound and microphone into one track, records with `MediaRecorder`, saves progress every 5 s, sends `recording-stop` with the app export's input, keeps the recording in IndexedDB (or downloads it when it can't), opens the Replay page |
+| `recorder.html/js` | The recorder window (minimized while recording; asks before closing): shows the `desktopCapture` picker (window/screen) or uses the tab stream, mixes page sound and microphone into one track, records with `MediaRecorder`, saves progress every 5 s, sends `recording-ping` every `pingMs`, sends `recording-stop` with the app export's input, keeps the recording in IndexedDB (or downloads it when it can't), opens the Replay page |
 | `background.js` | Service worker: owns the recording state, opens the recorder window, attaches the debugger (Network, Runtime, Log, Page), fetches response bodies (XHR, Fetch, Document, EventSource, Other; up to 1 MB, not binary), forwards events to the recorder; starts/stops the server capture and tags the tab's requests; REC badge (orange with the reason when the server capture is off); stops on debugger detach, tab closed or recorder closed; crash recovery |
 | `viewer.html/js`, `viewer.css` | Replay UI shared by every replay page (the extension's, the plugin's, downloaded HTML, standalone): video + synced lists, timeline, request details, Features drawer |
 | `recordings.html/js` | Recordings page: kept, on-disk and upload-history rows (100 at a time) with Browser issues; batch Upload, Download ZIP, Delete for ticked rows (Upload off when `me.canUpload` is false); Import ZIP; Link / Allow / Unlink folder; crash recovery on load |
