@@ -55,8 +55,13 @@ async function workerOf(context) {
 }
 
 // A browser of our own (not the fixture's), so a test can kill it and start it again
-async function browser(from = EXTENSION) {
+// restoreSession: Chrome's "Continue where you left off", which keeps session cookies (the Joget login) over a restart
+async function browser(from = EXTENSION, { restoreSession = false } = {}) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'bb-profile-'));
+  if (restoreSession) {
+    fs.mkdirSync(path.join(profile, 'Default'));
+    fs.writeFileSync(path.join(profile, 'Default', 'Preferences'), JSON.stringify({ session: { restore_on_startup: 1 } }));
+  }
   const ext = copyExtension(from);
   const b = { profile, ext };
   b.start = async () => {
@@ -200,14 +205,18 @@ test('crash: the server stops the capture at the last ping; recovery and upload 
 
 test('crash, started again before lostMs: the recovery stop sets stoppedAt to the last save', async () => {
   test.setTimeout(180_000);
-  const b = await browser();
+  // Without it the restarted browser is logged out of Joget: the recovery stop gets 401 and BB2 closes the capture
+  const b = await browser(EXTENSION, { restoreSession: true });
   try {
     const { capture } = await startRecording(b);
+    await new Promise((r) => setTimeout(r, 35_000)); // Chrome writes cookies to disk about every 30 s
     await waitForPings(capture.id, capture.pingMs, 1);
     b.kill();
     const killedAt = Date.now();
     await b.context.close().catch(() => {});
     await b.start();
+    const me = await b.worker.evaluate((u) => fetch(u + '?action=me', { credentials: 'include' }).then((r) => r.status), `${JOGET}/api/blackbox`);
+    console.log('relaunch: logged in after the restart?', me);
     const { rec } = await keptRecording(b, capture.id);
     const lastSavedAt = Date.parse(rec.report.recording.stoppedAt); // a recovered recording ends at its last save
     await expect.poll(() => captureMeta(capture.id).stoppedAt || 0, { timeout: 15_000 }).toBeGreaterThan(0);
