@@ -212,6 +212,11 @@ uses now, as before. A capture that already has `stoppedAt` (for example stopped
 owner's stop still answers 200. The extension doesn't retry a stop that fails (offline, logged out): the lost-browser
 check above closes the capture. Closing the recorder window sends a plain stop first, so that stop's time wins there.
 
+**Upload stop time:** `ServerCaptureStore.attach` sets `stoppedAt` when the capture has none (nothing stopped it: the
+upload came first). It uses `lastSeenAt` when the capture was pinged, else now. The value is set before
+`system-log.json` is written, so that file and the meta carry the same `stoppedAt`. A capture pinged at T and uploaded
+90 minutes later gets `stoppedAt = T`, not the upload time.
+
 **All server** (`captureAllServerLogs`, stored as `allServer` in the capture's meta, only for recorders allowed by
 **Who can view server data**, `canViewServerData()` without the uploader rule): while such a capture is open on a node, the appender also writes every other thread's events
 to it with `"other": true` (no `req`), including tagged requests of other recordings. Nodes write it once the capture
