@@ -1,8 +1,8 @@
 // Recording liveness end to end (heartbeat, lost browser, crash recovery, hard limit, old extensions): real headless
 // screen recordings against j8213, checked in the capture's meta.json on the server (read with docker exec).
 // The crash tests kill this test's own Chromium (pkill -9 on its profile folder) and start it again on the same
-// profile, as after a real crash. Set the test override first, or the tests wait for the full defaults:
-//   joget.sh override '{"pingMs":5000,"lostMs":20000,"checkMs":5000,"minLimitMs":60000}'
+// profile, as after a real crash. The spec sets the test override (liveness-test.json) itself for its run and puts
+// back what was there after; its checks (the 60 s limit, checkMs) depend on these values.
 // Every recording uploaded here is deleted at the end of its test.
 const { execFileSync, execSync } = require('child_process');
 const fs = require('fs');
@@ -17,6 +17,20 @@ const OLD_TAG = process.env.BB_OLD_TAG || '8.2.1'; // the last release without t
 const REPO = path.join(__dirname, '..', '..');
 
 const sh = (args) => execFileSync('docker', ['exec', CONTAINER, ...args], { encoding: 'utf8' });
+
+// The test override (plugin README, Storage): short timing for this spec. Written as this user, as joget.sh does.
+const OVERRIDE = { pingMs: 5000, lostMs: 20000, checkMs: 5000, minLimitMs: 60000 };
+const OVERRIDE_FILE = `${WFLOW}/blackbox/liveness-test.json`;
+const shAsMe = (args, input) => execFileSync('docker', ['exec', '-i', '-u', String(process.getuid()), CONTAINER, ...args], { encoding: 'utf8', input });
+let overrideBefore = null; // the file's content before this spec (null: no file)
+test.beforeAll(() => {
+  overrideBefore = sh(['sh', '-c', `cat ${OVERRIDE_FILE} 2>/dev/null || true`]) || null;
+  shAsMe(['sh', '-c', `cat > ${OVERRIDE_FILE}`], JSON.stringify(OVERRIDE) + '\n');
+});
+test.afterAll(() => {
+  if (overrideBefore === null) shAsMe(['rm', '-f', OVERRIDE_FILE]);
+  else shAsMe(['sh', '-c', `cat > ${OVERRIDE_FILE}`], overrideBefore);
+});
 // The capture's pending meta.json on the server (not in the API); kept after the upload, pointing at the recording
 const captureMeta = (id) => JSON.parse(sh(['cat', `${WFLOW}/blackbox/pending/${id}/meta.json`]));
 // The capture's log lines so far (all nodes), before the upload moves them into the recording
@@ -162,7 +176,7 @@ test('crash: the server stops the capture at the last ping; recovery and upload 
   try {
     const { capture } = await startRecording(b);
     const { pingMs, lostMs } = capture;
-    const checkMs = 5000; // the override's checkMs (the start response doesn't carry it)
+    const { checkMs } = OVERRIDE; // the start response doesn't carry it
     const seen = await waitForPings(capture.id, pingMs);
     expect(seen.allServer, 'all-server logs on for this capture').toBe(true);
 
@@ -235,7 +249,7 @@ test('time limit: the recorder stops itself, saves and uploads', async () => {
   try {
     const { capture } = await startRecording(b, { openOnServer: true });
     test.setTimeout(capture.maxRecordingMs + 240_000);
-    expect(capture.maxRecordingMs, 'the override limit (60 s)').toBe(60_000);
+    expect(capture.maxRecordingMs, 'the override limit (60 s)').toBe(OVERRIDE.minLimitMs);
     const meta = captureMeta(capture.id);
     expect(meta.maxUntil).toBe(meta.startedAt + capture.maxRecordingMs);
     const recorder = recorderOf(b);
@@ -291,7 +305,7 @@ test('old extension (no heartbeat): not stopped as lost, stopped by the server 2
     expect(capture.pingMs, 'the old extension keeps no ping timing').toBeUndefined();
 
     // Well past lostMs: no ping ever came, so it is not lost
-    await new Promise((r) => setTimeout(r, 20_000 + 2 * 5000 + 2000));
+    await new Promise((r) => setTimeout(r, OVERRIDE.lostMs + 2 * OVERRIDE.checkMs + 2000));
     const open = captureMeta(capture.id);
     expect(open.lastSeenAt).toBeUndefined();
     expect(open.stoppedAt, 'not stopped as lost').toBeUndefined();
@@ -320,17 +334,17 @@ test('all-server logs: after a crash, no new lines in the capture log once it is
     await expect.poll(() => captureLines(capture.id).filter((e) => e.other).length, { timeout: 10_000 }).toBeGreaterThan(0);
 
     b.kill();
-    await expect.poll(() => captureMeta(capture.id).stopReason, { timeout: capture.lostMs + 5000 + 30_000, intervals: [500] })
+    await expect.poll(() => captureMeta(capture.id).stopReason, { timeout: capture.lostMs + OVERRIDE.checkMs + 30_000, intervals: [500] })
       .toBe('browser-lost');
     const { stoppedAt } = captureMeta(capture.id);
     const atStop = captureLines(capture.id);
     for (let i = 0; i < 5; i++) logALine();
-    await new Promise((r) => setTimeout(r, 2 * 5000)); // two checks
+    await new Promise((r) => setTimeout(r, 2 * OVERRIDE.checkMs)); // two checks
     const later = captureLines(capture.id);
     const afterStop = later.filter((e) => e.ts > stoppedAt);
     console.log(`all-server: ${atStop.length} lines when seen stopped, ${later.length} after more logging; ${afterStop.length} with ts > stoppedAt (between the last ping and the server's stop)`);
     expect(later.length, 'the capture log stops growing once the server has stopped it').toBe(atStop.length);
-    expect(afterStop.filter((e) => e.ts > stoppedAt + capture.lostMs + 5000), 'nothing after the server\'s stop').toEqual([]);
+    expect(afterStop.filter((e) => e.ts > stoppedAt + capture.lostMs + OVERRIDE.checkMs), 'nothing after the server\'s stop').toEqual([]);
   } finally {
     await b.dispose();
   }
