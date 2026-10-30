@@ -42,8 +42,17 @@ final class LivenessKnobs {
         return get("lostMs", LOST_MS);
     }
 
+    /** lostMs from a given override file (one profile's, with virtual hosts). */
+    static long lostMs(Path file) {
+        return get(file, "lostMs", LOST_MS);
+    }
+
     static long checkMs() {
         return get("checkMs", CHECK_MS);
+    }
+
+    static long checkMs(Path file) {
+        return get(file, "checkMs", CHECK_MS);
     }
 
     /** Lowest value the hard limit may take; Long.MAX_VALUE means no override (the limit is not lowered). */
@@ -53,7 +62,7 @@ final class LivenessKnobs {
 
     /** True when the file is present and sets at least one valid value. */
     static boolean inUse() {
-        JSONObject o = read();
+        JSONObject o = read(defaultFile());
         if (o == null) {
             return false;
         }
@@ -66,7 +75,11 @@ final class LivenessKnobs {
     }
 
     private static long get(String key, long def) {
-        JSONObject o = read();
+        return get(defaultFile(), key, def);
+    }
+
+    private static long get(Path file, String key, long def) {
+        JSONObject o = read(file);
         if (o == null || !valid(o, key)) {
             return def;
         }
@@ -79,9 +92,16 @@ final class LivenessKnobs {
         return v instanceof Number && ((Number) v).longValue() >= MIN_VALUE_MS;
     }
 
-    private static JSONObject read() {
+    private static Path defaultFile() {
         try {
-            Path f = fileSupplier.get();
+            return fileSupplier.get();
+        } catch (Exception e) { // no Joget: use the defaults
+            return null;
+        }
+    }
+
+    private static JSONObject read(Path f) {
+        try {
             if (f == null || !Files.isRegularFile(f)) {
                 return null;
             }

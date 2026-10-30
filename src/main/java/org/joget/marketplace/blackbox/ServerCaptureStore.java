@@ -46,6 +46,10 @@ public class ServerCaptureStore {
         this.root = root;
     }
 
+    Path root() {
+        return root;
+    }
+
     public static boolean isValidId(String id) {
         return id != null && ID.matcher(id).matches();
     }

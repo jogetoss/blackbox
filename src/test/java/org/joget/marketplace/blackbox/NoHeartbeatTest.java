@@ -21,13 +21,16 @@ public class NoHeartbeatTest {
     private ServerCaptureStore store;
     private Supplier<ServerCaptureStore> realStores;
     private Supplier<Path> realKnobs;
+    private Supplier<java.util.List<Path>> realDirs;
 
     @Before
     public void setUp() throws Exception {
         Path root = Files.createTempDirectory("bb-no-heartbeat");
-        store = new ServerCaptureStore(root);
+        store = new ServerCaptureStore(root.resolve("pending")); // root: one profile's blackbox folder
         realStores = ServerCapture.stores;
         ServerCapture.stores = () -> store;
+        realDirs = ServerCapture.checkDirs;
+        ServerCapture.checkDirs = () -> java.util.Collections.singletonList(root);
         realKnobs = LivenessKnobs.fileSupplier;
         LivenessKnobs.fileSupplier = () -> root.resolve(LivenessKnobs.FILE); // missing: the defaults
     }
@@ -36,6 +39,7 @@ public class NoHeartbeatTest {
     public void tearDown() {
         ServerCapture.close(ID);
         ServerCapture.stores = realStores;
+        ServerCapture.checkDirs = realDirs;
         LivenessKnobs.fileSupplier = realKnobs;
     }
 

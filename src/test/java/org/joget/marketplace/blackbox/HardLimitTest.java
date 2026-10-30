@@ -26,14 +26,17 @@ public class HardLimitTest {
     private ServerCaptureStore store;
     private Supplier<ServerCaptureStore> realStores;
     private Supplier<Path> realKnobs;
+    private Supplier<java.util.List<Path>> realDirs;
 
     @Before
     public void setUp() throws Exception {
         root = Files.createTempDirectory("bb-hard-limit");
         knobs = root.resolve(LivenessKnobs.FILE);
-        store = new ServerCaptureStore(root);
+        store = new ServerCaptureStore(root.resolve("pending")); // root: one profile's blackbox folder
         realStores = ServerCapture.stores;
         ServerCapture.stores = () -> store;
+        realDirs = ServerCapture.checkDirs;
+        ServerCapture.checkDirs = () -> java.util.Collections.singletonList(root);
         realKnobs = LivenessKnobs.fileSupplier;
         LivenessKnobs.fileSupplier = () -> knobs; // missing: the defaults
         staticMap("MISSES").clear();
@@ -43,6 +46,7 @@ public class HardLimitTest {
     public void tearDown() throws Exception {
         ServerCapture.close(ID);
         ServerCapture.stores = realStores;
+        ServerCapture.checkDirs = realDirs;
         LivenessKnobs.fileSupplier = realKnobs;
     }
 

@@ -23,13 +23,16 @@ public class BrowserLostTest {
     private ServerCaptureStore store;
     private Supplier<ServerCaptureStore> realStores;
     private Supplier<Path> realKnobs;
+    private Supplier<java.util.List<Path>> realDirs;
 
     @Before
     public void setUp() throws Exception {
         root = Files.createTempDirectory("bb-lost-browser");
-        store = new ServerCaptureStore(root);
+        store = new ServerCaptureStore(root.resolve("pending")); // root: one profile's blackbox folder
         realStores = ServerCapture.stores;
         ServerCapture.stores = () -> store;
+        realDirs = ServerCapture.checkDirs;
+        ServerCapture.checkDirs = () -> java.util.Collections.singletonList(root);
         realKnobs = LivenessKnobs.fileSupplier;
         LivenessKnobs.fileSupplier = () -> root.resolve(LivenessKnobs.FILE); // missing: the defaults
         staticMap("MISSES").clear(); // an earlier test's close() remembers the id for 10 s
@@ -40,6 +43,7 @@ public class BrowserLostTest {
         ServerCapture.close(ID);
         setRunning(false);
         ServerCapture.stores = realStores;
+        ServerCapture.checkDirs = realDirs;
         LivenessKnobs.fileSupplier = realKnobs;
     }
 
