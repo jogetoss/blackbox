@@ -116,7 +116,8 @@ deleting a recording removes its folder.
 
 `<wflow>/blackbox/liveness-test.json` (optional, for tests; not a plugin setting, admins don't see it) may set
 `pingMs`, `lostMs`, `checkMs` and `minLimitMs` in ms. `LivenessKnobs` reads it on every call (no cache, no restart), and
-a missing or invalid file, or a value below 1000, gives the default. While it sets a value, a warning is logged (at most
+a missing or invalid file, or a value below 1000, gives the default. `minLimitMs` only lowers the hard limit (see
+"Hard limit"), never raises it. While it sets a value, a warning is logged (at most
 once a minute). It is no recording folder (`RecordingStore.list` and `readMeta` need a valid id) and the capture sweep
 only looks inside `pending/`, so both skip it. On j8213 the host path is `~/Joget/docker/wflow8/blackbox/liveness-test.json`.
 
@@ -216,6 +217,22 @@ check above closes the capture. Closing the recorder window sends a plain stop f
 upload came first). It uses `lastSeenAt` when the capture was pinged, else now. The value is set before
 `system-log.json` is written, so that file and the meta carry the same `stoppedAt`. A capture pinged at T and uploaded
 90 minutes later gets `stoppedAt = T`, not the upload time.
+
+### Hard limit
+
+The plugin setting `maxRecordingMinutes` (default 30) is read at `recording-start` by `BlackBoxPlugin.maxRecordingMs`:
+5 to 120 minutes (a value outside goes to the nearest bound; 120 is `GaugeSampler`'s 2 h cap), 30 when empty or not a
+number, then lowered to the test override's `minLimitMs` when that is smaller. The settings page refuses values outside
+5–120. The start answer carries it as `maxRecordingMs`, and `ServerCaptureStore.start` writes `maxUntil = startedAt +
+maxRecordingMs` into the meta. The recorder shows the time left next to the timer, shows a warning (and puts it in the
+window title, seen in the taskbar while minimized) in the last 2 minutes, and at the limit sends the background `stop`
+with reason `time-limit`, the same path as the Stop button, so `stopAndSave` and the app export run. The limit is
+counted from the recorder's own start time; a hidden window's timer may run late, up to about a minute. Server backup:
+`checkLost` also calls `ServerCaptureStore.stopIfOverLimit`, which, under the lock, stops a capture with no `stoppedAt`
+that is past `maxUntil + 2 min` (`LIMIT_GRACE_MS`): `stoppedAt = maxUntil`, `stopReason = "time-limit"`, one info line
+in the log, pings or not. The lost-browser check runs first, so a capture that also stopped pinging keeps
+`browser-lost` at its last ping. Captures without `maxUntil` (started by an older plugin) and extensions without
+`maxRecordingMs` in the answer have no limit.
 
 **All server** (`captureAllServerLogs`, stored as `allServer` in the capture's meta, only for recorders allowed by
 **Who can view server data**, `canViewServerData()` without the uploader rule): while such a capture is open on a node, the appender also writes every other thread's events
@@ -506,7 +523,7 @@ for in Settings or on the first upload.
 | Part | Job |
 |---|---|
 | `popup.html/js` | Record this tab / a window / the screen, Stop; gets the tab-capture stream id (the video for "this tab", the tab's sound for a window or the screen); Page sound and Microphone toggles; the server data note (`#serverNote`: no Upload URL, a tab on another server, or why the server isn't capturing); quick settings (from `me.options`, cached as `quickOffer`); links to Recordings and Settings |
-| `recorder.html/js` | The recorder window (minimized while recording; asks before closing): shows the `desktopCapture` picker (window/screen) or uses the tab stream, mixes page sound and microphone into one track, records with `MediaRecorder`, saves progress every 5 s, sends `recording-ping` every `pingMs`, sends `recording-stop` with the app export's input, keeps the recording in IndexedDB (or downloads it when it can't), opens the Replay page |
+| `recorder.html/js` | The recorder window (minimized while recording; asks before closing): shows the `desktopCapture` picker (window/screen) or uses the tab stream, mixes page sound and microphone into one track, records with `MediaRecorder`, saves progress every 5 s, sends `recording-ping` every `pingMs`, shows the time left and stops at `maxRecordingMs`, sends `recording-stop` with the app export's input, keeps the recording in IndexedDB (or downloads it when it can't), opens the Replay page |
 | `background.js` | Service worker: owns the recording state, opens the recorder window, attaches the debugger (Network, Runtime, Log, Page), fetches response bodies (XHR, Fetch, Document, EventSource, Other; up to 1 MB, not binary), forwards events to the recorder; starts/stops the server capture and tags the tab's requests; REC badge (orange with the reason when the server capture is off); stops on debugger detach, tab closed or recorder closed; crash recovery |
 | `viewer.html/js`, `viewer.css` | Replay UI shared by every replay page (the extension's, the plugin's, downloaded HTML, standalone): video + synced lists, timeline, request details, Features drawer |
 | `recordings.html/js` | Recordings page: kept, on-disk and upload-history rows (100 at a time) with Browser issues; batch Upload, Download ZIP, Delete for ticked rows (Upload off when `me.canUpload` is false); Import ZIP; Link / Allow / Unlink folder; crash recovery on load |
