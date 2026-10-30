@@ -240,19 +240,19 @@ public class ServerCaptureStore {
                     .put("startedAt", meta.optLong("startedAt"))
                     .put("truncated", truncated)
                     .put("entries", list);
-            if (meta.has("stoppedAt")) {
-                body.put("stoppedAt", meta.optLong("stoppedAt"));
+            // No stop yet: the last ping is when the browser was last seen; never pinged: now. Set before the body
+            // is written so system-log.json and the meta agree.
+            long now = System.currentTimeMillis();
+            if (!meta.has("stoppedAt")) {
+                meta.put("stoppedAt", meta.has("lastSeenAt") ? meta.optLong("lastSeenAt") : now);
             }
+            body.put("stoppedAt", meta.optLong("stoppedAt"));
             Path tmp = target.resolveSibling(target.getFileName() + ".part");
             Files.write(tmp, body.toString().getBytes(StandardCharsets.UTF_8));
             Files.move(tmp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             summary = summary(list, truncated);
-            long now = System.currentTimeMillis();
             meta.put("recording", target.getParent().getFileName().toString())
                     .put("expiresAt", now + FORWARD_MS);
-            if (!meta.has("stoppedAt")) {
-                meta.put("stoppedAt", now);
-            }
             writeMeta(id, meta);
         } catch (JSONException e) {
             throw new IOException(e);
