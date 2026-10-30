@@ -157,6 +157,9 @@ Shown on this plugin's replay page and included in the ZIP and HTML downloads, o
 While recording, the extension tells the server every 30 s that the recording is still running. If the server has
 already ended the capture, the recording stops (reason `server-stopped: …`). If the user is logged out, the recorder
 shows **Server capture ended: logged out** and records on without server data. The pings keep the Joget session alive.
+When no ping arrives for 3 minutes (the browser crashed, was killed or lost the network), the server ends the
+capture itself, at the time of the last ping: its log lines, server load and Glowroot data stop there, with stop reason
+`browser-lost`. A capture that never got a ping (an older extension) is not ended this way.
 
 **Sensitive data:** traces and Glowroot data hold SQL with parameter values and request details; Info holds JVM
 arguments and system properties, which can include secrets passed as `-D` options; app definitions can hold plugin
