@@ -201,6 +201,17 @@ closes its own copy of every stopped capture, so it stops writing there too afte
 Gauges (`GaugeSampler`) and the Glowroot package (`GlowrootPackager`) read `stoppedAt` from the meta and follow it as
 for a normal stop. A later ping answers `{state: "stopped", reason: "browser-lost"}`.
 
+### Recovery stop time
+
+When the extension recovers a crashed recording (`recoverPartials`, report.js), it POSTs a plain `recording-stop` (no
+body, so no app export) for the partial meta's capture with `stoppedAt = lastSavedAt`, the last crash-safety save.
+`ServerCaptureStore.stop(id, owner, clientStoppedAt, lostMs)` takes that time only between `startedAt` and
+`lastSeenAt + lostMs` (both inclusive; with no `lastSeenAt`, between `startedAt` and now); otherwise it uses
+`lastSeenAt`, or now when there is none. A stop without `stoppedAt` (the recorder's normal stop, older extensions)
+uses now, as before. A capture that already has `stoppedAt` (for example stopped as `browser-lost`) keeps it; the
+owner's stop still answers 200. The extension doesn't retry a stop that fails (offline, logged out): the lost-browser
+check above closes the capture. Closing the recorder window sends a plain stop first, so that stop's time wins there.
+
 **All server** (`captureAllServerLogs`, stored as `allServer` in the capture's meta, only for recorders allowed by
 **Who can view server data**, `canViewServerData()` without the uploader rule): while such a capture is open on a node, the appender also writes every other thread's events
 to it with `"other": true` (no `req`), including tagged requests of other recordings. Nodes write it once the capture
@@ -496,7 +507,7 @@ for in Settings or on the first upload.
 | `recordings.html/js` | Recordings page: kept, on-disk and upload-history rows (100 at a time) with Browser issues; batch Upload, Download ZIP, Delete for ticked rows (Upload off when `me.canUpload` is false); Import ZIP; Link / Allow / Unlink folder; crash recovery on load |
 | `actions.js` | Upload (with its form; `uploadNow` without it, `uploadMany` for a batch), Move to folder, Download ZIP and Delete of one recording; links in messages |
 | `replay.js` | Replay page (`viewer.html?id=` or `?disk=`): loads the recording, its status bar, ⚠ Upload and the fix box, Move to folder / Download ZIP / Delete, Older / Newer; with `upload=server` it uploads and opens the server's copy |
-| `report.js` | Builds `session.json`; turns a recording interrupted by a crash or a closed recorder into a normal one (`recovered`, stop reason "interrupted") |
+| `report.js` | Builds `session.json`; turns a recording interrupted by a crash or a closed recorder into a normal one (`recovered`, stop reason "interrupted") and stops its server capture at the last save |
 | `quick.js` | Quick settings (`chrome.storage.local` `quick`): `apps`, `sample`, `real` are the per-recording app export choices (`recording.options`, the export parameters); `allServer` and `glowrootData` go to `recording-start` |
 | `store.js` | Row list (kept, on disk: newest 50, upload history), badges, loading a recording, the linked folder |
 | `server.js` | Calls the Upload endpoint with the browser's cookies; Upload URL and Recording page URL, host access, 15 s timeout on GETs |
@@ -552,7 +563,8 @@ shows the note in the popup and on the Recordings page.
 
 **Crash recovery:** closing the recorder window stops the recording and runs `recoverPartials()`, as do browser
 startup and the Recordings page. It turns `partial` parts (except the recording still running) into a kept recording
-with `recovered: true`.
+with `recovered: true`, then sends `recording-stop` with the last save time for its server capture (see "Recovery
+stop time").
 
 The recorder is a window, not an offscreen document: a `chooseDesktopMedia` stream id can only be opened by the page
 that showed the picker (tested early in the project).

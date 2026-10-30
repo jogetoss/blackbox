@@ -648,12 +648,14 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     }
 
     /**
-     * Ends a capture. With a body (the recording's network and console entries, see {@link #exportAtStop}) it also
+     * Ends a capture. stoppedAt (optional, ms): the browser's stop time, sent when the extension recovers a crashed
+     * recording (see {@link ServerCaptureStore#stop(String, String, long, long)} for the bounds). With a body (the recording's network and console entries, see {@link #exportAtStop}) it also
      * exports the apps the recording used, with their sample and process data, as they are now.
      */
     private void stopServerCapture(HttpServletRequest request, HttpServletResponse response, Access access, String id)
             throws IOException, JSONException {
-        if (!ServerCaptureStore.isValidId(id) || !ServerCapture.store().stop(id, access.user.getUsername())) {
+        if (!ServerCaptureStore.isValidId(id)
+                || !ServerCapture.store().stop(id, access.user.getUsername(), longParam(request, "stoppedAt"), LivenessKnobs.lostMs())) {
             error(response, HttpServletResponse.SC_NOT_FOUND, "Server capture not found.");
             return;
         }

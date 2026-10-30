@@ -93,17 +93,42 @@ public class ServerCaptureStore {
         });
     }
 
-    /** Marks a capture as stopped. Returns false when it is missing or belongs to another user. */
+    /** Marks a capture as stopped now. Returns false when it is missing or belongs to another user. */
     public boolean stop(String id, String owner) throws IOException {
+        return stop(id, owner, -1, 0);
+    }
+
+    /**
+     * Marks a capture as stopped. clientStoppedAt (negative: none) is the browser's stop time, e.g. the last save of a
+     * recording recovered after a crash; it is taken only between startedAt and lastSeenAt + lostMs (now, with no
+     * lastSeenAt), otherwise the stop time is lastSeenAt, or now. A capture already stopped (e.g. browser-lost) keeps
+     * its stop time. Returns false when it is missing or belongs to another user.
+     */
+    public boolean stop(String id, String owner, long clientStoppedAt, long lostMs) throws IOException {
         return Boolean.TRUE.equals(lockedIfExists(id, () -> {
             JSONObject meta = readMeta(id);
             if (meta == null || !owner.equals(meta.optString("owner"))) {
                 return false;
             }
-            meta.put("stoppedAt", System.currentTimeMillis());
+            if (meta.has("stoppedAt")) {
+                return true;
+            }
+            meta.put("stoppedAt", stopTime(meta, clientStoppedAt, lostMs, System.currentTimeMillis()));
             writeMeta(id, meta);
             return true;
         }));
+    }
+
+    private static long stopTime(JSONObject meta, long clientStoppedAt, long lostMs, long now) {
+        if (clientStoppedAt < 0) {
+            return now;
+        }
+        boolean seen = meta.has("lastSeenAt");
+        long upTo = seen ? meta.optLong("lastSeenAt") + lostMs : now;
+        if (clientStoppedAt >= meta.optLong("startedAt") && clientStoppedAt <= upTo) {
+            return clientStoppedAt;
+        }
+        return seen ? meta.optLong("lastSeenAt") : now;
     }
 
     /**
