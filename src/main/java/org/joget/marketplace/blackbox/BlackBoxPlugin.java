@@ -572,12 +572,15 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     /** The extension starts capturing when a recording starts; id is its random UUID, sent on the tab's requests. */
     private void startServerCapture(HttpServletRequest request, HttpServletResponse response, Access access, String id)
             throws IOException, JSONException {
+        long maxRecordingMs = maxRecordingMs(getPropertyString("maxRecordingMinutes"));
         if (!"true".equals(getPropertyString("captureServerData"))) {
-            error(response, HttpServletResponse.SC_FORBIDDEN, "Server data capture is turned off in the BlackBox plugin settings.");
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            json(response, captureOff(HttpServletResponse.SC_FORBIDDEN, "Server data capture is turned off in the BlackBox plugin settings.", maxRecordingMs));
             return;
         }
         if (!access.canUpload()) {
-            error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to upload recordings.");
+            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+            json(response, captureOff(HttpServletResponse.SC_FORBIDDEN, "You are not allowed to upload recordings.", maxRecordingMs));
             return;
         }
         if (!ServerCaptureStore.isValidId(id)) {
@@ -593,7 +596,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         // Other users' log lines: only for recorders who may see every recording's server data
         boolean allServer = "true".equals(getPropertyString("captureAllServerLogs")) && access.canViewServerData()
                 && !"false".equals(request.getParameter("allServer"));
-        long maxRecordingMs = maxRecordingMs(getPropertyString("maxRecordingMinutes"));
         if (!ServerCapture.store().start(id, access.user.getUsername(), maxBytes, keepMs, traces, getPropertyString("glowrootUrl"), gauges,
                 glowrootData, allServer, maxRecordingMs)) {
             error(response, HttpServletResponse.SC_CONFLICT, "This server capture id is already in use.");
@@ -607,6 +609,15 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         withLiveness(started, maxRecordingMs, maxSizeMb());
         // RecordingStore.LEGACY_CAPTURE: the extension of plugin 8.2.1 and older reads the slow threshold from there
         json(response, new JSONObject().put(RecordingStore.CAPTURE, started).put(RecordingStore.LEGACY_CAPTURE, started));
+    }
+
+    /**
+     * Error body of a start without server capture (turned off, or the user may not upload), with the hard limit: the
+     * recording goes on without server data but still stops itself at maxRecordingMs. No maxSizeMb: no size guard.
+     */
+    static JSONObject captureOff(int status, String message, long maxRecordingMs) throws JSONException {
+        return new JSONObject().put("error", new JSONObject().put("code", String.valueOf(status)).put("message", message))
+                .put(RecordingStore.CAPTURE, new JSONObject().put("maxRecordingMs", maxRecordingMs));
     }
 
     /** The recorder's heartbeat timing for the start response, so the extension needs no constants of its own. */
