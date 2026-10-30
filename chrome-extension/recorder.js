@@ -5,6 +5,7 @@ const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 const tabId = Number(params.get('tabId'));
 const mode = params.get('mode') || 'window'; // 'tab' | 'window' | 'screen'
+const TITLE = document.title;
 
 let recorder = null;
 let stream = null;            // what MediaRecorder records: the video track plus one mixed sound track
@@ -35,6 +36,13 @@ let pinging = false;
 let lastSavedAt = 0;          // the last crash-safety save
 let videoBytes = 0;           // the video recorded so far
 let serverNote = '';          // shown after the timer, e.g. when the server capture ended
+
+// Hard limit: with serverCapture.maxRecordingMs (the plugin's maxRecordingMinutes) the status shows the time left,
+// warns WARN_BEFORE ms before, and the recording stops and saves itself at the limit (reason time-limit). The server
+// stops the capture 2 minutes past the limit if this never happens.
+const WARN_BEFORE = 2 * 60 * 1000;
+let limitAt = 0;              // 0: no limit
+let limitHit = false;
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.target !== 'recorder') return;
@@ -145,10 +153,21 @@ async function pickAndStart() {
   saveTimer = setInterval(() => { saving = saving.then(savePart).catch((e) => console.warn('Could not save progress:', e)); }, SAVE_EVERY);
   if (meta.serverCapture?.status === 'on' && meta.serverCapture.pingMs > 0) pingTimer = setInterval(ping, meta.serverCapture.pingMs);
 
+  if (meta.serverCapture?.status === 'on' && meta.serverCapture.maxRecordingMs > 0) limitAt = startedAt + meta.serverCapture.maxRecordingMs;
+
   $('stop').hidden = false;
   const tick = () => {
-    const s = Math.floor((Date.now() - startedAt) / 1000);
-    $('status').textContent = `Recording… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} (logs from: ${res.title || res.url}; sound: ${soundLabel(meta.audio)})${serverNote ? ' ' + serverNote : ''}`;
+    const now = Date.now();
+    $('status').textContent = `Recording… ${clock(now - startedAt)}${limitAt ? ` (${clock(Math.max(0, limitAt - now))} left)` : ''} (logs from: ${res.title || res.url}; sound: ${soundLabel(meta.audio)})${serverNote ? ' ' + serverNote : ''}`;
+    if (!limitAt) return;
+    const warn = limitAt - now <= WARN_BEFORE;
+    $('limit').hidden = !warn;
+    if (warn) $('limit').textContent = `The recording stops and saves itself in ${clock(Math.max(0, limitAt - now))} (time limit).`;
+    document.title = warn ? `BlackBox: stops in ${clock(Math.max(0, limitAt - now))}` : TITLE; // seen in the taskbar while minimized
+    if (now >= limitAt && !limitHit) {
+      limitHit = true;
+      chrome.runtime.sendMessage({ target: 'background', type: 'stop', reason: 'time-limit' });
+    }
   };
   tick();
   timer = setInterval(tick, 1000);
@@ -222,6 +241,12 @@ function playBack(tracks) {
   audioCtx.resume().catch(() => {});
 }
 
+// m:ss
+function clock(ms) {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
 function soundLabel(audio) {
   return [audio?.page ? (audio.pageSource === 'tab' && mode !== 'tab' ? 'tab' : 'page') : '', audio?.mic ? 'microphone' : ''].filter(Boolean).join(' + ') || 'none';
 }
@@ -236,6 +261,8 @@ function stopInputs() {
 async function stopAndSave(reason) {
   if (!meta) return null;
   clearInterval(timer);
+  $('limit').hidden = true;
+  document.title = TITLE;
   clearInterval(saveTimer);
   clearInterval(pingTimer);
   await saving; // let a save in progress finish before the parts are cleared

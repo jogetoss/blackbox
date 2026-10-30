@@ -64,6 +64,9 @@ open one of its assignments).
 - `tests/recovery-stop.spec.js`: a partial recording left in IndexedDB as after a crash, for captures started and
   pinged through the API: `recoverPartials()` stops each capture at its `lastSavedAt` when it is within the bounds,
   else at `lastSeenAt` (read with `docker exec`). Needs no override (a short `lostMs` works too). Nothing is uploaded.
+- `tests/time-limit.spec.js`: a headless screen recording shows the time left and the 2-minute warning, the capture's
+  `meta.json` has `maxUntil`, and the recording stops itself with reason `time-limit`. Nothing is uploaded. Set the
+  test override first (`{"minLimitMs":20000}`) or it runs for the full **Max recording length** (30 min).
 - `tests/upload-form.spec.js`: the sample data choice on the upload form, the `sampleData` parameter it sends, and the
   App data the server builds.
 

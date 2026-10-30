@@ -213,7 +213,8 @@ final class ServerCapture {
     /**
      * The lost-browser check, on every node. Reads each capture's meta from disk (a ping can land on any node): a capture
      * not seen for lostMs is stopped at its last ping ({@link ServerCaptureStore#stopIfLost}, once, under the lock), and
-     * this node closes its copy of every stopped capture, whichever node stopped it.
+     * this node closes its copy of every stopped capture, whichever node stopped it. The same run is the hard limit's
+     * backup: a capture past maxUntil + 2 min is stopped at maxUntil ({@link ServerCaptureStore#stopIfOverLimit}).
      */
     static void checkLost(long now) {
         ServerCaptureStore store = store();
@@ -231,14 +232,17 @@ final class ServerCapture {
             }
             if (!meta.has("stoppedAt")) {
                 try {
-                    if (!store.stopIfLost(id, now, lostMs)) {
+                    if (store.stopIfLost(id, now, lostMs)) {
+                        LogUtil.info(ServerCapture.class.getName(), "Stopped server capture " + id + ": no ping from the browser for " + lostMs / 1000 + " s");
+                    } else if (store.stopIfOverLimit(id, now)) {
+                        LogUtil.info(ServerCapture.class.getName(), "Stopped server capture " + id + ": past its time limit");
+                    } else {
                         continue;
                     }
                 } catch (IOException e) {
                     LogUtil.warn(ServerCapture.class.getName(), "Could not stop server capture " + id + ": " + e.getMessage());
                     continue;
                 }
-                LogUtil.info(ServerCapture.class.getName(), "Stopped server capture " + id + ": no ping from the browser for " + lostMs / 1000 + " s");
             }
             if (OPEN.containsKey(id)) {
                 close(id);

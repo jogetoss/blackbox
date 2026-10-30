@@ -71,6 +71,7 @@ This section is the single place for what each setting does, who gets what, and 
 | Setting | Default | Notes | Popup checkbox |
 |---|---|---|---|
 | Capture server data during recordings | No | Logs, Info tab, and the settings below; apps exported at stop | |
+| Max recording length (minutes) | 30 | 5–120. The recorder stops and saves at this length; see below | |
 | Who can view server data | admins only | See [Who sees what](#who-sees-what) | |
 | Uploaders can view the server data of their own recordings | No | See [Who sees what](#who-sees-what) | |
 | Max size of system logs per node per recording (MB) | 20 | Each server node's lines; later lines are dropped and the viewer says so | |
@@ -163,6 +164,12 @@ capture itself, at the time of the last ping: its log lines, server load and Glo
 recovers a recording after a crash, it ends the server capture at the recording's last save (every 5 s), so the
 server data ends where the video ends. The server only takes that time if it fits the capture (after its start, at
 most 3 minutes after the last ping); otherwise it uses the last ping.
+
+Recordings with server data have a hard limit, **Max recording length** (30 minutes by default; at Chrome's default
+bitrate a longer video can pass the 500 MB upload limit). The recorder shows the time left, warns 2 minutes before,
+and at the limit stops and saves the recording as if the user pressed stop (stop reason `time-limit`; the apps are
+exported as usual). If the browser doesn't stop it, the server ends the capture 2 minutes after the limit, at the
+limit, with stop reason `time-limit`, pings or not. This also bounds how long the pings keep the Joget session alive.
 
 **Sensitive data:** traces and Glowroot data hold SQL with parameter values and request details; Info holds JVM
 arguments and system properties, which can include secrets passed as `-D` options; app definitions can hold plugin
