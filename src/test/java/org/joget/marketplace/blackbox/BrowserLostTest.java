@@ -32,6 +32,7 @@ public class BrowserLostTest {
         ServerCapture.stores = () -> store;
         realKnobs = LivenessKnobs.fileSupplier;
         LivenessKnobs.fileSupplier = () -> root.resolve(LivenessKnobs.FILE); // missing: the defaults
+        staticMap("MISSES").clear(); // an earlier test's close() remembers the id for 10 s
     }
 
     @After
@@ -164,9 +165,13 @@ public class BrowserLostTest {
         f.setBoolean(null, on);
     }
 
-    @SuppressWarnings("unchecked")
     private static Map<String, ?> openIds() throws Exception {
-        Field f = ServerCapture.class.getDeclaredField("OPEN");
+        return staticMap("OPEN");
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, ?> staticMap(String name) throws Exception {
+        Field f = ServerCapture.class.getDeclaredField(name);
         f.setAccessible(true);
         return (Map<String, ?>) f.get(null);
     }

@@ -132,6 +132,27 @@ public class ServerCaptureStore {
         });
     }
 
+    /**
+     * The lost-browser stop: an open capture whose last ping (lastSeenAt) is older than lostMs gets stoppedAt =
+     * lastSeenAt and stopReason "browser-lost". A capture that never got a ping is left alone. Returns true when this
+     * call stopped it; false when it is missing, already stopped (by a stop, or by another node), or not lost.
+     */
+    public boolean stopIfLost(String id, long now, long lostMs) throws IOException {
+        return Boolean.TRUE.equals(lockedIfExists(id, () -> {
+            JSONObject meta = readMeta(id);
+            if (meta == null || meta.has("stoppedAt") || meta.has("recording") || !meta.has("lastSeenAt")) {
+                return false;
+            }
+            long seen = meta.optLong("lastSeenAt");
+            if (now - seen <= lostMs) {
+                return false;
+            }
+            meta.put("stoppedAt", seen).put("stopReason", "browser-lost");
+            writeMeta(id, meta);
+            return true;
+        }));
+    }
+
     public JSONObject readMeta(String id) {
         if (!isValidId(id)) {
             return null;

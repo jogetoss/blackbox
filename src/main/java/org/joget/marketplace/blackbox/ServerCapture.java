@@ -13,9 +13,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.joget.commons.util.LogUtil;
@@ -86,6 +89,7 @@ final class ServerCapture {
         });
         timer.scheduleWithFixedDelay(ServerCapture::flushAll, FLUSH_MS, FLUSH_MS, TimeUnit.MILLISECONDS);
         timer.scheduleWithFixedDelay(ServerCapture::sweep, 60 * 1000L, SWEEP_MS, TimeUnit.MILLISECONDS);
+        scheduleCheck(timer);
         TraceCollector.start();
         GaugeSampler.start();
         GlowrootPackager.start();
@@ -188,6 +192,58 @@ final class ServerCapture {
             }
         }
         MISSES.entrySet().removeIf(e -> now - e.getValue() > MISS_MS);
+    }
+
+    /** Runs {@link #checkLost} every checkMs, read again each time so the test override applies without a restart. */
+    private static void scheduleCheck(ScheduledExecutorService t) {
+        try {
+            t.schedule(() -> {
+                try {
+                    checkLost(System.currentTimeMillis());
+                } catch (Exception e) {
+                    LogUtil.warn(ServerCapture.class.getName(), "Could not check server captures for a lost browser: " + e.getMessage());
+                }
+                scheduleCheck(t);
+            }, LivenessKnobs.checkMs(), TimeUnit.MILLISECONDS);
+        } catch (RejectedExecutionException e) {
+            // the plugin stopped
+        }
+    }
+
+    /**
+     * The lost-browser check, on every node. Reads each capture's meta from disk (a ping can land on any node): a capture
+     * not seen for lostMs is stopped at its last ping ({@link ServerCaptureStore#stopIfLost}, once, under the lock), and
+     * this node closes its copy of every stopped capture, whichever node stopped it.
+     */
+    static void checkLost(long now) {
+        ServerCaptureStore store = store();
+        long lostMs = LivenessKnobs.lostMs();
+        Set<String> ids = new HashSet<>(OPEN.keySet());
+        try {
+            ids.addAll(store.ids()); // also captures no node has open (closed when idle, node restarted)
+        } catch (IOException e) {
+            LogUtil.warn(ServerCapture.class.getName(), "Could not list server captures: " + e.getMessage());
+        }
+        for (String id : ids) {
+            JSONObject meta = store.readMeta(id);
+            if (meta == null) {
+                continue;
+            }
+            if (!meta.has("stoppedAt")) {
+                try {
+                    if (!store.stopIfLost(id, now, lostMs)) {
+                        continue;
+                    }
+                } catch (IOException e) {
+                    LogUtil.warn(ServerCapture.class.getName(), "Could not stop server capture " + id + ": " + e.getMessage());
+                    continue;
+                }
+                LogUtil.info(ServerCapture.class.getName(), "Stopped server capture " + id + ": no ping from the browser for " + lostMs / 1000 + " s");
+            }
+            if (OPEN.containsKey(id)) {
+                close(id);
+            }
+        }
     }
 
     private static void sweep() {
