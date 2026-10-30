@@ -67,6 +67,8 @@ open one of its assignments).
 - `tests/time-limit.spec.js`: a headless screen recording shows the time left and the 2-minute warning, the capture's
   `meta.json` has `maxUntil`, and the recording stops itself with reason `time-limit`. Nothing is uploaded. Set the
   test override first (`{"minLimitMs":20000}`) or it runs for the full **Max recording length** (30 min).
+- `tests/size-limit.spec.js`: the start response carries `maxSizeMb`, the recorder's bitrate is 1.5 Mbit/s, and with
+  its size limit lowered to 1 byte it stops itself with reason `size-limit`. Needs no override. Nothing is uploaded.
 - `tests/upload-form.spec.js`: the sample data choice on the upload form, the `sampleData` parameter it sends, and the
   App data the server builds.
 

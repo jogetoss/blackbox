@@ -52,6 +52,8 @@ Popup → **Settings** (this browser only; server options are in the plugin READ
   3 minutes (crash, killed browser, no network), the server ends the capture at the last ping.
 - **Time limit:** with server data, a recording is at most the plugin's **Max recording length** (30 minutes by
   default). The recorder shows the time left, warns 2 minutes before, and then stops and saves the recording.
+- **Size limit:** video is recorded at 1.5 Mbit/s. With server data, the recorder stops and saves at 90% of the plugin's
+  upload limit (**Max file size (MB)**), with stop reason `size-limit`, so the upload is not refused as too large.
 - **Crash safety:** saved to browser storage every 5 s. After a crash, the recording is listed as **Recovered**, and
   its server capture is ended at the last save.
 

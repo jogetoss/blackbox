@@ -234,6 +234,12 @@ in the log, pings or not. The lost-browser check runs first, so a capture that a
 `browser-lost` at its last ping. Captures without `maxUntil` (started by an older plugin) and extensions without
 `maxRecordingMs` in the answer have no limit.
 
+**Size guard:** `recording-start` also answers `maxSizeMb` (`maxSizeMb()`, the upload limit; `withLiveness(started,
+maxRecordingMs, maxSizeMb)`). The recorder creates its `MediaRecorder` with `videoBitsPerSecond: 1_500_000` (about 340 MB
+for the default 30 minutes), adds up the chunk sizes in `ondataavailable`, and when `sizeLimitReached` (video bytes at
+90% of `maxSizeMb`) sends the background `stop` with reason `size-limit`, the same path as `time-limit`. No
+`maxSizeMb` in the answer (server capture off, older plugin): no size guard. The server has no part in it.
+
 **All server** (`captureAllServerLogs`, stored as `allServer` in the capture's meta, only for recorders allowed by
 **Who can view server data**, `canViewServerData()` without the uploader rule): while such a capture is open on a node, the appender also writes every other thread's events
 to it with `"other": true` (no `req`), including tagged requests of other recordings. Nodes write it once the capture
