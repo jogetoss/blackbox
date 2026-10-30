@@ -67,6 +67,9 @@ open one of its assignments).
 - `tests/time-limit.spec.js`: a headless screen recording shows the time left and the 2-minute warning, the capture's
   `meta.json` has `maxUntil`, and the recording stops itself with reason `time-limit`. Nothing is uploaded. Set the
   test override first (`{"minLimitMs":20000}`) or it runs for the full **Max recording length** (30 min).
+- `tests/time-limit-no-capture.spec.js`: without server capture the recorder still has the time limit and no size
+  guard: 30 minutes with no Upload URL, and the server's `maxRecordingMs` from a 403 off answer (stubbed in the service
+  worker's `fetch`). Needs no override. Nothing is uploaded.
 - `tests/size-limit.spec.js`: the start response carries `maxSizeMb`, the recorder's bitrate is 1.5 Mbit/s, and with
   its size limit lowered to 1 byte it stops itself with reason `size-limit`. Needs no override. Nothing is uploaded.
 - `tests/liveness.spec.js`: recording liveness with real headless recordings, checked in the capture's `meta.json`:
@@ -75,8 +78,9 @@ open one of its assignments).
   sets the last save (it keeps the Joget login with Chrome's "Continue where you left off"; without it the restarted
   browser is logged out and the server's lost-browser check closes the capture instead), the time limit with upload,
   a server stop, the 8.2.1 extension (no pings: stopped only 2 minutes past its limit; `git archive 8.2.1`, or
-  `BB_OLD_TAG`), and the all-server log stopping after a crash. Set the test override first
-  (`{"pingMs":5000,"lostMs":20000,"checkMs":5000,"minLimitMs":60000}`); about 9 minutes. Uploads are deleted.
+  `BB_OLD_TAG`), and the all-server log stopping after a crash. The spec writes its own test override
+  (`{"pingMs":5000,"lostMs":20000,"checkMs":5000,"minLimitMs":60000}`, with `docker exec` as your user) and puts back
+  the file that was there after; about 7 minutes. Uploads are deleted.
 - `tests/upload-form.spec.js`: the sample data choice on the upload form, the `sampleData` parameter it sends, and the
   App data the server builds.
 

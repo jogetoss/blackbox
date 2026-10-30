@@ -37,11 +37,13 @@ let lastSavedAt = 0;          // the last crash-safety save
 let videoBytes = 0;           // the video recorded so far
 let serverNote = '';          // shown after the timer, e.g. when the server capture ended
 
-// Hard limit: with serverCapture.maxRecordingMs (the plugin's maxRecordingMinutes) the status shows the time left,
-// warns WARN_BEFORE ms before, and the recording stops and saves itself at the limit (reason time-limit). The server
-// stops the capture 2 minutes past the limit if this never happens.
+// Hard limit: every recording has one, serverCapture.maxRecordingMs (the plugin's maxRecordingMinutes, also sent when
+// server capture is off) or DEFAULT_LIMIT when no server answered (no Upload URL, logged out, server down, a plugin
+// without it). The status shows the time left, warns WARN_BEFORE ms before, and the recording stops and saves itself at
+// the limit (reason time-limit). With server capture the server stops it 2 minutes past the limit if this never happens.
 const WARN_BEFORE = 2 * 60 * 1000;
-let limitAt = 0;              // 0: no limit
+const DEFAULT_LIMIT = 30 * 60 * 1000; // the plugin's default maxRecordingMinutes
+let limitAt = 0;
 let limitHit = false;
 
 // Size guard: with serverCapture.maxSizeMb the recording stops itself (reason size-limit) at 90% of the server's upload
@@ -170,7 +172,7 @@ async function pickAndStart() {
   if (meta.serverCapture?.status === 'on' && meta.serverCapture.pingMs > 0) pingTimer = setInterval(ping, meta.serverCapture.pingMs);
 
   if (meta.serverCapture?.status === 'on' && meta.serverCapture.maxSizeMb > 0) sizeLimitBytes = meta.serverCapture.maxSizeMb * 1024 * 1024;
-  if (meta.serverCapture?.status === 'on' && meta.serverCapture.maxRecordingMs > 0) limitAt = startedAt + meta.serverCapture.maxRecordingMs;
+  limitAt = startedAt + (meta.serverCapture?.maxRecordingMs > 0 ? meta.serverCapture.maxRecordingMs : DEFAULT_LIMIT);
 
   $('stop').hidden = false;
   const tick = () => {

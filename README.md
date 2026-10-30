@@ -65,13 +65,13 @@ This section is the single place for what each setting does, who gets what, and 
 | Who can delete any recording | admins only | Only recordings they can view |
 | Uploaders can view and delete their own recordings | Yes | |
 | Max file size (MB) | 500 | Video and session.json each |
+| Max recording length (minutes) (`maxRecordingMinutes`) | 30 | 5–120. Every recording, with or without server data, stops and saves at this length; see [Server data](#server-data) |
 
 **Server data** (the capture settings need **Capture server data**)
 
 | Setting | Default | Notes | Popup checkbox |
 |---|---|---|---|
 | Capture server data during recordings | No | Logs, Info tab, and the settings below; apps exported at stop | |
-| Max recording length (minutes) | 30 | 5–120. The recorder stops and saves at this length; see below | |
 | Who can view server data | admins only | See [Who sees what](#who-sees-what) | |
 | Uploaders can view the server data of their own recordings | No | See [Who sees what](#who-sees-what) | |
 | Max size of system logs per node per recording (MB) | 20 | Each server node's lines; later lines are dropped and the viewer says so | |
@@ -155,7 +155,8 @@ Shown on this plugin's replay page and included in the ZIP and HTML downloads, o
     Joget logins don't follow unless **Session replication** is on (a Tomcat cluster, Enterprise only), so the load
     balancer needs sticky sessions.
 
-While recording, the extension tells the server every 30 s that the recording is still running. If the server has
+While recording, the extension tells the server every 30 s that the recording is still running (`recording-ping`; the
+server keeps the time of the last one as `lastSeenAt` in the capture's `meta.json`). If the server has
 already ended the capture, the recording stops (reason `server-stopped: …`). If the user is logged out, the recorder
 shows **Server capture ended: logged out** and records on without server data. The pings keep the Joget session alive.
 When no ping arrives for 3 minutes (the browser crashed, was killed or lost the network), the server ends the
@@ -165,11 +166,14 @@ recovers a recording after a crash, it ends the server capture at the recording'
 server data ends where the video ends. The server only takes that time if it fits the capture (after its start, at
 most 3 minutes after the last ping); otherwise it uses the last ping.
 
-Recordings with server data have a hard limit, **Max recording length** (30 minutes by default; at Chrome's default
-bitrate a longer video can pass the 500 MB upload limit). The recorder shows the time left, warns 2 minutes before,
-and at the limit stops and saves the recording as if the user pressed stop (stop reason `time-limit`; the apps are
-exported as usual). If the browser doesn't stop it, the server ends the capture 2 minutes after the limit, at the
-limit, with stop reason `time-limit`, pings or not. This also bounds how long the pings keep the Joget session alive.
+Every recording has a hard limit, **Max recording length** (`maxRecordingMinutes`, 30 minutes by default; at Chrome's
+default bitrate a longer video can pass the 500 MB upload limit). The recorder shows the time left, warns 2 minutes
+before, and at the limit stops and saves the recording as if the user pressed stop (stop reason `time-limit`; with
+server data the apps are exported as usual). Without server data the limit still applies: when **Capture server data**
+is off or the user may not upload, the server's start answer still carries the setting; when no server answers (no
+Upload URL, logged out, server down, an older plugin) the extension uses 30 minutes. With server data, if the browser
+doesn't stop it, the server ends the capture 2 minutes after the limit, at the limit, with stop reason `time-limit`,
+pings or not. This also bounds how long the pings keep the Joget session alive.
 
 The recorder records video at 1.5 Mbit/s (about 340 MB for 30 minutes) and, with server data, adds up the video size as it
 records. At 90% of the plugin's upload limit (**Max file size (MB)**, `maxSizeMb`) it stops and saves the recording as if the

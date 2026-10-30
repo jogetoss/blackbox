@@ -131,7 +131,7 @@ async function startServerCapture(tabId) {
   let slowMs; // the server's "slow" (Glowroot's slow threshold) for the Recordings page's slow count
   let pingMs, lostMs; // the recorder's heartbeat timing (recording-ping); missing from plugins without it: no pings
   let maxSizeMb; // the upload size limit; the recorder stops at 90% of it (size-limit); missing: no size guard
-  let maxRecordingMs; // the hard limit (maxRecordingMinutes); missing from plugins without it: no limit
+  let maxRecordingMs; // the hard limit (maxRecordingMinutes), also in the off answer; missing: the recorder's built-in 30 min
   try {
     // Quick settings can turn off the plugin's all-server logs and Glowroot data for this recording
     const q = await Quick.get();
@@ -141,7 +141,7 @@ async function startServerCapture(tabId) {
     ({ pingMs, lostMs, maxRecordingMs, maxSizeMb } = body?.serverCapture || {});
     if (!res.ok) {
       const message = res.status === 401 ? `Not logged in to ${origin}.` : body?.error?.message || `HTTP ${res.status}`;
-      return { status: 'off', server: origin, message };
+      return { status: 'off', server: origin, message, maxRecordingMs }; // capture off or not allowed: the limit still applies
     }
   } catch (e) {
     // fetch() throws a TypeError ("Failed to fetch") for network errors: wrong host or port, server down, certificate
