@@ -130,13 +130,14 @@ async function startServerCapture(tabId) {
   const id = crypto.randomUUID();
   let slowMs; // the server's "slow" (Glowroot's slow threshold) for the Recordings page's slow count
   let pingMs, lostMs; // the recorder's heartbeat timing (recording-ping); missing from plugins without it: no pings
+  let maxRecordingMs; // the hard limit (maxRecordingMinutes); missing from plugins without it: no limit
   try {
     // Quick settings can turn off the plugin's all-server logs and Glowroot data for this recording
     const q = await Quick.get();
     const res = await postAction(uploadUrl, 'recording-start', id, { allServer: String(q.allServer), glowrootData: String(q.glowrootData) });
     const body = await res.json().catch(() => null);
     slowMs = (body?.serverCapture || body?.systemLog)?.slowThresholdMs; // systemLog: plugin 8.2.1 and older
-    ({ pingMs, lostMs } = body?.serverCapture || {});
+    ({ pingMs, lostMs, maxRecordingMs } = body?.serverCapture || {});
     if (!res.ok) {
       const message = res.status === 401 ? `Not logged in to ${origin}.` : body?.error?.message || `HTTP ${res.status}`;
       return { status: 'off', server: origin, message };
@@ -157,7 +158,7 @@ async function startServerCapture(tabId) {
       condition: { tabIds: [tabId, chrome.tabs.TAB_ID_NONE], urlFilter: '|' + origin + '/', resourceTypes: ALL_RESOURCE_TYPES },
     }],
   });
-  return { status: 'on', id, server: origin, uploadUrl, slowMs, pingMs, lostMs };
+  return { status: 'on', id, server: origin, uploadUrl, slowMs, pingMs, lostMs, maxRecordingMs };
 }
 
 function stopTagging() {

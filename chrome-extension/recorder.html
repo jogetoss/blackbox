@@ -13,7 +13,8 @@
     button { padding: 10px 16px; border: 0; border-radius: 6px; background: var(--danger); color: var(--on-accent); font-size: 13px; cursor: pointer; }
     button:disabled { opacity: .6; cursor: default; }
     #status { font-weight: 600; margin: 10px 0; }
-    #error { color: var(--danger); white-space: pre-wrap; }
+    #error, #limit { color: var(--danger); white-space: pre-wrap; }
+    #limit { font-weight: 600; margin: 0 0 10px; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -23,6 +24,7 @@
     (to show the URL bar) or the screen.</p>
   <p>Keep it open until you stop. If it is closed, the recording up to that point is kept.</p>
   <div id="status">Opening the picker…</div>
+  <div id="limit" hidden></div>
   <button id="stop" hidden>Stop &amp; save</button>
   <div id="error"></div>
   <script src="idb.js"></script>
