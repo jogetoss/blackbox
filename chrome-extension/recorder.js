@@ -28,6 +28,14 @@ let saved = { console: 0, navigations: 0, network: 0 };
 let finishedNetwork = [];     // network entries in the order they finished (only finished ones are saved)
 let saving = Promise.resolve();
 
+// Heartbeat: every serverCapture.pingMs the server hears that this recording is alive (recording-ping), so it can
+// close a capture whose browser is gone. Runs here, not in the service worker, which Chrome suspends.
+let pingTimer = null;
+let pinging = false;
+let lastSavedAt = 0;          // the last crash-safety save
+let videoBytes = 0;           // the video recorded so far
+let serverNote = '';          // shown after the timer, e.g. when the server capture ended
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.target !== 'recorder') return;
   if (msg.type === 'cdp') { if (meta) onCdp(msg); return; }
@@ -105,7 +113,8 @@ async function pickAndStart() {
   chunks = []; consoleEntries = []; navigations = []; network = []; inFlight.clear();
   recorder = new MediaRecorder(stream, { mimeType });
   finishedNetwork = []; savedChunks = 0; saveSeq = 0; saved = { console: 0, navigations: 0, network: 0 };
-  recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+  videoBytes = 0; serverNote = '';
+  recorder.ondataavailable = (e) => { if (e.data.size > 0) { chunks.push(e.data); videoBytes += e.data.size; } };
   const startedAt = Date.now();
   recorder.start(1000); // one chunk per second
 
@@ -131,13 +140,15 @@ async function pickAndStart() {
   meta.options = Quick.options(await Quick.get()); // the popup's app export choices, used at stop and at upload
   meta.userAgent = navigator.userAgent;
   recId = recordingId(startedAt);
-  await idbPartialPut(recId + ':meta', { ...meta, lastSavedAt: startedAt });
+  lastSavedAt = startedAt;
+  await idbPartialPut(recId + ':meta', { ...meta, lastSavedAt });
   saveTimer = setInterval(() => { saving = saving.then(savePart).catch((e) => console.warn('Could not save progress:', e)); }, SAVE_EVERY);
+  if (meta.serverCapture?.status === 'on' && meta.serverCapture.pingMs > 0) pingTimer = setInterval(ping, meta.serverCapture.pingMs);
 
   $('stop').hidden = false;
   const tick = () => {
     const s = Math.floor((Date.now() - startedAt) / 1000);
-    $('status').textContent = `Recording… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} (logs from: ${res.title || res.url}; sound: ${soundLabel(meta.audio)})`;
+    $('status').textContent = `Recording… ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} (logs from: ${res.title || res.url}; sound: ${soundLabel(meta.audio)})${serverNote ? ' ' + serverNote : ''}`;
   };
   tick();
   timer = setInterval(tick, 1000);
@@ -161,7 +172,34 @@ async function savePart() {
   if (logs.console.length || logs.navigations.length || logs.network.length) await idbPartialPut(`${recId}:l:${n}`, logs);
   savedChunks += newChunks.length;
   saved = { console: saved.console + logs.console.length, navigations: saved.navigations + logs.navigations.length, network: saved.network + logs.network.length };
-  await idbPartialPut(recId + ':meta', { ...meta, lastSavedAt: Date.now() });
+  lastSavedAt = Date.now();
+  await idbPartialPut(recId + ':meta', { ...meta, lastSavedAt });
+}
+
+// One heartbeat. "stopped" (the server closed the capture): stop the recording. 401: the capture ends, the recording
+// goes on without server data. Other errors: try again on the next tick.
+async function ping() {
+  const log = meta?.serverCapture;
+  if (pinging || !log?.id) return;
+  pinging = true;
+  try {
+    const res = await fetch(log.uploadUrl + '?' + new URLSearchParams({ action: 'recording-ping', id: log.id, lastSavedAt, videoBytes }),
+      { method: 'POST', credentials: 'include' });
+    if (res.status === 401) {
+      clearInterval(pingTimer);
+      serverNote = 'Server capture ended: logged out';
+      return;
+    }
+    const out = res.ok ? await res.json().catch(() => null) : null;
+    if (out?.state === 'stopped' && meta) {
+      clearInterval(pingTimer);
+      chrome.runtime.sendMessage({ target: 'background', type: 'stop', reason: 'server-stopped: ' + (out.reason || 'stopped') });
+    }
+  } catch (e) {
+    console.warn('Could not reach the server (heartbeat):', e); // offline or server down: the next tick tries again
+  } finally {
+    pinging = false;
+  }
 }
 
 // Mixes the page sound and the microphone into one track (MediaRecorder records only the first sound track).
@@ -199,6 +237,7 @@ async function stopAndSave(reason) {
   if (!meta) return null;
   clearInterval(timer);
   clearInterval(saveTimer);
+  clearInterval(pingTimer);
   await saving; // let a save in progress finish before the parts are cleared
   $('status').textContent = 'Saving…';
   const stoppedAt = Date.now();
