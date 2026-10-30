@@ -172,6 +172,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 startServerCapture(request, response, access, id);
             } else if ("recording-stop".equals(action) && post) {
                 stopServerCapture(request, response, access, id);
+            } else if ("recording-ping".equals(action) && post) {
+                pingServerCapture(request, response, access, id);
             } else if ("app-export".equals(action) && !post) {
                 // The recorder polls this while the app export at stop runs on (recording-stop answered "exporting")
                 JSONObject pending = ServerCaptureStore.isValidId(id) ? captureMeta(id) : null;
@@ -597,8 +599,39 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         JSONObject started = new JSONObject().put("id", id).put("maxMb", maxBytes / (1024 * 1024))
                 .put("traces", traces).put("gauges", gauges).put("glowrootData", glowrootData).put("allServer", allServer)
                 .put("slowThresholdMs", slowMs());
+        withLiveness(started);
         // RecordingStore.LEGACY_CAPTURE: the extension of plugin 8.2.1 and older reads the slow threshold from there
         json(response, new JSONObject().put(RecordingStore.CAPTURE, started).put(RecordingStore.LEGACY_CAPTURE, started));
+    }
+
+    /** The recorder's heartbeat timing for the start response, so the extension needs no constants of its own. */
+    static JSONObject withLiveness(JSONObject started) throws JSONException {
+        return started.put("pingMs", LivenessKnobs.pingMs()).put("lostMs", LivenessKnobs.lostMs());
+    }
+
+    /**
+     * The recorder's heartbeat, every pingMs while it records: marks the capture seen (lastSeenAt) and answers its state,
+     * {state: on | stopped, reason}. lastSavedAt and videoBytes are the recorder's last crash-safety save and video size.
+     */
+    private void pingServerCapture(HttpServletRequest request, HttpServletResponse response, Access access, String id)
+            throws IOException, JSONException {
+        JSONObject state = ServerCaptureStore.isValidId(id)
+                ? ServerCapture.store().ping(id, access.user.getUsername(), longParam(request, "lastSavedAt"), longParam(request, "videoBytes"))
+                : null;
+        if (state == null) {
+            error(response, HttpServletResponse.SC_NOT_FOUND, "Server capture not found.");
+            return;
+        }
+        json(response, state);
+    }
+
+    /** A whole number parameter, or -1 when missing or invalid. */
+    private static long longParam(HttpServletRequest request, String name) {
+        try {
+            return Math.max(-1, Long.parseLong(request.getParameter(name)));
+        } catch (NumberFormatException e) {
+            return -1;
+        }
     }
 
     /** "Slow" for the recordings lists: Glowroot's slow threshold (ServerData.slowMs), or 2 s without Glowroot. */

@@ -106,6 +106,32 @@ public class ServerCaptureStore {
         }));
     }
 
+    /**
+     * The recorder's heartbeat: writes lastSeenAt (and lastSavedAt, videoBytes when not negative) into an open capture.
+     * Returns {state: "on"}, or {state: "stopped", reason} when the capture is stopped or attached (not marked seen);
+     * null when it is missing or belongs to another user.
+     */
+    public JSONObject ping(String id, String owner, long lastSavedAt, long videoBytes) throws IOException {
+        return lockedIfExists(id, () -> {
+            JSONObject meta = readMeta(id);
+            if (meta == null || !owner.equals(meta.optString("owner"))) {
+                return null;
+            }
+            if (meta.has("stoppedAt") || meta.has("recording")) {
+                return new JSONObject().put("state", "stopped").put("reason", meta.optString("stopReason", "stopped"));
+            }
+            meta.put("lastSeenAt", System.currentTimeMillis());
+            if (lastSavedAt >= 0) {
+                meta.put("lastSavedAt", lastSavedAt);
+            }
+            if (videoBytes >= 0) {
+                meta.put("videoBytes", videoBytes);
+            }
+            writeMeta(id, meta);
+            return new JSONObject().put("state", "on");
+        });
+    }
+
     public JSONObject readMeta(String id) {
         if (!isValidId(id)) {
             return null;
