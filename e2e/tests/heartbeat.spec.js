@@ -41,9 +41,13 @@ test('the recorder pings the server, and stops when the server has stopped the c
   expect(seen).toHaveProperty('videoBytes');
 
   // The server stops the capture (a plain stop here; BB2 and BB5 will do it on their own): the next ping stops the recording
+  const recorder = context.pages().find((p) => p.url().includes('recorder.html'));
   const stop = await api(joget, 'recording-stop', { id: capture.id }, 'POST');
   expect(stop.stopped).toBe(capture.id);
-  await expect.poll(() => worker.evaluate(() => getState()), { timeout: capture.pingMs * 2 + 10_000 }).toBeNull();
+  // The recorder closes once it has kept the recording. Not getState(): it is cleared before the recorder saves, and
+  // the Recordings page would then recover the half-saved recording as interrupted.
+  await recorder.waitForEvent('close', { timeout: capture.pingMs * 2 + 20_000 });
+  expect(await worker.evaluate(() => getState())).toBeNull();
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/recordings.html`);
   let rec;
