@@ -160,7 +160,7 @@ already ended the capture, the recording stops (reason `server-stopped: …`). I
 shows **Server capture ended: logged out** and records on without server data. The pings keep the Joget session alive.
 When no ping arrives for 3 minutes (the browser crashed, was killed or lost the network), the server ends the
 capture itself, at the time of the last ping: its log lines, server load and Glowroot data stop there, with stop reason
-`browser-lost`. A capture that never got a ping (an older extension) is not ended this way. When the extension
+`browser-lost`. A capture that never got a ping (an older extension) is never ended this way; only the hard limit's server backup (below) ends it. When the extension
 recovers a recording after a crash, it ends the server capture at the recording's last save (every 5 s), so the
 server data ends where the video ends. The server only takes that time if it fits the capture (after its start, at
 most 3 minutes after the last ping); otherwise it uses the last ping.

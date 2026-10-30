@@ -232,7 +232,8 @@ counted from the recorder's own start time; a hidden window's timer may run late
 that is past `maxUntil + 2 min` (`LIMIT_GRACE_MS`): `stoppedAt = maxUntil`, `stopReason = "time-limit"`, one info line
 in the log, pings or not. The lost-browser check runs first, so a capture that also stopped pinging keeps
 `browser-lost` at its last ping. Captures without `maxUntil` (started by an older plugin) and extensions without
-`maxRecordingMs` in the answer have no limit.
+`maxRecordingMs` in the answer have no limit. A capture that never got a ping (no `lastSeenAt`, an extension without
+the heartbeat) is never stopped as `browser-lost`; only this backup ends it (`NoHeartbeatTest`).
 
 **Size guard:** `recording-start` also answers `maxSizeMb` (`maxSizeMb()`, the upload limit; `withLiveness(started,
 maxRecordingMs, maxSizeMb)`). The recorder creates its `MediaRecorder` with `videoBitsPerSecond: 1_500_000` (about 340 MB
