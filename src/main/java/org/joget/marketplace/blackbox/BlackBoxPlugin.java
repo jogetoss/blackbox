@@ -48,6 +48,10 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     private static final long DEFAULT_MAX_MB = 500;
     private static final long DEFAULT_SYSTEM_LOG_MB = 20;
     private static final long DEFAULT_KEEP_DAYS = 7;
+    // maxRecordingMinutes: the hard limit; at most GaugeSampler's 2 h
+    static final long DEFAULT_MAX_RECORDING_MIN = 30;
+    static final long MIN_RECORDING_MIN = 5;
+    static final long MAX_RECORDING_MIN = 120;
     private static final Pattern RANGE = Pattern.compile("^bytes=(\\d*)-(\\d*)$");
     private static final long RETRY_COOLDOWN_MS = 20 * 1000L;
     private static final Map<String, Long> RETRIED_AT = new java.util.concurrent.ConcurrentHashMap<>();
@@ -589,8 +593,9 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         // Other users' log lines: only for recorders who may see every recording's server data
         boolean allServer = "true".equals(getPropertyString("captureAllServerLogs")) && access.canViewServerData()
                 && !"false".equals(request.getParameter("allServer"));
+        long maxRecordingMs = maxRecordingMs(getPropertyString("maxRecordingMinutes"));
         if (!ServerCapture.store().start(id, access.user.getUsername(), maxBytes, keepMs, traces, getPropertyString("glowrootUrl"), gauges,
-                glowrootData, allServer)) {
+                glowrootData, allServer, maxRecordingMs)) {
             error(response, HttpServletResponse.SC_CONFLICT, "This server capture id is already in use.");
             return;
         }
@@ -599,7 +604,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         JSONObject started = new JSONObject().put("id", id).put("maxMb", maxBytes / (1024 * 1024))
                 .put("traces", traces).put("gauges", gauges).put("glowrootData", glowrootData).put("allServer", allServer)
                 .put("slowThresholdMs", slowMs());
-        withLiveness(started);
+        withLiveness(started, maxRecordingMs);
         // RecordingStore.LEGACY_CAPTURE: the extension of plugin 8.2.1 and older reads the slow threshold from there
         json(response, new JSONObject().put(RecordingStore.CAPTURE, started).put(RecordingStore.LEGACY_CAPTURE, started));
     }
@@ -607,6 +612,26 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     /** The recorder's heartbeat timing for the start response, so the extension needs no constants of its own. */
     static JSONObject withLiveness(JSONObject started) throws JSONException {
         return started.put("pingMs", LivenessKnobs.pingMs()).put("lostMs", LivenessKnobs.lostMs());
+    }
+
+    /** The same, with the hard limit: the recorder stops itself after maxRecordingMs. */
+    static JSONObject withLiveness(JSONObject started, long maxRecordingMs) throws JSONException {
+        return withLiveness(started).put("maxRecordingMs", maxRecordingMs);
+    }
+
+    /**
+     * The maxRecordingMinutes setting in ms: 5 to 120 (outside: the nearest), 30 when empty or not a number. The test
+     * override's minLimitMs may lower it.
+     */
+    static long maxRecordingMs(String setting) {
+        long min = DEFAULT_MAX_RECORDING_MIN;
+        try {
+            min = Long.parseLong(setting == null ? "" : setting.trim());
+        } catch (NumberFormatException e) {
+            // the default
+        }
+        min = Math.max(MIN_RECORDING_MIN, Math.min(MAX_RECORDING_MIN, min));
+        return Math.min(min * 60_000L, LivenessKnobs.minLimitMs());
     }
 
     /**

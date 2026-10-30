@@ -64,6 +64,15 @@
             ]
         },
         {
+            "name" : "maxRecordingMinutes",
+            "label" : "Max recording length (minutes)",
+            "description" : "5 to 120. With server data captured, the recorder shows the time left, warns 2 minutes before, and stops and saves the recording at this length. If the browser doesn't stop it, the server stops the capture 2 minutes later.",
+            "type" : "textfield",
+            "value" : "30",
+            "regex_validation" : "^([5-9]|[1-9][0-9]|1[01][0-9]|120)$",
+            "validation_message" : "Enter a whole number of minutes from 5 to 120."
+        },
+        {
             "name" : "serverDataPermission",
             "label" : "Who can view server data",
             "description" : "Empty = admins only. They must also be able to view the recording. Server data: system logs, traces, server load, Glowroot data, Info (license key, system properties) and the exported apps. Also decides who may capture all server log lines and import a ZIP's server data.",

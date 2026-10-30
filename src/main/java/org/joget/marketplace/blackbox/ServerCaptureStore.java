@@ -29,6 +29,8 @@ public class ServerCaptureStore {
     private static final String META = "meta.json";
     private static final Pattern ID = Pattern.compile("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
     static final long FORWARD_MS = 24L * 3600 * 1000; // > TraceCollector.GIVE_UP_MS
+    /** How long past maxUntil the server waits for the recorder's own time-limit stop before it stops the capture. */
+    static final long LIMIT_GRACE_MS = 2 * 60_000L;
     private static final Pattern NODE_FILE = Pattern.compile("^system-log\\.[A-Za-z0-9.-]+\\.jsonl$");
     private static final String META_LOCK = ".meta.lock";
     private static final ConcurrentHashMap<String, Object> META_LOCKS = new ConcurrentHashMap<>();
@@ -68,6 +70,12 @@ public class ServerCaptureStore {
     /** allServer: also keep the log lines of every other thread on the nodes the recording reaches. */
     public boolean start(String id, String owner, long maxBytes, long keepMs, boolean traces, String glowrootUrl, boolean gauges,
             boolean glowrootData, boolean allServer) throws IOException {
+        return start(id, owner, maxBytes, keepMs, traces, glowrootUrl, gauges, glowrootData, allServer, 0);
+    }
+
+    /** maxRecordingMs: the hard limit; the meta gets maxUntil = startedAt + maxRecordingMs (0: no limit). */
+    public boolean start(String id, String owner, long maxBytes, long keepMs, boolean traces, String glowrootUrl, boolean gauges,
+            boolean glowrootData, boolean allServer, long maxRecordingMs) throws IOException {
         if (!isValidId(id)) {
             return false;
         }
@@ -78,7 +86,7 @@ public class ServerCaptureStore {
                 return owner.equals(meta.optString("owner"));
             }
             long now = System.currentTimeMillis();
-            writeMeta(id, new JSONObject()
+            JSONObject fresh = new JSONObject()
                     .put("id", id)
                     .put("owner", owner)
                     .put("startedAt", now)
@@ -88,7 +96,11 @@ public class ServerCaptureStore {
                     .put("glowrootUrl", glowrootUrl == null ? "" : glowrootUrl)
                     .put("gauges", gauges)
                     .put("glowrootData", glowrootData)
-                    .put("allServer", allServer));
+                    .put("allServer", allServer);
+            if (maxRecordingMs > 0) {
+                fresh.put("maxUntil", now + maxRecordingMs);
+            }
+            writeMeta(id, fresh);
             return true;
         });
     }
@@ -173,6 +185,27 @@ public class ServerCaptureStore {
                 return false;
             }
             meta.put("stoppedAt", seen).put("stopReason", "browser-lost");
+            writeMeta(id, meta);
+            return true;
+        }));
+    }
+
+    /**
+     * The hard limit's server backup: an open capture past maxUntil + LIMIT_GRACE_MS gets stoppedAt = maxUntil and
+     * stopReason "time-limit", pings or not. Returns true when this call stopped it; false when it is missing, has no
+     * maxUntil, is already stopped, or is not past the limit.
+     */
+    public boolean stopIfOverLimit(String id, long now) throws IOException {
+        return Boolean.TRUE.equals(lockedIfExists(id, () -> {
+            JSONObject meta = readMeta(id);
+            if (meta == null || meta.has("stoppedAt") || meta.has("recording") || !meta.has("maxUntil")) {
+                return false;
+            }
+            long maxUntil = meta.optLong("maxUntil");
+            if (now - maxUntil <= LIMIT_GRACE_MS) {
+                return false;
+            }
+            meta.put("stoppedAt", maxUntil).put("stopReason", "time-limit");
             writeMeta(id, meta);
             return true;
         }));
