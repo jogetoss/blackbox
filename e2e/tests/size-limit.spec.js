@@ -1,5 +1,6 @@
 // The size guard: the recorder records at 1.5 Mbit/s and stops itself (reason size-limit) at 90% of the server's
-// maxSizeMb. A headless recording is tiny, so the spec lowers the recorder's limit to 1 byte after the start.
+// maxSizeMb. A headless recording of a blank screen delivers 0-byte chunks, so the spec lowers the recorder's limit to
+// 1 byte and feeds the real ondataavailable handler one small fake chunk (like MediaRecorder would).
 const { test, expect, JOGET, loginJoget } = require('./fixtures');
 
 test('the recorder records at a fixed bitrate and stops itself at the size limit', async ({ context, extensionId }) => {
@@ -24,8 +25,12 @@ test('the recorder records at a fixed bitrate and stops itself at the size limit
   expect(await recorder.evaluate((mb) => [sizeLimitReached(mb * 1024 * 1024 * 0.89, mb * 1024 * 1024),
     sizeLimitReached(mb * 1024 * 1024 * 0.9, mb * 1024 * 1024), sizeLimitReached(1e12, 0)], capture.maxSizeMb)).toEqual([false, true, false]);
 
-  // Next chunk (1 per second) is over the limit: the normal stop runs and the recording is kept
-  await recorder.evaluate(() => { sizeLimitBytes = 1; });
+  // A 0-byte chunk (what headless delivers) never trips the guard
+  await recorder.evaluate(() => { sizeLimitBytes = 1; recorder.ondataavailable({ data: new Blob([]) }); });
+  expect(await recorder.evaluate(() => sizeHit)).toBe(false);
+  // A chunk over the limit: the normal stop runs and the recording is kept
+  await recorder.evaluate(() => recorder.ondataavailable({ data: new Blob([new Uint8Array(1024)]) }));
+  expect(await recorder.evaluate(() => sizeHit)).toBe(true);
   await recorder.waitForEvent('close', { timeout: 40_000 });
   expect(await worker.evaluate(() => getState())).toBeNull();
   const page = await context.newPage();
