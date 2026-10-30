@@ -77,6 +77,13 @@ public class HardLimitTest {
     }
 
     @Test
+    public void startResponseCarriesTheSizeLimit() throws Exception {
+        JSONObject started = BlackBoxPlugin.withLiveness(new JSONObject(), 30 * MIN, 500);
+        assertEquals(500L, started.getLong("maxSizeMb"));
+        assertEquals(30 * MIN, started.getLong("maxRecordingMs"));
+    }
+
+    @Test
     public void startStoresMaxUntil() throws Exception {
         long before = System.currentTimeMillis();
         start(30 * MIN);

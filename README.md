@@ -171,6 +171,11 @@ and at the limit stops and saves the recording as if the user pressed stop (stop
 exported as usual). If the browser doesn't stop it, the server ends the capture 2 minutes after the limit, at the
 limit, with stop reason `time-limit`, pings or not. This also bounds how long the pings keep the Joget session alive.
 
+The recorder records video at 1.5 Mbit/s (about 340 MB for 30 minutes) and, with server data, adds up the video size as it
+records. At 90% of the plugin's upload limit (**Max file size (MB)**, `maxSizeMb`) it stops and saves the recording as if the
+user pressed stop (stop reason `size-limit`), so the upload does not fail afterwards. Without server data there is no size
+guard, only the video bitrate.
+
 **Sensitive data:** traces and Glowroot data hold SQL with parameter values and request details; Info holds JVM
 arguments and system properties, which can include secrets passed as `-D` options; app definitions can hold plugin
 settings and environment variables.
