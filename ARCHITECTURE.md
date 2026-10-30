@@ -188,6 +188,19 @@ out) stops the pings and shows "Server capture ended: logged out"; the recording
 are retried on the next tick. Chrome may run a hidden page's timers only about once a minute after 5 minutes, which
 is why `lostMs` is 3 minutes. Pings keep the Joget session alive. Plugins without `pingMs` in their answer get no pings.
 
+### Lost browser
+
+Every `checkMs` (30 s, read again before each run so the test override applies) each node runs
+`ServerCapture.checkLost` on the server capture timer. It reads the meta from disk, not memory, since a ping can land
+on any node, for every pending capture: those open on this node and every folder in `pending/` (so a capture no node
+has open, after an idle close or a restart, still stops). `ServerCaptureStore.stopIfLost` then, under the capture's
+lock, stops a capture with no `stoppedAt` whose `lastSeenAt` is older than `lostMs`: `stoppedAt = lastSeenAt`,
+`stopReason = "browser-lost"`, one info line in the log. The lock and the `stoppedAt` check make it happen once, on
+one node. A capture with no `lastSeenAt` (never pinged: an older extension) is never stopped this way. Each node then
+closes its own copy of every stopped capture, so it stops writing there too after a normal stop sent to another node.
+Gauges (`GaugeSampler`) and the Glowroot package (`GlowrootPackager`) read `stoppedAt` from the meta and follow it as
+for a normal stop. A later ping answers `{state: "stopped", reason: "browser-lost"}`.
+
 **All server** (`captureAllServerLogs`, stored as `allServer` in the capture's meta, only for recorders allowed by
 **Who can view server data**, `canViewServerData()` without the uploader rule): while such a capture is open on a node, the appender also writes every other thread's events
 to it with `"other": true` (no `req`), including tagged requests of other recordings. Nodes write it once the capture
