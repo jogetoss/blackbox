@@ -69,6 +69,14 @@ open one of its assignments).
   test override first (`{"minLimitMs":20000}`) or it runs for the full **Max recording length** (30 min).
 - `tests/size-limit.spec.js`: the start response carries `maxSizeMb`, the recorder's bitrate is 1.5 Mbit/s, and with
   its size limit lowered to 1 byte it stops itself with reason `size-limit`. Needs no override. Nothing is uploaded.
+- `tests/liveness.spec.js`: recording liveness with real headless recordings, checked in the capture's `meta.json`:
+  a normal stop (the app export runs), a crash (`pkill -9` on the test's own Chromium) stopped by the server as
+  `browser-lost` at the last ping and kept through recovery and upload, a restart before `lostMs` whose recovery stop
+  sets the last save (it keeps the Joget login with Chrome's "Continue where you left off"; without it the restarted
+  browser is logged out and the server's lost-browser check closes the capture instead), the time limit with upload,
+  a server stop, the 8.2.1 extension (no pings: stopped only 2 minutes past its limit; `git archive 8.2.1`, or
+  `BB_OLD_TAG`), and the all-server log stopping after a crash. Set the test override first
+  (`{"pingMs":5000,"lostMs":20000,"checkMs":5000,"minLimitMs":60000}`); about 9 minutes. Uploads are deleted.
 - `tests/upload-form.spec.js`: the sample data choice on the upload form, the `sampleData` parameter it sends, and the
   App data the server builds.
 
