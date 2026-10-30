@@ -154,6 +154,10 @@ Shown on this plugin's replay page and included in the ZIP and HTML downloads, o
     Joget logins don't follow unless **Session replication** is on (a Tomcat cluster, Enterprise only), so the load
     balancer needs sticky sessions.
 
+While recording, the extension tells the server every 30 s that the recording is still running. If the server has
+already ended the capture, the recording stops (reason `server-stopped: …`). If the user is logged out, the recorder
+shows **Server capture ended: logged out** and records on without server data. The pings keep the Joget session alive.
+
 **Sensitive data:** traces and Glowroot data hold SQL with parameter values and request details; Info holds JVM
 arguments and system properties, which can include secrets passed as `-D` options; app definitions can hold plugin
 settings and environment variables.

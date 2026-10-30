@@ -46,7 +46,9 @@ Popup → **Settings** (this browser only; server options are in the plugin READ
 
 - **Server data:** with the plugin's **Capture server data** on, the server keeps its log lines (and the other server data) for the tab. The popup
   warns when there is no Upload URL or the tab is on another server. While recording, an orange **REC** badge means
-  the server isn't capturing (the tooltip says why).
+  the server isn't capturing (the tooltip says why). The recorder pings the server while recording (every 30 s by
+  default): when the server has ended the capture, the recording stops and saves; when you are logged out, the
+  recorder shows **Server capture ended: logged out** and goes on recording without server data.
 - **Crash safety:** saved to browser storage every 5 s. After a crash, the recording is listed as **Recovered**.
 
 ## Incognito

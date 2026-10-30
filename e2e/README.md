@@ -54,6 +54,10 @@ open one of its assignments).
   the console and network logs, the server capture, stop, and the upload as `BB_INCOGNITO_USER` with its video. It
   records the screen, so it runs only with `BB_HEADED=1` (windows open on your desktop for about 15 s; page sound off,
   as tab sound needs a click on the icon). "Record this tab" can't be tested: `chrome.tabCapture` needs that click.
+- `tests/heartbeat.spec.js`: a headless screen recording (blank video) pings the server (`lastSeenAt`, `lastSavedAt`,
+  `videoBytes` in the capture's `meta.json`, read with `docker exec`), stops with `server-stopped: stopped` after the
+  server stopped the capture, and goes on after a 401 with "Server capture ended: logged out". Nothing is uploaded.
+  Set the test override first (`{"pingMs":2000}`, see the plugin README's Storage) or each test waits about a minute.
 - `tests/upload-form.spec.js`: the sample data choice on the upload form, the `sampleData` parameter it sends, and the
   App data the server builds.
 
