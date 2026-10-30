@@ -69,7 +69,26 @@ async function recoverPartials() {
     const video = videoParts.length ? new Blob(videoParts, { type: 'video/webm' }) : null;
     await idbAddRecording({ id, savedAt: new Date().toISOString(), video, report, uploaded: null, recovered: true });
     await idbPartialClear(id);
+    await stopRecoveredCapture(meta);
     recovered.push(id);
   }
   return recovered;
+}
+
+// Tells the server that a recovered recording's capture is over, at its last save (the server checks that time
+// against the capture's last ping). Not retried: offline or logged out, the server's lost-browser check closes it.
+async function stopRecoveredCapture(meta) {
+  const capture = meta?.serverCapture || meta?.systemLog; // systemLog: a crashed recording of the extension of plugin 8.2.1 and older
+  if (capture?.status !== 'on' || !capture.id || !capture.uploadUrl) return;
+  const params = { action: 'recording-stop', id: capture.id };
+  if (meta.lastSavedAt > 0) params.stoppedAt = meta.lastSavedAt; // older meta without it: a plain stop (now)
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), 10_000);
+  try {
+    await fetch(capture.uploadUrl + '?' + new URLSearchParams(params), { method: 'POST', credentials: 'include', signal: abort.signal });
+  } catch (e) {
+    console.warn('Could not stop the server capture of a recovered recording:', e);
+  } finally {
+    clearTimeout(timer);
+  }
 }
