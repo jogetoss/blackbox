@@ -29,13 +29,14 @@ test('recovering a crashed recording stops its server capture at the last save, 
   for (const id of Object.values(ids)) {
     const start = await post(joget, 'recording-start', id);
     expect(start.status, JSON.stringify(start.body)).toBe(200);
-    expect((await post(joget, 'recording-ping', id)).body.state).toBe('on');
   }
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/recordings.html`);
+  // The last pings, just before the crash (with a short test lostMs the lost-browser check must not get there first)
+  for (const id of Object.values(ids)) expect((await post(joget, 'recording-ping', id)).body.state).toBe('on');
   const seen = { inBounds: captureMeta(ids.inBounds).lastSeenAt, late: captureMeta(ids.late).lastSeenAt };
 
   // Partial recordings as a crashed recorder leaves them: meta with the capture and the last save, no video
-  const page = await context.newPage();
-  await page.goto(`chrome-extension://${extensionId}/recordings.html`);
   const lastSaved = { inBounds: seen.inBounds + 1000, late: Date.now() + 24 * 3600 * 1000 }; // late: past lastSeenAt + lostMs
   await page.evaluate(async ({ ids, lastSaved, uploadUrl, server }) => {
     let startedAt = Date.now() - 60_000;
