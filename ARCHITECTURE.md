@@ -111,6 +111,14 @@ Captures waiting for an upload are in `<wflow>/blackbox/pending/<id>/`, trace re
 `<wflow>/blackbox/retry/`. No database tables. Folders on a shared `wflow` directory work for clustered nodes;
 deleting a recording removes its folder.
 
+### Test timing override
+
+`<wflow>/blackbox/liveness-test.json` (optional, for tests; not a plugin setting, admins don't see it) may set
+`pingMs`, `lostMs`, `checkMs` and `minLimitMs` in ms. `LivenessKnobs` reads it on every call (no cache, no restart), and
+a missing or invalid file, or a value below 1000, gives the default. While it sets a value, a warning is logged (at most
+once a minute). It is no recording folder (`RecordingStore.list` and `readMeta` need a valid id) and the capture sweep
+only looks inside `pending/`, so both skip it. On j8213 the host path is `~/Joget/docker/wflow8/blackbox/liveness-test.json`.
+
 - `meta.json` changes go through `RecordingStore.modifyMeta`: the latest copy is changed and saved under a per-recording
   lock (in the JVM, plus a file lock on `.meta.lock` for nodes sharing the folder, where the file system supports it).
   `updateMeta` replaces only the keys it is given. So the trace and Glowroot refreshes, the video upload and the
