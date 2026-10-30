@@ -297,6 +297,8 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
   where the capture is open builds `glowroot/<node>.zip`: the node that took `recording-start` and every node that
   served a recorded request. It goes in the pending folder, or in the recording once uploaded. `glowroot/<node>.json`
   holds the state (waiting, building, saved, failed) and the reason. A capture never stopped fails after 3 hours.
+  A `failed` status stays: if the capture reopens on the node later (a tagged request after the idle close),
+  `watch` leaves it `failed` and starts no build.
 - **Restart:** an in-memory list (`GlowrootPackager.WATCHED`) tracks what to build, so on start `recover` checks this
   node's status files left `waiting` or `building`: while the capture's pending `meta.json` exists, it is watched again
   and built as usual (blocks Glowroot overwrote meanwhile count as lost); in a recording whose capture is gone, it is

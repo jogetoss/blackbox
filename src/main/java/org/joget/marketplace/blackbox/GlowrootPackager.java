@@ -17,6 +17,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import org.joget.commons.util.LogUtil;
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -143,10 +144,31 @@ final class GlowrootPackager {
 
     /** A capture is open on this node: build its package after it stops. */
     static void watch(ServerCapture.Capture capture) {
-        if (jobs == null || !capture.glowrootData || WATCHED.putIfAbsent(capture.id, System.currentTimeMillis()) != null) {
+        if (jobs == null || !capture.glowrootData || failedOnThisNode(capture.id)
+                || WATCHED.putIfAbsent(capture.id, System.currentTimeMillis()) != null) {
             return;
         }
         status(capture.id, "waiting", "Built about a minute after the recording stops", null);
+    }
+
+    /** The package already failed here (e.g. never stopped within 3 h): a reopened capture must not reset it or build. */
+    private static boolean failedOnThisNode(String id) {
+        Path dir = TraceCollector.captureDir(id);
+        if (dir == null) {
+            return false;
+        }
+        try {
+            JSONArray all = GlowrootData.statuses(dir);
+            for (int i = 0; i < all.length(); i++) {
+                JSONObject s = all.optJSONObject(i);
+                if (s != null && NODE.equals(s.optString("node")) && "failed".equals(s.optString("state"))) {
+                    return true;
+                }
+            }
+        } catch (IOException e) {
+            // unreadable: treat as not failed, watch as before
+        }
+        return false;
     }
 
     /** When the package can be built: after Glowroot wrote the aggregates of the minute the recording stopped in. */
