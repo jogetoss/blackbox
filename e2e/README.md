@@ -78,7 +78,7 @@ open one of its assignments).
   sets the last save (it keeps the Joget login with Chrome's "Continue where you left off"; without it the restarted
   browser is logged out and the server's lost-browser check closes the capture instead), the time limit with upload,
   a server stop, the 8.2.1 extension (no pings: stopped only 2 minutes past its limit; `git archive 8.2.1`, or
-  `BB_OLD_TAG`), and the all-server log stopping after a crash. The spec writes its own test override
+  `BB_OLD_TAG`), and the all-server log stopping after a crash (skipped when all-server logs are off, as for a user who may not view server data, like `cat`). The spec writes its own test override
   (`{"pingMs":5000,"lostMs":20000,"checkMs":5000,"minLimitMs":60000}`, with `docker exec` as your user) and puts back
   the file that was there after; about 7 minutes. Uploads are deleted.
 - `tests/upload-form.spec.js`: the sample data choice on the upload form, the `sampleData` parameter it sends, and the

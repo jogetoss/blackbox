@@ -229,4 +229,6 @@ recording removes its folder.
 
 For tests only: an optional `<wflow>/blackbox/liveness-test.json` (`pingMs`, `lostMs`, `checkMs`, `minLimitMs`, each at
 least 1000 ms) shortens the liveness timings without a restart. It is not a setting and isn't shown in the plugin
-configuration. Delete it afterwards; while it is in use the log shows a warning. See ARCHITECTURE.md, Storage.
+configuration. Delete it afterwards; while it is in use the log shows a warning. See ARCHITECTURE.md, Storage. With
+virtual hosts each profile has its own (`<wflow>/app_profiles/<profile>/blackbox/liveness-test.json`), and the server
+checks every profile's captures.

@@ -120,6 +120,8 @@ a missing or invalid file, or a value below 1000, gives the default. `minLimitMs
 "Hard limit"), never raises it. While it sets a value, a warning is logged (at most
 once a minute). It is no recording folder (`RecordingStore.list` and `readMeta` need a valid id) and the capture sweep
 only looks inside `pending/`, so both skip it. On j8213 the host path is `~/Joget/docker/wflow8/blackbox/liveness-test.json`.
+With virtual hosts each profile has its own file (`<wflow>/app_profiles/<profile>/blackbox/`): the lost-browser check
+uses each profile's `lostMs` for that profile's captures, and runs every `checkMs` of the shortest one any profile sets.
 
 - `meta.json` changes go through `RecordingStore.modifyMeta`: the latest copy is changed and saved under a per-recording
   lock (in the JVM, plus a file lock on `.meta.lock` for nodes sharing the folder, where the file system supports it).
@@ -194,7 +196,11 @@ is why `lostMs` is 3 minutes. Pings keep the Joget session alive. Plugins withou
 Every `checkMs` (30 s, read again before each run so the test override applies) each node runs
 `ServerCapture.checkLost` on the server capture timer. It reads the meta from disk, not memory, since a ping can land
 on any node, for every pending capture: those open on this node and every folder in `pending/` (so a capture no node
-has open, after an idle close or a restart, still stops). `ServerCaptureStore.stopIfLost` then, under the capture's
+has open, after an idle close or a restart, still stops). The timer thread only has the profile it inherited when the
+plugin started (`SetupManager.getBaseDirectory()` follows the thread's profile), so it doesn't use the request-side
+store: `ServerCapture.checkDirs` lists the folders by path, `<wflow>/blackbox` without virtual hosts and
+`<wflow>/app_profiles/<each profile>/blackbox` with them, and the check and the hourly sweep run on each one's
+`pending/`. It doesn't switch the thread's profile (`HostManager.setCurrentProfile` is guarded in cloud installs). `ServerCaptureStore.stopIfLost` then, under the capture's
 lock, stops a capture with no `stoppedAt` whose `lastSeenAt` is older than `lostMs`: `stoppedAt = lastSeenAt`,
 `stopReason = "browser-lost"`, one info line in the log. The lock and the `stoppedAt` check make it happen once, on
 one node. A capture with no `lastSeenAt` (never pinged: an older extension) is never stopped this way. Each node then
