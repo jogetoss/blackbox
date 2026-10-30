@@ -61,6 +61,9 @@ open one of its assignments).
 - `tests/lost-browser.spec.js`: through the API, a capture pinged once and then left silent is stopped by the server
   at its last ping (`stopReason` `browser-lost`, read with `docker exec`); one never pinged stays open. Set the test
   override first (`{"lostMs":5000,"checkMs":2000}`) or it waits over 3 minutes. Nothing is uploaded.
+- `tests/recovery-stop.spec.js`: a partial recording left in IndexedDB as after a crash, for captures started and
+  pinged through the API: `recoverPartials()` stops each capture at its `lastSavedAt` when it is within the bounds,
+  else at `lastSeenAt` (read with `docker exec`). Needs no override (a short `lostMs` works too). Nothing is uploaded.
 - `tests/upload-form.spec.js`: the sample data choice on the upload form, the `sampleData` parameter it sends, and the
   App data the server builds.
 
