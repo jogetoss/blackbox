@@ -71,7 +71,9 @@ open one of its assignments).
   guard: 30 minutes with no Upload URL, and the server's `maxRecordingMs` from a 403 off answer (stubbed in the service
   worker's `fetch`). Needs no override. Nothing is uploaded.
 - `tests/size-limit.spec.js`: the start response carries `maxSizeMb`, the recorder's bitrate is 1.5 Mbit/s, and with
-  its size limit lowered to 1 byte it stops itself with reason `size-limit`. Needs no override. Nothing is uploaded.
+  its size limit lowered to 1 byte it stops itself with reason `size-limit`. A headless blank recording delivers 0-byte
+  chunks, so the spec feeds the real `ondataavailable` handler a 0-byte chunk (no stop) and then a 1 KB chunk (stop).
+  Needs no override. Nothing is uploaded.
 - `tests/liveness.spec.js`: recording liveness with real headless recordings, checked in the capture's `meta.json`:
   a normal stop (the app export runs), a crash (`pkill -9` on the test's own Chromium) stopped by the server as
   `browser-lost` at the last ping and kept through recovery and upload, a restart before `lostMs` whose recovery stop
