@@ -604,7 +604,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         JSONObject started = new JSONObject().put("id", id).put("maxMb", maxBytes / (1024 * 1024))
                 .put("traces", traces).put("gauges", gauges).put("glowrootData", glowrootData).put("allServer", allServer)
                 .put("slowThresholdMs", slowMs());
-        withLiveness(started, maxRecordingMs);
+        withLiveness(started, maxRecordingMs, maxSizeMb());
         // RecordingStore.LEGACY_CAPTURE: the extension of plugin 8.2.1 and older reads the slow threshold from there
         json(response, new JSONObject().put(RecordingStore.CAPTURE, started).put(RecordingStore.LEGACY_CAPTURE, started));
     }
@@ -617,6 +617,11 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     /** The same, with the hard limit: the recorder stops itself after maxRecordingMs. */
     static JSONObject withLiveness(JSONObject started, long maxRecordingMs) throws JSONException {
         return withLiveness(started).put("maxRecordingMs", maxRecordingMs);
+    }
+
+    /** The same, with the upload size limit: the recorder stops itself at 90% of it (reason size-limit). */
+    static JSONObject withLiveness(JSONObject started, long maxRecordingMs, long maxSizeMb) throws JSONException {
+        return withLiveness(started, maxRecordingMs).put("maxSizeMb", maxSizeMb);
     }
 
     /**
