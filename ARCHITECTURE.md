@@ -44,7 +44,7 @@ or a known one with the wrong method, gets 400 "Unknown action". Who may do what
 | `download&format=zip\|html` | GET | viewers | Server data only for those allowed; the ZIP answers 409 while the Glowroot data is built |
 | `delete` | POST | viewers who may delete | 403 for viewers who may not |
 | `systemlog`, `serverinfo`, `apps`, `appfile&file=`, `traces`, `trace&file=`, `gauges`, `glowroot[&node=]`, `trace-retry[&keys=]` | GET (`trace-retry`: POST) | server data | 403 for viewers without it. `glowroot`: node statuses, or that node's ZIP. `trace-retry`: 429 within 20 s |
-| `recording-start` | POST | uploaders | 403 when **Capture server data** is off, 400 for an invalid id, 409 for another user's id |
+| `recording-start` | POST | uploaders | 403 when **Capture server data** is off or the user may not upload (the answer still carries `serverCapture.maxRecordingMs`, see "Hard limit"), 400 for an invalid id, 409 for another user's id |
 | `recording-stop`, `app-export` | POST, GET | the capture's owner | 404 for anyone else |
 | `recording-ping[&lastSavedAt=&videoBytes=]` | POST | the capture's owner | The recorder's heartbeat (see "Server capture"); 404 for anyone else |
 
@@ -220,7 +220,8 @@ upload came first). It uses `lastSeenAt` when the capture was pinged, else now. 
 
 ### Hard limit
 
-The plugin setting `maxRecordingMinutes` (default 30) is read at `recording-start` by `BlackBoxPlugin.maxRecordingMs`:
+Every recording has one, with or without server capture. The plugin setting `maxRecordingMinutes` (default 30) is read
+at `recording-start` by `BlackBoxPlugin.maxRecordingMs`:
 5 to 120 minutes (a value outside goes to the nearest bound; 120 is `GaugeSampler`'s 2 h cap), 30 when empty or not a
 number, then lowered to the test override's `minLimitMs` when that is smaller. The settings page refuses values outside
 5–120. The start answer carries it as `maxRecordingMs`, and `ServerCaptureStore.start` writes `maxUntil = startedAt +
@@ -231,8 +232,14 @@ counted from the recorder's own start time; a hidden window's timer may run late
 `checkLost` also calls `ServerCaptureStore.stopIfOverLimit`, which, under the lock, stops a capture with no `stoppedAt`
 that is past `maxUntil + 2 min` (`LIMIT_GRACE_MS`): `stoppedAt = maxUntil`, `stopReason = "time-limit"`, one info line
 in the log, pings or not. The lost-browser check runs first, so a capture that also stopped pinging keeps
-`browser-lost` at its last ping. Captures without `maxUntil` (started by an older plugin) and extensions without
-`maxRecordingMs` in the answer have no limit. A capture that never got a ping (no `lastSeenAt`, an extension without
+`browser-lost` at its last ping. Captures without `maxUntil` (started by an older plugin) get no server backup.
+
+Without server capture: the 403 answers of `recording-start` (**Capture server data** off, or the user may not upload)
+are `BlackBoxPlugin.captureOff(status, message, maxRecordingMs)`, the usual error body plus
+`serverCapture: {maxRecordingMs}` (no `maxSizeMb`: no size guard), and `startServerCapture` in `background.js` passes it
+on with `status: "off"`. When the answer has no `maxRecordingMs` (no Upload URL, no host access, 401, network error,
+an older plugin), the recorder uses its built-in `DEFAULT_LIMIT` of 30 minutes, the setting's default. There is no
+server backup then: nothing is captured on the server. A capture that never got a ping (no `lastSeenAt`, an extension without
 the heartbeat) is never stopped as `browser-lost`; only this backup ends it (`NoHeartbeatTest`).
 
 **Size guard:** `recording-start` also answers `maxSizeMb` (`maxSizeMb()`, the upload limit; `withLiveness(started,

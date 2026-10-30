@@ -66,7 +66,7 @@
         {
             "name" : "maxRecordingMinutes",
             "label" : "Max recording length (minutes)",
-            "description" : "5 to 120. With server data captured, the recorder shows the time left, warns 2 minutes before, and stops and saves the recording at this length. If the browser doesn't stop it, the server stops the capture 2 minutes later.",
+            "description" : "5 to 120. Applies to every recording, with or without server data: the recorder shows the time left, warns 2 minutes before, and stops and saves the recording at this length. With server data, if the browser doesn't stop it, the server stops the capture 2 minutes later.",
             "type" : "textfield",
             "value" : "30",
             "regex_validation" : "^([5-9]|[1-9][0-9]|1[01][0-9]|120)$",
