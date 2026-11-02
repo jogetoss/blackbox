@@ -39,7 +39,11 @@ window.blackboxPage = 'file'; // for the Features list
   // "Uploaded by" rows for the Info tab; the same as BB.uploadInfo on the server (common.js is not in this file)
   function uploadInfo(meta) {
     const who = (o) => (o.ownerName && o.ownerName !== o.owner ? o.ownerName + ' (' + o.owner + ')' : o.owner);
-    const date = (iso) => (iso ? new Date(iso).toLocaleString() : '');
+    const date = (iso) => {
+      if (!iso) return '';
+      const d = new Date(iso);
+      return isNaN(d) ? String(iso) : d.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
+    };
     const info = { 'Uploaded by': who(meta), 'Uploaded': date(meta.uploadedAt) };
     if (meta.importedFrom) {
       info['First uploaded by'] = who(meta.importedFrom);

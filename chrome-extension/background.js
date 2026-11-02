@@ -131,17 +131,19 @@ async function startServerCapture(tabId) {
   let slowMs; // the server's "slow" (Glowroot's slow threshold) for the Recordings page's slow count
   let pingMs, lostMs; // the recorder's heartbeat timing (recording-ping); missing from plugins without it: no pings
   let maxSizeMb; // the upload size limit; the recorder stops at 90% of it (size-limit); missing: no size guard
-  let maxRecordingMs; // the hard limit (maxRecordingMinutes), also in the off answer; missing: the recorder's built-in 30 min
+  let maxRecordingMs; // the hard limit (maxRecordingMinutes), also in an error answer that has it; missing: the recorder's built-in 30 min
   try {
-    // Quick settings can turn off the plugin's all-server logs and Glowroot data for this recording
+    // Quick settings for this recording: All server log lines (opt-in); server load, Glowroot trace files and Glowroot
+    // data (each can turn its plugin setting off)
     const q = await Quick.get();
-    const res = await postAction(uploadUrl, 'recording-start', id, { allServer: String(q.allServer), glowrootData: String(q.glowrootData) });
+    const res = await postAction(uploadUrl, 'recording-start', id, { allServer: String(q.allServer),
+      gauges: String(q.gauges), traces: String(q.traces), glowrootData: String(q.glowrootData) });
     const body = await res.json().catch(() => null);
     slowMs = (body?.serverCapture || body?.systemLog)?.slowThresholdMs; // systemLog: plugin 8.2.1 and older
     ({ pingMs, lostMs, maxRecordingMs, maxSizeMb } = body?.serverCapture || {});
     if (!res.ok) {
       const message = res.status === 401 ? `Not logged in to ${origin}.` : body?.error?.message || `HTTP ${res.status}`;
-      return { status: 'off', server: origin, message, maxRecordingMs }; // capture off or not allowed: the limit still applies
+      return { status: 'off', server: origin, message, maxRecordingMs }; // no capture (e.g. 401, an older plugin): the limit still applies
     }
   } catch (e) {
     // fetch() throws a TypeError ("Failed to fetch") for network errors: wrong host or port, server down, certificate

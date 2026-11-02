@@ -22,7 +22,7 @@
     #quick label input { margin: 0; }
     #quick .sub { margin-left: 18px; }
     #quick .sub2 { margin-left: 36px; }
-    #qMaskWarn { margin: 2px 0 0 36px; color: var(--warn); }
+    #qRealWarn { margin: 2px 0 0 36px; color: var(--warn); }
     #qNote { margin-top: 4px; color: var(--muted); }
     [hidden] { display: none !important; }
   </style>
@@ -35,18 +35,20 @@
     <button data-mode="screen" title="Pick a screen">Record the screen</button>
   </div>
   <!-- Quick settings for the next recording: sound is this browser's; the rest the server offers (BlackBox plugin
-       settings and this user's rights) and can only turn a setting off -->
+       settings and this user's rights, me.options). Every box starts unticked and asks for its part. -->
   <fieldset id="quick">
-    <legend>Next recording</legend>
+    <legend>Quick Settings</legend>
     <label title="The sound of the tab you start from, also when you record a window or the screen"><input type="checkbox" id="qPage"> Page sound</label>
     <label title="To talk through the problem while recording"><input type="checkbox" id="qMic"> Microphone</label>
     <div id="qServer" hidden>
       <label id="qAppsRow" hidden title="When the recording stops, the server exports the apps it used (.jwa), so support can import them"><input type="checkbox" id="qApps"> Export the apps used</label>
-      <label id="qSampleRow" class="sub" hidden title="The records you opened or saved, added to the exported apps with fake values of the same shape"><input type="checkbox" id="qSample"> Sample form data</label>
-      <label id="qMaskRow" class="sub2" hidden title="Fake values of the same shape. Unticked: real values, except columns the server marks as sensitive."><input type="checkbox" id="qMask"> Mask data</label>
-      <div id="qMaskWarn" hidden>Real customer data: share the recording only with people who may see it.</div>
-      <label id="qAllServerRow" hidden title="Every log line the server writes while recording (scheduler jobs, other users), not only this tab's"><input type="checkbox" id="qAllServer"> All server log lines</label>
-      <label id="qGlowrootRow" hidden title="Glowroot's data for the recording's time, about a minute after it stops"><input type="checkbox" id="qGlowroot"> Glowroot data</label>
+      <label id="qSampleRow" class="sub" hidden title="Rows added to the exported apps (.jwa): the records you opened or saved, rows linked to them, and the processes you touched. Real values unless Mask data is ticked"><input type="checkbox" id="qSample"> Capture apps data</label>
+      <label id="qMaskRow" class="sub2" hidden title="Masks all apps data: values, record ids (primary keys), process data and user names; uploaded files become placeholders"><input type="checkbox" id="qMask"> Mask data</label>
+      <div id="qRealWarn" hidden>Real customer data: share the recording only with people who may see it.</div>
+      <label id="qAllServerRow" hidden title="Also every other log line the server writes while recording (scheduler jobs, other users' requests). Off by default: the lines hold other users' data"><input type="checkbox" id="qAllServer"> All server log lines</label>
+      <label id="qGaugesRow" hidden title="CPU, heap, busy request threads, database connections and GC time of each server node, every second (the Server load strip)"><input type="checkbox" id="qGauges"> Capture server load</label>
+      <label id="qTracesRow" hidden title="Glowroot's trace of each slow or failed recorded request, shown in the replay page's Traces tab"><input type="checkbox" id="qTraces"> Capture Glowroot trace files</label>
+      <label id="qGlowrootRow" hidden title="The recording cut out of each node's Glowroot data (traces, aggregates, gauges), to download and open in a standalone Glowroot; built 30 to 90 seconds after it stops"><input type="checkbox" id="qGlowroot"> Capture Glowroot data</label>
     </div>
     <div id="qNote" hidden></div>
   </fieldset>

@@ -11,18 +11,30 @@ test('popup shows the server options and keeps the choices', async ({ context, e
   await page.evaluate((uploadUrl) => chrome.storage.local.set({ uploadUrl }), `${JOGET}/api/blackbox`);
   await page.goto(`chrome-extension://${extensionId}/popup.html`);
 
-  await expect(page.locator('#qPage')).toBeChecked();
+  await expect(page.locator('#qPage')).not.toBeChecked(); // every box starts unticked
   await expect(page.locator('#qAppsRow')).toBeVisible({ visible: !!me.options.apps });
   await expect(page.locator('#qSampleRow')).toBeVisible({ visible: !!me.options.sample });
-  await expect(page.locator('#qMaskRow')).toBeVisible({ visible: !!me.options.real });
-  if (me.options.real) {
-    await expect(page.locator('#qMask')).toBeChecked(); // masked unless unticked
-    await page.uncheck('#qMask');
-    await expect(page.locator('#qMaskWarn')).toBeVisible();
-    expect((await page.evaluate(() => Quick.get())).real).toBe(true);
-    await page.check('#qMask');
+  await expect(page.locator('#qMaskRow')).toBeVisible({ visible: !!me.options.mask });
+  if (me.options.apps) await expect(page.locator('#qApps')).not.toBeChecked();
+  if (me.options.sample) {
+    await page.check('#qApps');
+    await expect(page.locator('#qSample')).not.toBeChecked();
+    await page.check('#qSample');
+    await expect(page.locator('#qRealWarn')).toBeVisible(); // apps data is real unless masked
+    if (me.options.mask) {
+      await expect(page.locator('#qMask')).not.toBeChecked();
+      await page.check('#qMask');
+      await expect(page.locator('#qRealWarn')).toBeHidden();
+      expect((await page.evaluate(() => Quick.get())).mask).toBe(true);
+      await page.uncheck('#qMask');
+    }
   }
   await expect(page.locator('#qAllServerRow')).toBeVisible({ visible: !!me.options.allServer });
+  for (const box of ['#qAllServer', '#qGauges', '#qTraces', '#qGlowroot']) {
+    if (await page.locator(box).isVisible()) await expect(page.locator(box)).not.toBeChecked();
+  }
+  await expect(page.locator('#qGaugesRow')).toBeVisible({ visible: !!me.options.gauges });
+  await expect(page.locator('#qTracesRow')).toBeVisible({ visible: !!me.options.traces });
   await expect(page.locator('#qGlowrootRow')).toBeVisible({ visible: !!me.options.glowrootData });
 
   await page.uncheck('#qApps');
@@ -30,7 +42,7 @@ test('popup shows the server options and keeps the choices', async ({ context, e
   await page.uncheck('#qMic').catch(() => {});
   const kept = await page.evaluate(() => Quick.get());
   expect(kept.apps).toBe(false);
-  expect(await page.evaluate(() => Quick.options({ ...Quick.DEFAULTS, apps: false }))).toEqual({ apps: false, sampleData: 'masked' });
+  expect(await page.evaluate(() => Quick.options({ ...Quick.DEFAULTS, apps: false }))).toEqual({ apps: false, sampleData: 'none' });
   // the server's options are remembered for the next time the popup opens
   expect(await page.evaluate(async () => (await chrome.storage.local.get('quickOffer')).quickOffer)).toEqual(me.options);
 });
@@ -75,10 +87,10 @@ test('stop exports the apps; the upload keeps that export', async ({ context, ex
   }
 });
 
-test('Mask data unticked: the stop export keeps real values', async ({ context, extensionId }) => {
+test('apps data without Mask data: the stop export keeps real values', async ({ context, extensionId }) => {
   const joget = await context.newPage();
   await loginJoget(joget);
-  test.skip(!(await api(joget, 'me')).options.real, 'this user may not keep real values');
+  test.skip(!(await api(joget, 'me')).options.sample, 'this user may not capture apps data');
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/recordings.html`);
   const { stop } = await captureAndStop(page, { sampleData: 'real' });

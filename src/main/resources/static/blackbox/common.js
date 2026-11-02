@@ -72,8 +72,11 @@
     return mb >= 1 ? mb.toFixed(1) + ' MB' : Math.max(1, Math.round(bytes / 1024)) + ' KB';
   }
 
+  // "2026-10-30 09:50:09 UTC", like the viewer's utc(): every time on the page is in UTC
   function fmtDate(iso) {
-    return iso ? new Date(iso).toLocaleString() : '';
+    if (!iso) return '';
+    const d = new Date(iso);
+    return isNaN(d) ? String(iso) : d.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
   }
 
   // Shows "log in" help when the API says 401; returns true if it did.

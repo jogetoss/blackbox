@@ -55,16 +55,16 @@ const Actions = (() => {
       return;
     }
     const o = form.options = recording?.options || null;
-    $('upApps').checked = o?.apps !== false;
-    $('upSample').checked = !o || o.sampleData !== 'none';
-    $('upMask').checked = o?.sampleData !== 'real';
+    $('upApps').checked = o?.apps === true; // unticked unless chosen in the popup
+    $('upSample').checked = !!o?.sampleData && o.sampleData !== 'none';
+    $('upMask').checked = o?.sampleData === 'masked';
     $('upApps').onchange?.();
     if (!settings.uploadUrl) settings = await Server.getSettings();
     if (!settings.uploadUrl || !(await Server.hasPermission(settings.uploadUrl))) return;
     const me = await Server.me(settings.uploadUrl);
     $('upAppsRow').hidden = !me.options?.apps;
     $('upSampleRow').hidden = !me.options?.sample;
-    $('upMaskRow').hidden = !me.options?.sample || !me.options?.real;
+    $('upMaskRow').hidden = !me.options?.mask;
   }
 
   // The upload's apps / sampleData parameters: from the form when it offered the choice, else as saved with the
@@ -74,7 +74,7 @@ const Actions = (() => {
     if (!$('upAppsRow').hidden && !$('upApps').checked) return { apps: 'false' };
     if ($('upSampleRow').hidden) return {}; // the server adds none
     if (!$('upSample').checked) return { sampleData: 'none' };
-    return { sampleData: !$('upMaskRow').hidden && !$('upMask').checked ? 'real' : 'masked' };
+    return { sampleData: !$('upMaskRow').hidden && $('upMask').checked ? 'masked' : 'real' };
   }
 
   function closeUpload() {

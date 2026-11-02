@@ -41,7 +41,8 @@ window.blackboxPage = 'server'; // for the Features list
       $('delete').onclick = remove;
     }
 
-    // System log and Glowroot traces: only for users the plugin settings allow; the extension's own viewer never shows them
+    // System log and Glowroot traces: for everyone who can view the recording (canViewServerData); the extension's own
+    // viewer never shows them
     let systemLog = null;
     let systemLogError = null;
     let traces = null;

@@ -80,9 +80,9 @@ pickAndStart().catch((e) => {
 });
 
 async function pickAndStart() {
-  // Settings: page sound on unless turned off, microphone off unless turned on
+  // Settings: page sound and microphone off unless turned on
   const { recordPageAudio, recordMic } = await chrome.storage.local.get(['recordPageAudio', 'recordMic']);
-  const wantPage = recordPageAudio !== false;
+  const wantPage = recordPageAudio === true;
 
   // The popup got a chrome.tabCapture stream id for the tab the logs come from, which always has the tab's sound.
   const tabStreamId = params.get('streamId');

@@ -39,10 +39,14 @@ test('upload form offers masked sample data and the server builds it', async ({ 
     Actions.showUpload(row);
   }, id);
   await expect(page.locator('#upSampleRow')).toBeVisible();
-  await expect(page.locator('#upSample')).toBeChecked();
+  await expect(page.locator('#upSample')).not.toBeChecked(); // nothing chosen in the popup
   const me = await api(joget, 'me');
-  await expect(page.locator('#upMaskRow')).toBeVisible({ visible: !!me.sampleData.real });
-  if (me.sampleData.real) await expect(page.locator('#upMask')).toBeChecked();
+  await page.check('#upApps');
+  await page.check('#upSample');
+  await expect(page.locator('#upMaskRow')).toBeVisible({ visible: !!me.options.mask });
+  test.skip(!me.options.mask, 'this user may not mask apps data');
+  await expect(page.locator('#upMask')).not.toBeChecked();
+  await page.check('#upMask');
 
   const create = page.waitForResponse((r) => r.url().includes('action=create'), { timeout: 30_000 });
   await page.click('#upSend');
@@ -50,7 +54,7 @@ test('upload form offers masked sample data and the server builds it', async ({ 
   expect(new URL(res.url()).searchParams.get('sampleData')).toBe('masked');
   expect(res.status()).toBe(200);
 
-  // The server exported iService with masked sample data and its process
+  // The server exported iService with masked apps data and its process
   const list = await api(joget, 'list');
   const rec = list.recordings.find((r) => r.title === id);
   expect(rec, 'uploaded recording in the list').toBeTruthy();
@@ -65,7 +69,7 @@ test('upload form offers masked sample data and the server builds it', async ({ 
   }
 });
 
-test('unticking sample data sends sampleData=none', async ({ context, extensionId }) => {
+test('Capture apps data unticked sends sampleData=none', async ({ context, extensionId }) => {
   const joget = await context.newPage();
   await loginJoget(joget);
   const page = await context.newPage();
@@ -78,7 +82,8 @@ test('unticking sample data sends sampleData=none', async ({ context, extensionI
   await page.goto(`chrome-extension://${extensionId}/viewer.html?id=${id}`);
   await page.evaluate(async (id) => Actions.showUpload((await Store.allRows()).find((r) => r.id === id)), id);
   await expect(page.locator('#upSampleRow')).toBeVisible();
-  await page.uncheck('#upSample');
+  await page.check('#upApps');
+  await expect(page.locator('#upSample')).not.toBeChecked();
   const create = page.waitForResponse((r) => r.url().includes('action=create'), { timeout: 30_000 });
   await page.click('#upSend');
   const res = await create;

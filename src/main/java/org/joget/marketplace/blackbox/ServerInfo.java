@@ -65,7 +65,7 @@ final class ServerInfo {
         JSONObject process = new JSONObject();
         String name = jvm.getName(); // "pid@host"
         put(process, "Process id", name.contains("@") ? name.substring(0, name.indexOf('@')) : name);
-        put(process, "Started", new java.util.Date(jvm.getStartTime()).toString());
+        put(process, "Started", utcDate("yyyy-MM-dd HH:mm:ss").format(new java.util.Date(jvm.getStartTime())));
         put(process, "Uptime", duration(jvm.getUptime()));
 
         JSONObject java = new JSONObject();
@@ -87,7 +87,7 @@ final class ServerInfo {
         put(joget, "Version", version != null && !version.startsWith("console.") ? version : null);
         put(joget, "Edition", sysInfo != null ? "Enterprise" : "Community");
         put(joget, "Application server", request.getServletContext().getServerInfo());
-        put(joget, "Time zone", TimeZone.getDefault().getID());
+        put(joget, "Time zone", zoneLabel(TimeZone.getDefault(), now));
         GlowrootClient g = GlowrootClient.find("");
         put(joget, "Glowroot", g != null ? g.base() : "not running");
         put(joget, "Glowroot version", GlowrootClient.agentVersion());
@@ -151,6 +151,20 @@ final class ServerInfo {
             result.put("license", sorted(license));
         }
         return result.put("systemProperties", sorted(system));
+    }
+
+    /** A formatter for pattern + " UTC" in UTC: every time on the Info tab is in UTC, whatever the server's time zone. */
+    static java.text.SimpleDateFormat utcDate(String pattern) {
+        java.text.SimpleDateFormat f = new java.text.SimpleDateFormat(pattern + " 'UTC'", java.util.Locale.ROOT);
+        f.setTimeZone(TimeZone.getTimeZone("UTC"));
+        return f;
+    }
+
+    /** The server's own zone id with its offset at that time, e.g. "GMT (UTC+0)", "Asia/Kolkata (UTC+5:30)". */
+    static String zoneLabel(TimeZone tz, long at) {
+        int min = tz.getOffset(at) / 60000;
+        String off = (min < 0 ? "-" : "+") + Math.abs(min) / 60 + (min % 60 != 0 ? String.format(":%02d", Math.abs(min) % 60) : "");
+        return tz.getID() + " (UTC" + off + ")";
     }
 
     private static final long MB = 1024 * 1024;
@@ -331,7 +345,7 @@ final class ServerInfo {
     static JSONObject recentChanges(int days, long since, java.util.List<Object[]> apps, java.io.File wflowDir,
             long started) throws JSONException {
         JSONObject c = new JSONObject();
-        java.text.SimpleDateFormat date = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm");
+        java.text.SimpleDateFormat date = utcDate("yyyy-MM-dd HH:mm");
         put(c, "Period", "the last " + days + " day" + (days == 1 ? "" : "s"));
         java.util.List<String> lines = new java.util.ArrayList<>();
         for (Object[] a : apps) {
@@ -393,7 +407,7 @@ final class ServerInfo {
     static JSONObject plugins(java.io.File dir, Map<String, java.util.List<String>> loaded) throws JSONException {
         Map<String, String> entries = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         java.io.File[] jars = dir.listFiles((d, n) -> n.toLowerCase(java.util.Locale.ROOT).endsWith(".jar"));
-        java.text.SimpleDateFormat date = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm");
+        java.text.SimpleDateFormat date = utcDate("yyyy-MM-dd HH:mm");
         for (java.io.File jar : jars != null ? jars : new java.io.File[0]) {
             String size = jar.length() >= MB ? String.format(java.util.Locale.ROOT, "%.1f MB", jar.length() / (double) MB)
                     : Math.max(1, jar.length() / 1024) + " KB";
@@ -536,7 +550,7 @@ final class ServerInfo {
                 JSONObject a = all.getJSONObject(i);
                 byApp.computeIfAbsent(a.getString("id"), k -> new java.util.ArrayList<>()).add(a);
             }
-            java.text.SimpleDateFormat date = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm");
+            java.text.SimpleDateFormat date = utcDate("yyyy-MM-dd HH:mm");
             java.util.List<String> lines = new java.util.ArrayList<>();
             for (Map.Entry<String, java.util.List<JSONObject>> e : byApp.entrySet()) {
                 String shares = "";

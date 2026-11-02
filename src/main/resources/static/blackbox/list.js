@@ -128,7 +128,9 @@
     const owner = el('td', 'hide-sm', r.ownerName || r.owner);
     owner.title = r.owner;
     tr.append(owner);
-    tr.append(el('td', 'nowrap', fmtDate(r.uploadedAt)));
+    const uploaded = el('td', 'nowrap', fmtDate(r.uploadedAt));
+    if (r.uploadedAt) uploaded.title = new Date(r.uploadedAt).toLocaleString(); // the viewer's own clock time
+    tr.append(uploaded);
     tr.append(el('td', 'nowrap hide-sm', fmtDuration(r.recording?.durationMs)));
 
     if (server) tr.append(serverIssues(r));
@@ -142,7 +144,7 @@
     return tr;
   }
 
-  // System log errors, slow requests and peak load (only shown to users who may see server data)
+  // System log errors, slow requests and peak load (rows with canViewServerData)
   function serverIssues(r) {
     const td = el('td');
     if (!r.canViewServerData) return td;

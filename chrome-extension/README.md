@@ -30,31 +30,33 @@ Popup → **Settings** (this browser only; server options are in the plugin READ
 ## Record
 
 1. On the page to debug, click the extension icon and pick **Record this tab** (no URL bar), **Record a window** (with
-   the URL bar) or **Record the screen**. Logs always come from the tab you started from. **Next recording** sets:
-   - **Page sound** (on): the starting tab's sound, also for a window or the screen.
+   the URL bar) or **Record the screen**. Logs always come from the tab you started from. **Quick Settings** sets:
+   - **Page sound** (off): the starting tab's sound, also for a window or the screen.
    - **Microphone** (off): Chrome asks on first use. If you blocked it, allow it at
      `chrome://settings/content/siteDetails?site=chrome-extension://<extension id>`.
-   - Server options (**Export the apps used**, **Sample form data**, **Mask data**, **All server log lines**,
-     **Glowroot data**), shown only when the server allows them: see
+   - Server options (**Export the apps used**, **Capture apps data**, **Mask data**, **All server log lines**,
+     **Capture server load**, **Capture Glowroot trace files**, **Capture Glowroot data**), shown only when the server
+     allows them: see
      [Per-recording choices](../README.md#per-recording-choices-popup). The choices are remembered for later
-     recordings; unticking **Mask data** shows a warning (real customer data).
+     recordings. All start unticked; apps data is real unless **Mask data** is ticked (the popup warns).
 2. For a window or the screen, pick it in the recorder window. Chrome's "started debugging this browser" banner is
    expected.
 3. Stop with the icon → **Stop & save**, the recorder window's button, or Chrome's **Stop sharing**. Closing the tab or
    cancelling the banner also stops and saves. If the extension can't keep the recording (e.g. disk full), it
    downloads it.
 
-- **Server data:** with the plugin's **Capture server data** on, the server keeps its log lines (and the other server data) for the tab. The popup
+- **Server data:** when the tab is on the Upload URL's server, that server keeps the tab's server data (log lines and
+  System Info; traces, server load and Glowroot data by the plugin's settings; every other server log line when you
+  tick **All server log lines**). The popup
   warns when there is no Upload URL or the tab is on another server. While recording, an orange **REC** badge means
   the server isn't capturing (the tooltip says why). The recorder pings the server while recording (every 30 s by
   default): when the server has ended the capture, the recording stops and saves; when you are logged out, the
   recorder shows **Server capture ended: logged out** and goes on recording without server data. If the pings stop for
   3 minutes (crash, killed browser, no network), the server ends the capture at the last ping.
-- **Time limit:** every recording is at most the plugin's **Max recording length** (30 minutes by default), also
-  without server data (the server's start answer still carries it). With no answer from a server (no Upload URL,
-  logged out, server down, an older plugin) the limit is 30 minutes. The recorder shows the time left, warns 2 minutes
+- **Time limit:** every recording is at most the plugin's **Max recording length** (30 minutes by default). With no
+  answer from a server (no Upload URL, logged out, server down) the limit is 30 minutes. The recorder shows the time left, warns 2 minutes
   before, and then stops and saves the recording (stop reason `time-limit`).
-- **Size limit:** video is recorded at 1.5 Mbit/s. With server data, the recorder stops and saves at 90% of the plugin's
+- **Size limit:** video is recorded at 1.5 Mbit/s. When the server answered the start, the recorder stops and saves at 90% of the plugin's
   upload limit (**Max file size (MB)**), with stop reason `size-limit`, so the upload is not refused as too large.
 - **Crash safety:** saved to browser storage every 5 s. After a crash, the recording is listed as **Recovered**, and
   its server capture is ended at the last save.

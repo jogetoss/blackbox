@@ -98,12 +98,13 @@ async function browser(from = EXTENSION, { restoreSession = false } = {}) {
 
 // Logs in and starts a screen recording of the Joget tab (on the iService assignment, so the app export has an app).
 // Returns the Joget page and the capture from the recording state ({ id, pingMs, lostMs, maxRecordingMs, ... }).
-async function startRecording(b, { openOnServer = false, key = 'serverCapture' } = {}) {
+async function startRecording(b, { openOnServer = false, key = 'serverCapture', quick } = {}) {
   const joget = await b.context.newPage();
   await loginJoget(joget);
   await joget.goto(ASSIGNMENT);
-  await b.worker.evaluate(({ u, openOnServer }) => chrome.storage.local.set({ uploadUrl: u, recordPageAudio: false, openOnServer }),
-    { u: `${JOGET}/api/blackbox`, openOnServer });
+  // Quick settings start unticked: tick Export the apps used so the stop's app export runs
+  await b.worker.evaluate(({ u, openOnServer, quick }) => chrome.storage.local.set({ uploadUrl: u, recordPageAudio: false, openOnServer,
+    quick: { apps: true, ...quick } }), { u: `${JOGET}/api/blackbox`, openOnServer, quick });
   const tabId = await b.worker.evaluate((o) => chrome.tabs.query({ url: o + '/*' }).then((t) => t[0].id), new URL(JOGET).origin);
   await b.worker.evaluate((tabId) => start(tabId, 'screen').then(() => 'ok'), tabId);
   let capture;
@@ -326,9 +327,9 @@ test('all-server logs: after a crash, no new lines in the capture log once it is
   test.setTimeout(180_000);
   const b = await browser();
   try {
-    const { capture } = await startRecording(b);
-    // All-server logs need "Capture all server logs" and a user who may view server data (as admin; not BB_USER=cat)
-    test.skip(!captureMeta(capture.id).allServer, 'all-server logs are off for this user or in the settings');
+    const { capture } = await startRecording(b, { quick: { allServer: true } }); // the popup's All server log lines
+    // Offered only to users in "Who can capture server data" (admin; not BB_USER=cat)
+    test.skip(!captureMeta(capture.id).allServer, 'this user may not capture all server log lines');
     await waitForPings(capture.id, capture.pingMs, 1);
     logALine();
     await expect.poll(() => captureLines(capture.id).filter((e) => e.other).length, { timeout: 10_000 }).toBeGreaterThan(0);

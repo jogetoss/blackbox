@@ -57,10 +57,10 @@
     <p id="upAtStop" class="muted" hidden></p>
     <label id="upAppsRow" class="check" hidden title="The server exports the apps the recording used (.jwa), so support can import them">
       <input type="checkbox" id="upApps" checked> Export the apps used</label>
-    <label id="upSampleRow" class="check" hidden title="Added to the exported apps (.jwa) on the server: the records you opened or saved, with fake values of the same shape">
-      <input type="checkbox" id="upSample" checked> Include sample form data</label>
-    <label id="upMaskRow" class="check" hidden title="Fake values of the same shape. Unticked: real values, except columns the server marks as sensitive.">
-      <input type="checkbox" id="upMask" checked> Mask data <span class="muted">(unticked: real customer data, share the recording only with people who may see it)</span></label>
+    <label id="upSampleRow" class="check" hidden title="Rows added to the exported apps (.jwa) on the server: the records you opened or saved, rows linked to them, and the processes you touched. Real values unless Mask data is ticked">
+      <input type="checkbox" id="upSample"> Capture apps data</label>
+    <label id="upMaskRow" class="check" hidden title="Masks all apps data: values, record ids (primary keys), process data and user names; uploaded files become placeholders">
+      <input type="checkbox" id="upMask"> Mask data <span class="muted">(unticked: real customer data, share the recording only with people who may see it)</span></label>
     <div class="upload-actions">
       <button id="upSend" class="primary">Send</button>
       <button id="upCancel">Cancel</button>

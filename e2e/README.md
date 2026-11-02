@@ -18,8 +18,9 @@ npx playwright test              # headless
 BB_HEADED=1 npx playwright test  # watch it in a window
 ```
 
-Needs a Joget with the BlackBox plugin, **Capture server data** on, and j8213's iService app (the tests' recordings
-open one of its assignments).
+Needs a Joget with the BlackBox plugin and j8213's iService app (the tests' recordings open one of its assignments).
+The all-server log test in `liveness.spec.js` ticks **All server log lines** itself; it needs a user in **Who can capture
+server data**.
 
 | Variable | Default | |
 |---|---|---|
@@ -38,9 +39,8 @@ open one of its assignments).
   recording needs Chrome's screen picker.
 - `tests/quick-settings.spec.js`: the popup's quick settings (shown as `me.options` allows, remembered), the app export
   at `recording-stop` kept by the upload, apps turned off at stop, and the automatic upload sending the choices saved
-  with the recording; Mask data unticked keeps real values (skipped when the user may not).
-- `tests/legacy-names.spec.js`: recordings, ZIPs and extensions from before the `systemLog` -> `serverCapture`
-  rename still work: the extension's own capture start and upload, a kept recording with `systemLog`, a `meta.json`
+  with the recording; apps data without Mask data keeps real values (skipped when the user may not capture apps data).
+- `tests/legacy-names.spec.js`: recordings, ZIPs and extensions of 8.2.1 (capture summary `systemLog`) work: the extension's own capture start and upload, a kept recording with `systemLog`, a `meta.json`
   with `systemLog`, and an old ZIP imported on the server and in the extension. Run the whole suite a second time with
   the previous extension (`git archive <tag> chrome-extension | tar -x -C /some/dir`, then
   `BB_EXTENSION=/some/dir/chrome-extension npx playwright test`); its ZIP test is skipped there.
@@ -48,7 +48,7 @@ open one of its assignments).
   incognito window and checks that the incognito copy of the extension calls the server as that user (the normal copy
   as `BB_USER`), shows its note, and keeps its own recording state, capture rule and badge. Playwright can't see
   incognito windows, so it uses the browser's DevTools port (`--remote-debugging-port=0`, `openIncognito` in
-  `fixtures.js`). Skipped for an extension from before `"incognito": "split"`.
+  `fixtures.js`). Skipped for an extension without `"incognito": "split"`.
 - `tests/incognito-recording.spec.js`: a real screen recording in incognito, from `start` to the automatic upload:
   the picker is skipped by `--auto-select-desktop-capture-source=Entire screen` (`fixtures.js`), then MediaRecorder,
   the console and network logs, the server capture, stop, and the upload as `BB_INCOGNITO_USER` with its video. It
@@ -68,8 +68,8 @@ open one of its assignments).
   `meta.json` has `maxUntil`, and the recording stops itself with reason `time-limit`. Nothing is uploaded. Set the
   test override first (`{"minLimitMs":20000}`) or it runs for the full **Max recording length** (30 min).
 - `tests/time-limit-no-capture.spec.js`: without server capture the recorder still has the time limit and no size
-  guard: 30 minutes with no Upload URL, and the server's `maxRecordingMs` from a 403 off answer (stubbed in the service
-  worker's `fetch`). Needs no override. Nothing is uploaded.
+  guard: 30 minutes with no Upload URL, and the server's `maxRecordingMs` from an error answer that carries it (stubbed in
+  the service worker's `fetch`). Needs no override. Nothing is uploaded.
 - `tests/size-limit.spec.js`: the start response carries `maxSizeMb`, the recorder's bitrate is 1.5 Mbit/s, and with
   its size limit lowered to 1 byte it stops itself with reason `size-limit`. A headless blank recording delivers 0-byte
   chunks, so the spec feeds the real `ondataavailable` handler a 0-byte chunk (no stop) and then a 1 KB chunk (stop).
@@ -80,10 +80,10 @@ open one of its assignments).
   sets the last save (it keeps the Joget login with Chrome's "Continue where you left off"; without it the restarted
   browser is logged out and the server's lost-browser check closes the capture instead), the time limit with upload,
   a server stop, the 8.2.1 extension (no pings: stopped only 2 minutes past its limit; `git archive 8.2.1`, or
-  `BB_OLD_TAG`), and the all-server log stopping after a crash (skipped when all-server logs are off, as for a user who may not view server data, like `cat`). The spec writes its own test override
+  `BB_OLD_TAG`), and the all-server log stopping after a crash (skipped for a user not in **Who can capture other users' server data**, like `cat`). The spec writes its own test override
   (`{"pingMs":5000,"lostMs":20000,"checkMs":5000,"minLimitMs":60000}`, with `docker exec` as your user) and puts back
   the file that was there after; about 7 minutes. Uploads are deleted.
-- `tests/upload-form.spec.js`: the sample data choice on the upload form, the `sampleData` parameter it sends, and the
+- `tests/upload-form.spec.js`: the apps data and Mask data choices on the upload form, the `sampleData` parameter it sends, and the
   App data the server builds.
 
 A failed test keeps a trace in `test-results/` (`npx playwright show-trace <trace.zip>`).

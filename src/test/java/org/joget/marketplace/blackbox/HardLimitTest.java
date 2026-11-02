@@ -88,16 +88,6 @@ public class HardLimitTest {
     }
 
     @Test
-    public void captureOffAnswerCarriesTheLimit() throws Exception {
-        // Server capture off or not allowed: the recording still gets the time limit (BB6: only the time limit)
-        JSONObject off = BlackBoxPlugin.captureOff(403, "Server data capture is turned off.", 45 * MIN);
-        assertEquals("403", off.getJSONObject("error").getString("code"));
-        assertEquals("Server data capture is turned off.", off.getJSONObject("error").getString("message"));
-        assertEquals(45 * MIN, off.getJSONObject("serverCapture").getLong("maxRecordingMs"));
-        assertFalse("no size guard without server capture", off.getJSONObject("serverCapture").has("maxSizeMb"));
-    }
-
-    @Test
     public void startStoresMaxUntil() throws Exception {
         long before = System.currentTimeMillis();
         start(30 * MIN);

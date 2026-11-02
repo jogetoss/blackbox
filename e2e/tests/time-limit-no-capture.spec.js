@@ -1,5 +1,5 @@
 // The hard limit without server capture (BB6: "No server capture: no size guard, only the time limit"): the recorder
-// takes maxRecordingMs from the server's off answer (Capture server data off, or not allowed to upload), else the
+// takes maxRecordingMs from the server's off answer (neither "all other server log lines" nor "Glowroot data" on), else the
 // built-in 30 minutes (no Upload URL, not logged in, server down, a plugin without the limit). Nothing is uploaded.
 const { test, expect, JOGET, loginJoget } = require('./fixtures');
 
@@ -37,7 +37,7 @@ test('no Upload URL: the built-in 30-minute limit, no size guard', async ({ cont
 });
 
 test("server capture off: the limit from the server's off answer, no size guard", async ({ context, extensionId }) => {
-  // The plugin's answer when Capture server data is off (or the user may not upload): 403 with serverCapture.maxRecordingMs
+  // The plugin's answer when neither "all other server log lines" nor "Glowroot data" is on: 403 with serverCapture.maxRecordingMs
   const stub = () => {
     const real = fetch;
     self.fetch = (url, init) => (String(url).includes('action=recording-start')

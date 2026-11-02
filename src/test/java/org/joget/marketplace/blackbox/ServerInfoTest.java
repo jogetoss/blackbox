@@ -106,7 +106,7 @@ public class ServerInfoTest {
         loaded.put("elsewhere.jar", java.util.Collections.singletonList("Other 1 (x.Other)"));
         JSONObject p = ServerInfo.plugins(dir, loaded);
         assertEquals(3, p.length());
-        assertTrue(p.getString("b-plugin.jar"), p.getString("b-plugin.jar").matches("\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d · 2 KB"));
+        assertTrue(p.getString("b-plugin.jar"), p.getString("b-plugin.jar").matches("\\d{4}-\\d\\d-\\d\\d \\d\\d:\\d\\d UTC · 2 KB"));
         assertTrue(p.getString("A-broken.jar").endsWith(" · 1 KB · not loaded"));
         assertEquals("Not in the plugin folder", p.getString("elsewhere.jar"));
         assertFalse(p.has("notes.txt"));
@@ -135,7 +135,7 @@ public class ServerInfoTest {
         assertTrue(c.getString("wflow files").endsWith("app_datasource-x.properties"));
         assertFalse("no logs", c.getString("wflow files").contains("joget.log"));
         assertFalse("not Joget's own runtime files", c.getString("wflow files").contains("servers.json"));
-        assertTrue(c.has("Joget started"));
+        assertTrue(c.getString("Joget started").endsWith(" UTC"));
 
         JSONObject none = ServerInfo.recentChanges(1, now + day, java.util.Collections.<Object[]>emptyList(), wflow, 0);
         assertTrue(none.getString("Changes").startsWith("None found"));
@@ -168,6 +168,26 @@ public class ServerInfoTest {
         ServerInfo.summarizeApps(f, java.util.Collections.singletonList("other"), (id, v) -> tables.get(id));
         info = new JSONObject(new String(java.nio.file.Files.readAllBytes(f), java.nio.charset.StandardCharsets.UTF_8));
         assertFalse("none related: no row", info.getJSONObject("recentChanges").has("App versions"));
+    }
+
+    @Test
+    public void timesAreUtcWhateverTheServerZone() {
+        java.util.TimeZone was = java.util.TimeZone.getDefault();
+        try {
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("Asia/Kuala_Lumpur"));
+            assertEquals("2026-10-30 09:50:09 UTC", ServerInfo.utcDate("yyyy-MM-dd HH:mm:ss").format(new java.util.Date(1793353809000L)));
+        } finally {
+            java.util.TimeZone.setDefault(was);
+        }
+    }
+
+    @Test
+    public void zoneLabelKeepsTheIdAndAddsTheOffset() {
+        long t = 1793353809000L;
+        assertEquals("GMT (UTC+0)", ServerInfo.zoneLabel(java.util.TimeZone.getTimeZone("GMT"), t));
+        assertEquals("Asia/Kuala_Lumpur (UTC+8)", ServerInfo.zoneLabel(java.util.TimeZone.getTimeZone("Asia/Kuala_Lumpur"), t));
+        assertEquals("Asia/Kolkata (UTC+5:30)", ServerInfo.zoneLabel(java.util.TimeZone.getTimeZone("Asia/Kolkata"), t));
+        assertEquals("America/St_Johns (UTC-2:30)", ServerInfo.zoneLabel(java.util.TimeZone.getTimeZone("America/St_Johns"), 1783000000000L));
     }
 
     private static JSONObject app(String id, int version, boolean published, String name, long modified) throws Exception {

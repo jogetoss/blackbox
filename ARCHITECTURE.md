@@ -35,16 +35,16 @@ or a known one with the wrong method, gets 400 "Unknown action". Who may do what
 
 | Action | Method | Who | Notes |
 |---|---|---|---|
-| `me` | GET | anyone logged in | Also `user.username`, `sampleData` (for older extensions) and `options` (see "App export") |
+| `me` | GET | anyone logged in | Also `user.username`, `options` (see "App export") and `sampleData` (see "Compatibility") |
 | `list` | GET | | The recordings the user can view, newest first; server data hidden where not allowed |
 | `create` | POST | uploaders | |
 | `video` | POST | the recording's uploader | Once; 404 for others |
 | `import` | POST | uploaders | A recording ZIP as the raw body (see "Storage" for its limits) |
 | `meta`, `session`, `video` (GET, HTTP Range) | GET | viewers | |
 | `download&format=zip\|html` | GET | viewers | Server data only for those allowed; the ZIP answers 409 while the Glowroot data is built |
-| `delete` | POST | viewers who may delete | 403 for viewers who may not |
+| `delete` | POST | viewers | |
 | `systemlog`, `serverinfo`, `apps`, `appfile&file=`, `traces`, `trace&file=`, `gauges`, `glowroot[&node=]`, `trace-retry[&keys=]` | GET (`trace-retry`: POST) | server data | 403 for viewers without it. `glowroot`: node statuses, or that node's ZIP. `trace-retry`: 429 within 20 s |
-| `recording-start` | POST | uploaders | 403 when **Capture server data** is off or the user may not upload (the answer still carries `serverCapture.maxRecordingMs`, see "Hard limit"), 400 for an invalid id, 409 for another user's id |
+| `recording-start` | POST | anyone logged in | Starts the capture (see "Server capture"); 400 for an invalid id, 409 for another user's id |
 | `recording-stop`, `app-export` | POST, GET | the capture's owner | 404 for anyone else |
 | `recording-ping[&lastSavedAt=&videoBytes=]` | POST | the capture's owner | The recorder's heartbeat (see "Server capture"); 404 for anyone else |
 
@@ -61,19 +61,17 @@ Recordings the user can't view answer 404 (not 403), so ids of other people's re
 - Uploads are raw request bodies (not multipart): `create` takes `session.json` (title and notes as query
   parameters), then `video` takes `recording.webm`.
 
-### Old names (`systemLog`)
+### Compatibility
 
-Plugin 8.2.1 and older and their extension call the capture summary `systemLog`. It is never written to
-files (`RecordingStore.LEGACY_CAPTURE`), only read:
+Plugin and extension 8.2.1 call the capture summary `systemLog`. The plugin never writes that name
+(`RecordingStore.LEGACY_CAPTURE`) but reads it:
 
-- `meta.json`: `readMeta` moves `systemLog` to `serverCapture`; the next change saves the file with the new name.
-- `session.json` of an upload: `create` takes the capture id from `recording.serverCapture`, else
-  `recording.systemLog`. The file itself is kept as it is. (A ZIP import drops the capture id and builds the summary
-  from the ZIP's `system-log.json`; the ZIP's `meta.json` has no summary.)
-- `recording-start` answers under both `serverCapture` and `systemLog`: the extension of plugin 8.2.1 reads its slow threshold there.
-- The extension reads `systemLog` in recordings kept by the extension of plugin 8.2.1 (upload form, viewer, Import ZIP, crash
-  recovery) and in the `recording-start` answer of older plugins.
-- An older plugin doesn't read `recording.serverCapture`, so recordings from the current extension get no server data there.
+- `meta.json`: `readMeta` moves `systemLog` to `serverCapture`; the next change saves the new name.
+- `create` takes the capture id from `recording.serverCapture`, else `recording.systemLog` (the file is kept as is).
+- `recording-start` answers under both `serverCapture` and `systemLog` (the 8.2.1 extension reads its slow threshold
+  there); `me.sampleData: {enabled, real}` repeats `options.sample` (both) for that extension's upload form.
+- The extension reads `systemLog` in recordings and start answers from 8.2.1.
+- Plugin 8.2.1 doesn't read `recording.serverCapture`, so recordings from this extension get no server data there.
 
 ## Permissions
 
@@ -82,17 +80,16 @@ README "Who sees what".
 
 | Right | Who |
 |---|---|
-| Upload (`canUpload`): `create`, `video`, `import`, `recording-start` | **Who can upload** (empty = any logged-in user) |
-| View (`canView`) | **Who can view all recordings**, or the uploader when **Uploaders can view and delete…** is on |
-| Delete (`canDelete`) | A viewer in **Who can delete any recording**, or the uploader (same setting as view) |
-| Server data of a recording (`canViewServerData(meta)`) | **Who can view server data**, or its uploader with **Uploaders can view the server data…** |
-| Server data in general (`canViewServerData()`, no uploader rule) | **Who can view server data**: keeping a ZIP's server data on import, capturing all server log lines |
+| Upload (`canUpload`): `create`, `video`, `import` | **Who can upload** (empty = any logged-in user). Only uploads from the browser; the capture and the quick settings don't use it |
+| View and delete (`canView`, `canDelete`) | The recording's uploader (`meta.owner`) |
+| Server data of a recording (`canViewServerData(meta)`) | **Who can capture other users' server data**, or the uploader, so every viewer |
+| Server data in general (`canCaptureServerData()`, no uploader rule) | **Who can capture other users' server data**: keeping a ZIP's server data on import, capturing all other server log lines |
 | Have an app exported (`canExportApp`) | The app's own admins, or **Who can export apps they don't administer** for apps Joget lets them access (see "App export") |
 
-- Server data in `meta.json` (`serverCapture`, `serverData`, `apps`) is removed by `hideServerData` for users who may not
-  see it, in `list`, `meta` and `download&format=html` (whose page carries the meta as JSON). The ZIP keeps only a
+- Server data in `meta.json` (`serverCapture`, `serverData`, `apps`) is removed by `hideServerData` for users without
+  `canViewServerData(meta)`, in `list`, `meta` and `download&format=html` (whose page carries the meta as JSON). The ZIP keeps only a
   fixed list of meta keys (`RecordingZip.META_KEYS`).
-- `import` keeps a ZIP's server data only with `canViewServerData()`, since a ZIP can hold another user's recording.
+- `import` keeps a ZIP's server data only with `canCaptureServerData()`, since a ZIP can hold another user's recording.
   When it drops some, the response (not `meta.json`) has `serverDataSkipped: true`, and the list page says so instead
   of opening the copy.
 - The popup and upload form offer only what `me.options` allows (`quickSettings`, see "App export"); the server
@@ -103,7 +100,7 @@ README "Who sees what".
 One folder per recording under `<wflow>/blackbox/<id>/`:
 
 - always: `meta.json`, `session.json`, `.meta.lock`; `recording.webm` once the video is uploaded;
-- with a server capture: `system-log.json`, `server-info.json`, and (when their settings are on) `traces/`,
+- from the capture: `system-log.json`, `server-info.json`, and (when their settings are on) `traces/`,
   `gauges/` (server load) and `glowroot/` (Glowroot data); a ZIP import puts its traces in `traces/import.jsonl`;
 - `app/` with the exported apps (`apps.json` + `<appId>-<version>.jwa`; `apps.json` also holds the sample's
   `idMap`), exported at stop, or at upload when there is no usable export from the stop.
@@ -132,8 +129,7 @@ uses each profile's `lostMs` for that profile's captures, and runs every `checkM
   then checked and read as a stream (`SessionFile` on `JsonStream`, a small pull parser): the check validates the
   whole document but builds only `recording`, `summary` and `tool`; readers (app URLs, hits, post data) build one
   entry at a time and only the fields they need. Limits: an entry at most 16 MB, URLs kept up to 8 KB, post data up
-  to 64 KB each and 16 MB in all, 200,000 hits. Measured: a 395 MB session.json is stored and read in a 128 MB heap
-  (the code that parsed it whole ran out of memory at 1 GB). At most 2 checks run at once; others wait up to 30 s,
+  to 64 KB each and 16 MB in all, 200,000 hits. Measured: a 395 MB session.json is stored and read in a 128 MB heap. At most 2 checks run at once; others wait up to 30 s,
   then get 503.
 - ZIP import: the ZIP may be at most 2 × **Max file size** + 64 MB; one with more than 1000 traces is refused. Server data other than
   the apps is taken only when the ZIP has `system-log.json`. The rest is streamed too: Glowroot packages, `.jwa` files
@@ -153,9 +149,12 @@ The extension's storage: see "Extension storage and messages".
 The capture collects all server data of a recording: log lines and requests (below), traces, server load, System
 Info and the app export at stop (their own sections).
 
-1. When recording starts, the extension calls `recording-start` with a random UUID (lower case). The server refuses
-   with 403 when **Capture server data** (`captureServerData`, off by default) is off or the user may not upload, and
-   with 409 when the id belongs to another user's capture (the same user may start it again). The extension then adds `X-BlackBox-Id: <id>` to the recorded tab's requests to the Upload URL's server
+1. When recording starts, the extension calls `recording-start` with a random UUID (lower case). Every recording gets
+   a capture: the tab's log lines and requests and the System Info snapshot; traces (`allowCaptureTraces`), server load
+   (`allowCaptureGauges`) and Glowroot data (`allowCaptureGlowrootData`) for admins always, for others by their own
+   settings, all off by default (unset = off); other threads' lines when the recorder asks (see "All server"). The quick settings can turn off `traces`,
+   `gauges` and `glowrootData`. It answers 409 when the id belongs to another user's capture (the same user may start it again). The
+   extension then adds `X-BlackBox-Id: <id>` to the recorded tab's requests to the Upload URL's server
    (`declarativeNetRequest` session rule). Requests made by a service worker carry no tab id, and Joget's PWA service
    worker re-fetches almost every userview request, so those are tagged too; while recording, other tabs on the same
    server can add lines.
@@ -189,7 +188,7 @@ stopped or attached is not marked seen and answers `{state: "stopped", reason}` 
 `stopped`); the recorder then stops through the normal stop with reason `server-stopped: <reason>`. A 401 (logged
 out) stops the pings and shows "Server capture ended: logged out"; the recording goes on. Other errors (offline, 5xx)
 are retried on the next tick. Chrome may run a hidden page's timers only about once a minute after 5 minutes, which
-is why `lostMs` is 3 minutes. Pings keep the Joget session alive. Plugins without `pingMs` in their answer get no pings.
+is why `lostMs` is 3 minutes. Pings keep the Joget session alive. An answer without `pingMs` means no pings.
 
 ### Lost browser
 
@@ -203,7 +202,7 @@ store: `ServerCapture.checkDirs` lists the folders by path, `<wflow>/blackbox` w
 `pending/`. It doesn't switch the thread's profile (`HostManager.setCurrentProfile` is guarded in cloud installs). `ServerCaptureStore.stopIfLost` then, under the capture's
 lock, stops a capture with no `stoppedAt` whose `lastSeenAt` is older than `lostMs`: `stoppedAt = lastSeenAt`,
 `stopReason = "browser-lost"`, one info line in the log. The lock and the `stoppedAt` check make it happen once, on
-one node. A capture with no `lastSeenAt` (never pinged: an older extension) is never stopped this way. Each node then
+one node. A capture with no `lastSeenAt` (never pinged) is never stopped this way. Each node then
 closes its own copy of every stopped capture, so it stops writing there too after a normal stop sent to another node.
 Gauges (`GaugeSampler`) and the Glowroot package (`GlowrootPackager`) read `stoppedAt` from the meta and follow it as
 for a normal stop. A later ping answers `{state: "stopped", reason: "browser-lost"}`.
@@ -214,8 +213,8 @@ When the extension recovers a crashed recording (`recoverPartials`, report.js), 
 body, so no app export) for the partial meta's capture with `stoppedAt = lastSavedAt`, the last crash-safety save.
 `ServerCaptureStore.stop(id, owner, clientStoppedAt, lostMs)` takes that time only between `startedAt` and
 `lastSeenAt + lostMs` (both inclusive; with no `lastSeenAt`, between `startedAt` and now); otherwise it uses
-`lastSeenAt`, or now when there is none. A stop without `stoppedAt` (the recorder's normal stop, older extensions)
-uses now, as before. A capture that already has `stoppedAt` (for example stopped as `browser-lost`) keeps it; the
+`lastSeenAt`, or now when there is none. A stop without `stoppedAt` (the recorder's normal stop)
+uses now. A capture that already has `stoppedAt` (for example stopped as `browser-lost`) keeps it; the
 owner's stop still answers 200. The extension doesn't retry a stop that fails (offline, logged out): the lost-browser
 check above closes the capture. Closing the recorder window sends a plain stop first, so that stop's time wins there.
 
@@ -238,24 +237,23 @@ counted from the recorder's own start time; a hidden window's timer may run late
 `checkLost` also calls `ServerCaptureStore.stopIfOverLimit`, which, under the lock, stops a capture with no `stoppedAt`
 that is past `maxUntil + 2 min` (`LIMIT_GRACE_MS`): `stoppedAt = maxUntil`, `stopReason = "time-limit"`, one info line
 in the log, pings or not. The lost-browser check runs first, so a capture that also stopped pinging keeps
-`browser-lost` at its last ping. Captures without `maxUntil` (started by an older plugin) get no server backup.
+`browser-lost` at its last ping.
 
-Without server capture: the 403 answers of `recording-start` (**Capture server data** off, or the user may not upload)
-are `BlackBoxPlugin.captureOff(status, message, maxRecordingMs)`, the usual error body plus
-`serverCapture: {maxRecordingMs}` (no `maxSizeMb`: no size guard), and `startServerCapture` in `background.js` passes it
-on with `status: "off"`. When the answer has no `maxRecordingMs` (no Upload URL, no host access, 401, network error,
-an older plugin), the recorder uses its built-in `DEFAULT_LIMIT` of 30 minutes, the setting's default. There is no
-server backup then: nothing is captured on the server. A capture that never got a ping (no `lastSeenAt`, an extension without
-the heartbeat) is never stopped as `browser-lost`; only this backup ends it (`NoHeartbeatTest`).
+Without a capture (no Upload URL, no host access, 401, network error, an error status): `startServerCapture` in
+`background.js` keeps `status: "off"` with the reason, and the recorder uses the answer's `serverCapture.maxRecordingMs`
+when there is one, else its `DEFAULT_LIMIT` of 30 minutes. There is no server backup then. A capture that never got a
+ping is never stopped as `browser-lost`; only this backup ends it (`NoHeartbeatTest`).
 
 **Size guard:** `recording-start` also answers `maxSizeMb` (`maxSizeMb()`, the upload limit; `withLiveness(started,
 maxRecordingMs, maxSizeMb)`). The recorder creates its `MediaRecorder` with `videoBitsPerSecond: 1_500_000` (about 340 MB
 for the default 30 minutes), adds up the chunk sizes in `ondataavailable`, and when `sizeLimitReached` (video bytes at
 90% of `maxSizeMb`) sends the background `stop` with reason `size-limit`, the same path as `time-limit`. No
-`maxSizeMb` in the answer (server capture off, older plugin): no size guard. The server has no part in it.
+`maxSizeMb` in the answer (no capture): no size guard. The server has no part in it.
 
-**All server** (`captureAllServerLogs`, stored as `allServer` in the capture's meta, only for recorders allowed by
-**Who can view server data**, `canViewServerData()` without the uploader rule): while such a capture is open on a node, the appender also writes every other thread's events
+**All server** (`recording-start` with `allServer=true`, the popup's **All server log lines**; only for recorders in
+**Who can capture other users' server data**, `canCaptureServerData()` without the uploader rule; stored as `allServer` in the
+capture's meta): log lines not from the recording. While such a
+capture is open on a node, the appender also writes every other thread's events
 to it with `"other": true` (no `req`), including tagged requests of other recordings. Nodes write it once the capture
 is open there (the starting node, and any node that served one of its requests). `summary` counts those lines as
 `otherEntries`, not as entries or errors.
@@ -304,7 +302,7 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
 - **What is kept:** the tagged traces, the aggregates and gauges of all traffic on that node during the recording
   (plus one rollup bucket on each side, which Glowroot's charts show), and Glowroot's lookup tables. Aggregates and
   gauges can't be split per user.
-- **Setting:** **Copy Glowroot data** (`captureGlowrootData`) is off by default. Only Glowroot 0.14 is supported; other
+- **Setting:** **Allow capturing Glowroot data** (`allowCaptureGlowrootData`) is off by default. Only Glowroot 0.14 is supported; other
   versions fail with the reason.
 - **When:** 30 s after the end of the stop's minute (so 30–90 s after the stop, checked every 10 s; by then Glowroot
   has written that minute's aggregates), each node
@@ -368,7 +366,11 @@ Sections:
 - **Host**: hostname, node, processors, total and free RAM (`TotalPhysicalMemorySize`, `FreePhysicalMemorySize`: the
   OS's free memory, page cache not counted), OS. **Process**: id, start time, uptime.
 - **Java**: version, vendor, VM, heap used/committed/max, every JVM argument (one per line).
-- **Joget**: version, edition, application server, time zone, Glowroot address and version.
+- **Joget**: version, edition, application server, time zone (the JVM's zone id as set, with its offset:
+  `GMT (UTC+0)`), Glowroot address and version.
+
+Every time in these sections (process start, recent changes, plugin jar dates) is in UTC with a ` UTC` label, whatever
+the server's time zone; so are **Uploaded** and **First uploaded** (`BB.fmtDate`, and its copy in `export.js`).
 - **Recent changes** (first in the Info tab): app versions by `dateModified` (`AppDefinitionDao.findByVersion`, newest
   50; saving a form, list or userview updates it), top-level files of the wflow folder modified
   in the period (**Recent changes period**, `recentChangesDays`: default 7, at most 365) (not logs, not `servers.json` / `serversIP.properties` / `app_presence.json`, which Joget rewrites), and
@@ -425,7 +427,7 @@ Sections:
    the other copy holds (`OverlappingFileLockException`) is waited for up to 10 s, then the change fails (logged)
    instead of being saved unlocked. Only where the file system has no locks does the JVM lock alone hold.
    An `exporting` state is lost (`ExportJobs.lost`) when it is from this node and older than the JVM (a restart or
-   crash lost its job; no `node`: older versions, counted as this node's), or older than 2 h (`MAX_EXPORT_MS`) on
+   crash lost its job; no `node`: counted as this node's), or older than 2 h (`MAX_EXPORT_MS`) on
    any node (its job died without saving its end). Its readers (`app-export`, `recording-stop`, `create`, the
    recording's `meta`) save it as `failed` with `reason: lost`, checked again under the meta lock
    (`ServerCaptureStore.markExportLost`, `RecordingStore.modifyMeta`) so a job's end saved meanwhile wins; a late end
@@ -449,11 +451,14 @@ Sections:
    export as `failed` (its capture's export lost or its pending folder gone; a capture whose meta can't be read just
    now is asked again next time), and the page stops asking after 30 min.
 
-`me.options` (`quickSettings`) says what this user may get, for the popup and the upload form alike: `serverCapture`,
-`apps` (upload rights and `Access.mayExportApps`: admin, an app admin of some app, or **Who can export apps they
-don't administer**), `sample` (`apps` + **Allow capturing form data**), `real` (Mask data: the same as `sample`), `allServer` and `glowrootData`. `me.sampleData: {enabled, real}` repeats `sample` and `real`
-for older extensions. Apart from Mask data, a choice can only turn a setting off: `recording-start` takes
-`allServer=false` and `glowrootData=false`.
+`me.options` (`quickSettings`) says what this user may get, for the popup and the upload form alike:
+`serverCapture` (always true), `apps` (**Allow exporting the apps used…** + `Access.mayExportApps`: admin, an app admin
+of some app, or **Who can export apps they don't administer**), `sample` (Capture apps data: `apps` + **Allow capturing apps data**), `mask`
+(Mask data: `sample` + **Allow masking apps data**), `allServer` (`canCaptureServerData()`), `gauges` (`allowCaptureGauges`), `traces`
+(`allowCaptureTraces`) and `glowrootData` (`allowCaptureGlowrootData`); for these three and the app export, apps data and
+mask settings `Access.allows`: admins always, others when the setting is ticked (the export at stop and at upload checks the same). None needs the upload right. `recording-start`
+takes `gauges=false`, `traces=false` and `glowrootData=false` (each turns its setting off) and `allServer=true` (opt-in;
+every box in `quick.js` starts unticked).
 
 The export (`exportApps`) runs `AppExport`: `hits` reads `session.json` (each request with its page:
 a document's own URL, else its Referer; failed or 4xx/5xx = a problem; console errors = a problem on the page shown
@@ -478,19 +483,20 @@ are never read):
   `ROLE_ADMIN` (usernames) and `ROLE_ADMIN_GROUP` (group ids, the user's groups from `directoryManager`) in
   `app_src/<appId>/app.properties`, split on `;` or `,` (`AppAdmins`; read directly, since
   `AppDevUtil.getAppDevProperties` creates the folder when missing);
-- users allowed by **Who can export apps they don't administer** (`appExportPermission`, empty = nobody), only for apps
+- users allowed by **Who can export apps they don't administer** (`canExportOtherApps`, empty = nobody), only for apps
   Joget lets them access: one of the app's userviews authorizes them by Joget's own check
   (`UserviewService.getUserviewSetting(...).isIsAuthorize()`: `permission` and `permission_rules`). An app with no
   userview is never theirs.
 
-**Uploaders can view the server data…** never grants an export; it only lets owners see what was exported.
+Seeing a recording's server data never grants an export; it only shows what was exported.
 
 `viewer.js` repeats `appOf` to draw the Apps lane (segments from the same page signals, flips under 0.5 s merged), the
 App filter and the App tab's problem lists, so the lane works for local recordings too.
 
-### Sample data
+### Apps data (`SampleData`)
 
-`recording-stop` and `create` take `sampleData=none|masked|real` (missing: masked). `AppExport.save` calls an `AfterExport` hook per saved `.jwa`: `SampleData.build` with one
+`recording-stop` and `create` take `sampleData=none|masked|real` (missing: real; none without **Allow capturing apps
+data**, admins excepted). `masked` also gives every record a new id (`IdMap(keep=false)`); `real` keeps the ids. `AppExport.save` calls an `AfterExport` hook per saved `.jwa`: `SampleData.build` with one
 `Masker` (random HMAC key per export, so fakes are stable within a recording and differ between them) and one `IdMap` for all apps of
 the recording, then `SampleData.addTo` rewrites the `.jwa` with `data/<table>.json` (`FormUtil.formRowSetToJson(rows,
 true)`, the format `AppService.importFormData` reads) and `app_formuploads/<table>/<newId>/<file>`. Data comes from
@@ -552,7 +558,7 @@ for in Settings or on the first upload.
 | `actions.js` | Upload (with its form; `uploadNow` without it, `uploadMany` for a batch), Move to folder, Download ZIP and Delete of one recording; links in messages |
 | `replay.js` | Replay page (`viewer.html?id=` or `?disk=`): loads the recording, its status bar, ⚠ Upload and the fix box, Move to folder / Download ZIP / Delete, Older / Newer; with `upload=server` it uploads and opens the server's copy |
 | `report.js` | Builds `session.json`; turns a recording interrupted by a crash or a closed recorder into a normal one (`recovered`, stop reason "interrupted") and stops its server capture at the last save |
-| `quick.js` | Quick settings (`chrome.storage.local` `quick`): `apps`, `sample`, `real` are the per-recording app export choices (`recording.options`, the export parameters); `allServer` and `glowrootData` go to `recording-start` |
+| `quick.js` | Quick settings (`chrome.storage.local` `quick`): `apps`, `sample`, `real` are the per-recording app export choices (`recording.options`, the export parameters); `allServer`, `gauges`, `traces` and `glowrootData` go to `recording-start` |
 | `store.js` | Row list (kept, on disk: newest 50, upload history), badges, loading a recording, the linked folder |
 | `server.js` | Calls the Upload endpoint with the browser's cookies; Upload URL and Recording page URL, host access, 15 s timeout on GETs |
 | `zip.js` | Reads and writes recording ZIPs (no library: `CompressionStream` / `DecompressionStream`; top-level files only, no ZIP64) |
@@ -611,7 +617,7 @@ with `recovered: true`, then sends `recording-stop` with the last save time for 
 stop time").
 
 The recorder is a window, not an offscreen document: a `chooseDesktopMedia` stream id can only be opened by the page
-that showed the picker (tested early in the project).
+that showed the picker.
 
 **Sound.** Page sound comes from `chrome.tabCapture` on the started tab in every mode, because the picker shares
 system audio only for a screen on Windows and ChromeOS (Linux and macOS get none, and windows never have sound).

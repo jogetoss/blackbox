@@ -126,9 +126,9 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                         .put("user", new JSONObject().put("username", user.getUsername()).put("name", fullName(user)))
                         .put("canUpload", access.canUpload())
                         .put("maxSizeMb", maxSizeMb())
-                        .put("sampleData", new JSONObject() // older extensions' upload form: same rules as options
+                        .put("sampleData", new JSONObject() // the 8.2.1 extension's upload form: real values allowed wherever apps data is
                                 .put("enabled", options.getBoolean("sample"))
-                                .put("real", options.getBoolean("real")))
+                                .put("real", options.getBoolean("sample")))
                         .put("options", options));
             } else if ("list".equals(action) && !post) {
                 list(response, store, access);
@@ -320,11 +320,11 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             }
         } else if ("exporting".equals(done)) {
             deliverStopExport(captureId); // in case it ended just now
-        } else if (!"off".equals(done) && !"false".equals(getPropertyString("includeAppExport")) && !"false".equals(request.getParameter("apps"))) {
+        } else if (!"off".equals(done) && access.allows("allowAppExport", true) && !"false".equals(request.getParameter("apps"))) {
             // No export at stop (no server capture, or the stop's export failed): the apps as they are now, in the
             // background; the recording lists them when it ends
             java.util.concurrent.Callable<JSONArray> job = exportJob(store.dir(recId), store.file(recId, RecordingStore.SESSION),
-                    store.file(recId, RecordingStore.SYSTEM_LOG), sampleMode(request), recId, access);
+                    store.file(recId, RecordingStore.SYSTEM_LOG), sampleMode(request, access), recId, access);
             meta.put("appExport", ExportJobs.exporting());
             store.updateMeta(recId, new JSONObject().put("appExport", meta.get("appExport")));
             ExportJobs.submit(() -> finishUploadExport(recId, job), () -> {
@@ -342,16 +342,17 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     }
 
     /**
-     * Sample data for this export, or null for none. The sampleData parameter (none, masked, real) picks within what
-     * the settings allow. Rows only go into apps the user may have exported (Access.canExportApp, per app).
+     * Apps data for this export, or null for none: needs "Allow capturing apps data" (admins always). The sampleData
+     * parameter picks none, masked (the popup's Mask data: values, record ids and process data) or real (the default:
+     * real values and original ids; always-masked columns stay masked). Rows only go into apps the user may have
+     * exported (Access.canExportApp, per app).
      */
-    private SampleData.Mode sampleMode(HttpServletRequest request) {
+    private SampleData.Mode sampleMode(HttpServletRequest request, Access access) {
         String asked = request.getParameter("sampleData");
-        if ("false".equals(getPropertyString("sampleData")) || "none".equals(asked)) {
+        if (!access.allows("allowCaptureAppsData", false) || "none".equals(asked)) {
             return null;
         }
-        boolean real = "real".equals(asked);
-        return real ? SampleData.Mode.REAL : SampleData.Mode.MASKED;
+        return "masked".equals(asked) ? SampleData.Mode.MASKED : SampleData.Mode.REAL;
     }
 
     /**
@@ -393,7 +394,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             candidates = SampleData.candidateIds(texts);
         }
         java.util.Set<String> ids0 = candidates;
-        boolean keepIds = "true".equals(getPropertyString("sampleKeepIds"));
+        boolean keepIds = sample != SampleData.Mode.MASKED; // masked data gets new record ids too
         String sensitive = getPropertyString("sensitiveColumns");
         int newest = (int) Math.min(positive("sampleRows", 20), 500);
         String max = getPropertyString("maxApps");
@@ -552,7 +553,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                     out.write(buf, 0, n);
                 }
             }
-            JSONObject meta = RecordingZip.importZip(store, tmp, max, access.canViewServerData(),
+            JSONObject meta = RecordingZip.importZip(store, tmp, max, access.canCaptureServerData(),
                     access.user.getUsername(), fullName(access.user));
             if (meta.has(RecordingStore.CAPTURE)) {
                 // the list's server data tags (traces, load, info, Glowroot data), as after an upload
@@ -567,35 +568,40 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
     }
 
+    /**
+     * A checkbox setting: on only when saved as "true" (an unticked box saves ""). Never saved (not in the settings at
+     * all): dflt.
+     */
+    boolean flag(String name, boolean dflt) {
+        return flagValue(getProperty(name), dflt);
+    }
+
+    static boolean flagValue(Object saved, boolean dflt) {
+        return saved == null ? dflt : "true".equals(saved.toString());
+    }
+
     // ---------- server capture ----------
 
     /** The extension starts capturing when a recording starts; id is its random UUID, sent on the tab's requests. */
     private void startServerCapture(HttpServletRequest request, HttpServletResponse response, Access access, String id)
             throws IOException, JSONException {
         long maxRecordingMs = maxRecordingMs(getPropertyString("maxRecordingMinutes"));
-        if (!"true".equals(getPropertyString("captureServerData"))) {
-            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-            json(response, captureOff(HttpServletResponse.SC_FORBIDDEN, "Server data capture is turned off in the BlackBox plugin settings.", maxRecordingMs));
-            return;
-        }
-        if (!access.canUpload()) {
-            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
-            json(response, captureOff(HttpServletResponse.SC_FORBIDDEN, "You are not allowed to upload recordings.", maxRecordingMs));
-            return;
-        }
+        // Every recording gets a capture: the tab's log lines and System Info; the other parts by their own settings.
+        // Not tied to the upload permission, which is checked only when the browser uploads (create, video, import)
         if (!ServerCaptureStore.isValidId(id)) {
             error(response, HttpServletResponse.SC_BAD_REQUEST, "Invalid server capture id.");
             return;
         }
         long maxBytes = positive("systemLogMaxMb", DEFAULT_SYSTEM_LOG_MB) * 1024 * 1024;
         long keepMs = positive("serverDataKeepDays", DEFAULT_KEEP_DAYS) * 24 * 3600 * 1000;
-        boolean traces = !"false".equals(getPropertyString("captureTraces"));
-        boolean gauges = !"false".equals(getPropertyString("captureGauges"));
-        // The popup's quick settings can only turn these off (glowrootData=false, allServer=false)
-        boolean glowrootData = "true".equals(getPropertyString("captureGlowrootData")) && !"false".equals(request.getParameter("glowrootData"));
-        // Other users' log lines: only for recorders who may see every recording's server data
-        boolean allServer = "true".equals(getPropertyString("captureAllServerLogs")) && access.canViewServerData()
-                && !"false".equals(request.getParameter("allServer"));
+        // The popup's quick settings can turn each part off for this recording (traces=false, gauges=false,
+        // glowrootData=false)
+        boolean traces = access.mayCapture("allowCaptureTraces") && !"false".equals(request.getParameter("traces"));
+        boolean gauges = access.mayCapture("allowCaptureGauges") && !"false".equals(request.getParameter("gauges"));
+        boolean glowrootData = access.mayCapture("allowCaptureGlowrootData") && !"false".equals(request.getParameter("glowrootData"));
+        // Log lines not from this recording: the recorder's choice (allServer=true), only for users with
+        // "Who can capture server data", since the lines hold other users' data
+        boolean allServer = access.canCaptureServerData() && "true".equals(request.getParameter("allServer"));
         if (!ServerCapture.store().start(id, access.user.getUsername(), maxBytes, keepMs, traces, getPropertyString("glowrootUrl"), gauges,
                 glowrootData, allServer, maxRecordingMs)) {
             error(response, HttpServletResponse.SC_CONFLICT, "This server capture id is already in use.");
@@ -609,15 +615,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         withLiveness(started, maxRecordingMs, maxSizeMb());
         // RecordingStore.LEGACY_CAPTURE: the extension of plugin 8.2.1 and older reads the slow threshold from there
         json(response, new JSONObject().put(RecordingStore.CAPTURE, started).put(RecordingStore.LEGACY_CAPTURE, started));
-    }
-
-    /**
-     * Error body of a start without server capture (turned off, or the user may not upload), with the hard limit: the
-     * recording goes on without server data but still stops itself at maxRecordingMs. No maxSizeMb: no size guard.
-     */
-    static JSONObject captureOff(int status, String message, long maxRecordingMs) throws JSONException {
-        return new JSONObject().put("error", new JSONObject().put("code", String.valueOf(status)).put("message", message))
-                .put(RecordingStore.CAPTURE, new JSONObject().put("maxRecordingMs", maxRecordingMs));
     }
 
     /** The recorder's heartbeat timing for the start response, so the extension needs no constants of its own. */
@@ -743,7 +740,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         if (pending.has("appExport") || pending.has("recording")) {
             return pending.optJSONObject("appExport") != null ? pending.getJSONObject("appExport") : new JSONObject().put("state", "off");
         }
-        boolean off = "false".equals(getPropertyString("includeAppExport")) || "false".equals(request.getParameter("apps"));
+        boolean off = !access.allows("allowAppExport", true) || "false".equals(request.getParameter("apps"));
         Path dir = logs.dir(id);
         Path session = dir.resolve("stop-session.json");
         Path systemLog = dir.resolve("stop-system-log.json");
@@ -768,7 +765,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 state = new JSONObject().put("state", "off");
                 return state;
             }
-            SampleData.Mode sample = sampleMode(request);
+            SampleData.Mode sample = sampleMode(request, access);
             java.util.concurrent.Callable<JSONArray> job = exportJob(dir, session, systemLog, sample, id, access);
             String mode = sample == null ? "none" : sample.name().toLowerCase();
             queued = true;
@@ -1019,20 +1016,22 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     }
 
     /**
-     * What the popup's quick settings may offer this user: each one can only turn a plugin setting off for one
-     * recording. apps: also needs Access.mayExportApps (the export itself then checks each app).
+     * What the popup's quick settings may offer this user; every box starts unticked and asks for its part. apps also
+     * needs Access.mayExportApps (the export then checks each app); sample = Capture apps data; mask = Mask data;
+     * allServer needs canCaptureServerData. None needs the upload permission, which applies only to uploads.
      */
     private JSONObject quickSettings(Access access, User user) throws JSONException {
-        boolean capture = "true".equals(getPropertyString("captureServerData")) && access.canUpload();
-        boolean apps = !"false".equals(getPropertyString("includeAppExport")) && access.canUpload() && access.mayExportApps();
-        boolean sample = apps && !"false".equals(getPropertyString("sampleData"));
+        boolean apps = access.allows("allowAppExport", true) && access.mayExportApps();
+        boolean sample = apps && access.allows("allowCaptureAppsData", false);
         return new JSONObject()
-                .put("serverCapture", capture)
+                .put("serverCapture", true) // every recording is captured
                 .put("apps", apps)
                 .put("sample", sample)
-                .put("real", sample) // Mask data: offered wherever sample data is
-                .put("allServer", capture && "true".equals(getPropertyString("captureAllServerLogs")) && access.canViewServerData())
-                .put("glowrootData", capture && "true".equals(getPropertyString("captureGlowrootData")));
+                .put("mask", sample && access.allows("allowMaskData", false)) // Mask data: admins always, others when allowed
+                .put("allServer", access.canCaptureServerData()) // opt-in per recording (allServer=true)
+                .put("gauges", access.mayCapture("allowCaptureGauges"))
+                .put("traces", access.mayCapture("allowCaptureTraces"))
+                .put("glowrootData", access.mayCapture("allowCaptureGlowrootData"));
     }
 
     // ---------- Glowroot traces ----------
@@ -1319,35 +1318,44 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         final HttpServletRequest request;
         final User user;
         final boolean admin;
-        final boolean ownerAccess;
 
         Access(HttpServletRequest request, User user, boolean admin) {
             this.request = request;
             this.user = user;
             this.admin = admin;
-            this.ownerAccess = !"false".equals(getPropertyString("ownerAccess"));
+        }
+
+        /** Server load, Glowroot traces, Glowroot data: admins always; other users when the setting is ticked. */
+        boolean mayCapture(String setting) {
+            return allows(setting, false);
+        }
+
+        /** A setting that switches a feature on for non-admins (dflt: never saved); admins always have it. */
+        boolean allows(String setting, boolean dflt) {
+            return admin || flag(setting, dflt);
         }
 
         boolean canUpload() {
-            return admin || allowed("uploadPermission", true);
+            return admin || allowed("canUpload", true);
         }
 
+        /** View, and everything an owner does with their recording (delete). Admins: every recording. */
         boolean canView(JSONObject meta) {
-            return admin || (ownerAccess && isOwner(meta)) || allowed("viewPermission", false);
+            return admin || isOwner(meta);
         }
 
-        /** Server data in general: imports, and recordings without an owner check. */
-        boolean canViewServerData() {
-            return admin || allowed("serverDataPermission", false);
+        /** "Who can capture server data": all server log lines, and keeping a ZIP's server data on import. */
+        boolean canCaptureServerData() {
+            return admin || allowed("canCaptureServerData", false);
         }
 
-        /** Server data of one recording: also its uploader, when the setting allows it (default: no). */
+        /** Server data of one recording: also its uploader, who chose to record it. */
         boolean canViewServerData(JSONObject meta) {
-            return canViewServerData() || (meta != null && "true".equals(getPropertyString("ownServerData")) && isOwner(meta));
+            return canCaptureServerData() || (meta != null && isOwner(meta));
         }
 
         boolean canDelete(JSONObject meta) {
-            return admin || (ownerAccess && isOwner(meta)) || allowed("deletePermission", false);
+            return admin || isOwner(meta);
         }
 
         /**
@@ -1360,12 +1368,12 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                     user.getUsername(), groupIds())) {
                 return true;
             }
-            return allowed("appExportPermission", false) && canAccessApp(def);
+            return allowed("canExportOtherApps", false) && canAccessApp(def);
         }
 
         /** Before the apps are known (the popup): could this user have any app exported? */
         boolean mayExportApps() {
-            return admin || allowed("appExportPermission", false) || AppAdmins.anyAdmits(appSrc(), user.getUsername(), groupIds());
+            return admin || allowed("canExportOtherApps", false) || AppAdmins.anyAdmits(appSrc(), user.getUsername(), groupIds());
         }
 
         /** Joget's own userview check (permission and permission_rules) for the current user, on each userview. */
