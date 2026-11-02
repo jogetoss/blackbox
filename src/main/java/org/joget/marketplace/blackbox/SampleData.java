@@ -425,7 +425,7 @@ final class SampleData {
                 ZipOutputStream out = new ZipOutputStream(os)) {
             Set<String> written = new HashSet<>();
             for (Table t : tables) {
-                put(out, written, "data/" + t.name + ".json", FormUtil.formRowSetToJson(t.rows, true).getBytes(StandardCharsets.UTF_8));
+                put(out, written, "data/" + t.name + ".json", toJson(t.rows).getBytes(StandardCharsets.UTF_8));
                 for (Map.Entry<String, byte[]> f : t.files.entrySet()) {
                     put(out, written, f.getKey(), f.getValue());
                 }
@@ -451,6 +451,35 @@ final class SampleData {
             }
         }
         Files.move(tmp, jwa, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    /**
+     * The rows as Joget's own export writes data/&lt;table&gt;.json (FormUtil.formRowSetToJson(rows, true)): the row's
+     * properties, with dates (dateCreated, dateModified are properties too) as "yyyy-MM-dd HH:mm:ss" in the server's
+     * time zone, which is what FormUtil.jsonToFormRowSet reads on import. Not Joget's method itself: it (and
+     * FormRow.getProperty for a Date) formats dates with the current request's locale, and the export runs on a
+     * background thread after that request ended, so it threw and returned "[]" (no rows in the .jwa).
+     */
+    static String toJson(FormRowSet rows) throws IOException {
+        java.text.SimpleDateFormat date = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        JSONArray out = new JSONArray();
+        try {
+            for (FormRow r : rows) {
+                JSONObject o = new JSONObject();
+                for (Object p : r.getCustomProperties().keySet()) {
+                    String key = p != null ? p.toString().trim() : "";
+                    if (!key.isEmpty()) {
+                        // FormRow.getProperty formats a Date value with the request's locale too
+                        Object v = r.get(key);
+                        o.put(key, v instanceof java.util.Date ? date.format((java.util.Date) v) : r.getProperty(key));
+                    }
+                }
+                out.put(o);
+            }
+        } catch (JSONException e) {
+            throw new IOException("Could not write the apps data rows", e);
+        }
+        return out.toString();
     }
 
     /** A real uploaded file into the .jwa, copied as a stream (it may be several MB). */

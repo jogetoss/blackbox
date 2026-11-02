@@ -286,6 +286,45 @@ public class SampleDataTest {
     }
 
     @Test
+    public void rowsWithDatesAreWrittenAfterTheRequestEnded() throws Exception {
+        Path jwa = Files.createTempFile("app", ".jwa");
+        try (ZipOutputStream z = new ZipOutputStream(Files.newOutputStream(jwa))) {
+            z.putNextEntry(new ZipEntry("appDefinition.xml"));
+            z.write("<appDefinition/>".getBytes(StandardCharsets.UTF_8));
+            z.closeEntry();
+        }
+        SampleData.Table t = new SampleData.Table("leave");
+        FormRow row = new FormRow();
+        row.setId(P1);
+        row.setProperty("name", "Siti");
+        java.util.Date created = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse("2026-07-10 14:56:15");
+        row.setDateCreated(created);
+        row.setDateModified(created);
+        t.rows.add(row);
+        // The export thread: the locale comes from a request that has ended (Tomcat: "The request object has been recycled")
+        org.springframework.context.i18n.LocaleContextHolder.setLocaleContext(() -> {
+            throw new IllegalStateException("The request object has been recycled and is no longer associated with this facade");
+        });
+        try {
+            SampleData.addTo(jwa, Collections.singletonList(t));
+        } finally {
+            org.springframework.context.i18n.LocaleContextHolder.resetLocaleContext();
+        }
+        String json;
+        try (ZipFile z = new ZipFile(jwa.toFile())) {
+            json = new String(readAll(z, z.getEntry("data/leave.json")), StandardCharsets.UTF_8);
+        }
+        JSONObject written = new JSONArray(json).getJSONObject(0);
+        assertEquals(P1, written.getString("id"));
+        assertEquals("2026-07-10 14:56:15", written.getString("dateCreated"));
+        assertEquals("Siti", written.getString("name"));
+        // Joget's import (FormUtil.jsonToFormRowSet) reads the dates with this pattern
+        java.text.SimpleDateFormat importFormat = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+        assertEquals(created, importFormat.parse(written.getString("dateCreated")));
+        assertEquals(created, importFormat.parse(written.getString("dateModified")));
+    }
+
+    @Test
     public void realFilesAreStreamedIntoTheJwa() throws Exception {
         Path jwa = Files.createTempFile("app", ".jwa");
         try (ZipOutputStream z = new ZipOutputStream(Files.newOutputStream(jwa))) {
