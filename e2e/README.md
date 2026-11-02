@@ -30,6 +30,7 @@ server data**.
 | `BB_INCOGNITO_USER` | `cat` | The user `incognito.spec.js` logs in as in the incognito window (password = user name) |
 | `BB_EXTENSION` | `../chrome-extension` | The extension to load, e.g. an older release to test this plugin with it |
 | `BB_CONTAINER`, `BB_WFLOW` | `j8213`, `/opt/wflow` | Where `legacy-names.spec.js` edits a `meta.json` (`docker exec`) |
+| `BB_DB_CONTAINER`, `BB_DB` | `mariadb`, `jw8` | Where `export-import.spec.js` reads iService's versions and rows (`docker exec`) |
 
 ## How it works
 
@@ -85,5 +86,13 @@ server data**.
   the file that was there after; about 7 minutes. Uploads are deleted.
 - `tests/upload-form.spec.js`: the apps data and Mask data choices on the upload form, the `sampleData` parameter it sends, and the
   App data the server builds.
+
+- `tests/export-import.spec.js`: for apps without data, with real data and with masked data: the server's Download
+  ZIP (recording, server data, `app/apps.json`, the `.jwa`, same as the App tab's **Download .jwa**), the `.jwa`'s
+  `data/` rows (real: original ids; masked: the idMap's new ids, `userN`), Import ZIP on the server, and the `.jwa`
+  imported over iService through App Center's import form (a new iService version, its rows in the tables). The test
+  deletes the version and the masked rows afterwards. Also Download HTML opened from disk with Joget blocked (App tab),
+  the standalone viewer (`dist/blackbox-viewer.html`) with the server ZIP and with `session.json`, Import ZIP in the
+  extension, and the extension's Download ZIP imported on the server. About 6 minutes (each ZIP waits for Glowroot data).
 
 A failed test keeps a trace in `test-results/` (`npx playwright show-trace <trace.zip>`).
