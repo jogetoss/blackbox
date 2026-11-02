@@ -265,7 +265,8 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
 
 - **Which requests:** only those Glowroot keeps a trace for, by its own settings: slower than its slow threshold
   (default 2000 ms, or a lower per-transaction override), or failed (exception, 5xx, and 4xx when its servlet plugin
-  says so). BlackBox reads these settings and never changes them.
+  says so). BlackBox reads these settings and never changes them. Glowroot lists failed requests' traces only under
+  `/backend/error/points` (`/backend/transaction/points` leaves out fast ones), so the lookup reads both.
 - **When:** each node collects the traces of the requests it served, as soon as each request ends, not at stop or
   upload. Glowroot stores a trace just after the request, so the node waits 2, 5, 15, 30 and 60 seconds between tries
   (about 2, 7, 22, 52 and 112 s after the request), then every minute, for up to 10 minutes. A request still running

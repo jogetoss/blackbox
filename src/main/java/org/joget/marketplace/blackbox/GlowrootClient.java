@@ -13,7 +13,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import org.json.JSONArray;
@@ -178,21 +180,30 @@ final class GlowrootClient {
         }
     }
 
-    /** The Web traces captured (finished) between from and to, epoch ms. A point's time is the request's end. */
+    /**
+     * The Web traces captured (finished) between from and to, epoch ms. A point's time is the request's end. Glowroot
+     * lists a trace with an error only under error/points (transaction/points leaves out fast failed requests), so
+     * both are read; a trace in both counts once.
+     */
     List<Point> points(long from, long to) throws IOException {
-        JSONObject points = getJson("/backend/transaction/points?agent-rollup-id=&transaction-type=Web&from=" + from + "&to=" + to
-                + "&duration-millis-low=0&limit=1000");
-        List<Point> result = new ArrayList<>();
+        String query = "?agent-rollup-id=&transaction-type=Web&from=" + from + "&to=" + to + "&duration-millis-low=0&limit=1000";
+        Map<String, Point> byId = new LinkedHashMap<>();
+        addPoints(getJson("/backend/transaction/points" + query), byId);
+        addPoints(getJson("/backend/error/points" + query), byId);
+        return new ArrayList<>(byId.values());
+    }
+
+    /** The points of a transaction/points or error/points answer ([endMs, durationMs, ?, traceId]), by trace id. */
+    static void addPoints(JSONObject answer, Map<String, Point> byId) {
         for (String kind : new String[]{"normalPoints", "errorPoints", "partialPoints"}) {
-            JSONArray list = points.optJSONArray(kind);
+            JSONArray list = answer.optJSONArray(kind);
             for (int i = 0; list != null && i < list.length(); i++) {
                 JSONArray p = list.optJSONArray(i);
                 if (p != null && p.length() >= 4) {
-                    result.add(new Point(p.optString(3), p.optLong(0), Math.round(p.optDouble(1))));
+                    byId.putIfAbsent(p.optString(3), new Point(p.optString(3), p.optLong(0), Math.round(p.optDouble(1))));
                 }
             }
         }
-        return result;
     }
 
     JSONObject header(String traceId) throws IOException {
