@@ -199,6 +199,12 @@ final class ServerCapture {
         return prev;
     }
 
+    /** Whether the current request (begin) has logged an ERROR or FATAL line so far. Call before {@link #end}. */
+    static boolean loggedError() {
+        Request r = CURRENT.get();
+        return r != null && r.loggedError;
+    }
+
     static void end(Object prev) {
         if (prev == null) {
             CURRENT.remove();
@@ -349,6 +355,7 @@ final class ServerCapture {
     private static final class Request {
         final Capture capture;
         final String request; // "GET /jw/web/..." for the log lines
+        boolean loggedError;  // an ERROR or FATAL line was logged on this request's thread (only that thread touches it)
 
         Request(Capture capture, String request) {
             this.capture = capture;
@@ -359,7 +366,7 @@ final class ServerCapture {
     /** One capture's file on this node. Lines are JSON objects; the file is closed when idle, stopped or attached. */
     static final class Capture {
         final String id;
-        final boolean traces;      // copy the Glowroot traces of slow and failed requests (TraceCollector)
+        final boolean traces;      // copy the Glowroot traces of slow, failed and error-logging requests (TraceCollector)
         final String glowrootUrl;  // "" = find the local agent
         final boolean gauges;      // sample this node's load while the capture is open (GaugeSampler)
         final boolean glowrootData; // cut the recording out of this node's Glowroot data after the stop (GlowrootPackager)
@@ -594,6 +601,11 @@ final class ServerCapture {
                 }
                 if (r != null) {
                     r.capture.write(new JSONObject(e.toString()).put("req", r.request));
+                    String lvl = e.getString("level");
+                    if (!r.loggedError && ("ERROR".equals(lvl) || "FATAL".equals(lvl))) {
+                        r.loggedError = true;
+                        GlowrootTag.keep(); // its trace shows what led to the error, though the request "succeeded"
+                    }
                 }
                 for (Capture c : all) {
                     if (r == null || c != r.capture) {

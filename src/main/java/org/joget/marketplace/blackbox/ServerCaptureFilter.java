@@ -86,10 +86,11 @@ public class ServerCaptureFilter extends PluginWebFilterAbstract {
             failure = e;
             throw e;
         } finally {
+            boolean loggedError = ServerCapture.loggedError();
             ServerCapture.end(prev);
             long ms = System.currentTimeMillis() - start;
             capture.request(start, request.getMethod(), url, response.getStatus(), ms, failure);
-            TraceCollector.end(run, response.getStatus(), ms, failure);
+            TraceCollector.end(run, response.getStatus(), ms, failure, loggedError);
         }
     }
 }

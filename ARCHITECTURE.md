@@ -524,11 +524,11 @@ in its rows (activity ids resolved with `getActivityById`), kept when the proces
 | `SessionFile` | Copies `session.json` / `system-log.json` to disk, checks them and reads them as streams |
 | `JsonStream` | The small pull parser `SessionFile` uses |
 | `RecordingZip` | `download&format=zip` and `import`: the recording as one ZIP and back |
-| `RecordingHtml` | `download&format=html`: view.html with viewer.css/js inlined and display.js in `<head>`, the recording in `<script>` data blocks, `export.js` to open it |
+| `RecordingHtml` | `download&format=html`: view.html with viewer.css/js inlined and display.js in `<head>`, the recording in `<script>` data blocks, `export.js` to open it. The full trace pages go in too, one `application/gzip` block each (base64, ~105 KB instead of ~450 KB); `export.js` unzips them with `DecompressionStream` into `blob:` URLs for **Open full trace** (no link in a browser without it) |
 | `ServerCaptureFilter` | Marks requests that carry `X-BlackBox-Id` (all URLs, before Spring Security) |
 | `ServerCapture` | Root-logger appender, per-thread marking, pending files, flush/idle/cleanup timer |
 | `ServerCaptureStore` | Pending capture folders: start, stop, the stop's copy of the lines (`writeLines`), state such as `appExport` (`put`), attach (merge nodes, sort by time, move traces, gauges, Glowroot data, `server-info.json` and `app/`), clean up |
-| `TraceCollector` | Per node: picks the slow and failed recorded requests, finds their Glowroot trace (retries), saves it; Retry requests per node |
+| `TraceCollector` | Per node: picks the slow and failed recorded requests, and those that logged an ERROR (`ServerCapture` saw the line on the request's thread and `GlowrootTag.keep()` set Glowroot's slow threshold to 0 for that request), finds their Glowroot trace (retries), saves it; Retry requests per node |
 | `GlowrootClient` | Glowroot's JSON backend and trace export; finds the local agent's port |
 | `GlowrootData`, `GlowrootPackager`, `GlowrootTag` | Glowroot data packages; tagging recorded requests |
 | `ServerInfo` | System Info snapshot at recording-start (host, cluster, plugins, Java, Joget, DB, pool, license) |
@@ -552,7 +552,7 @@ for in Settings or on the first upload.
 
 | Part | Job |
 |---|---|
-| `popup.html/js` | Record this tab / a window / the screen, Stop; gets the tab-capture stream id (the video for "this tab", the tab's sound for a window or the screen); Page sound and Microphone toggles; the server data note (`#serverNote`: no Upload URL, a tab on another server, or why the server isn't capturing); quick settings (from `me.options`, cached as `quickOffer`); links to Recordings and Settings |
+| `popup.html/js` | Record the screen / a window / this tab (one row, in that order), Stop; gets the tab-capture stream id (the video for "this tab", the tab's sound for a window or the screen); Page sound and Microphone toggles; the server data note (`#serverNote`: no Upload URL, a tab on another server, or why the server isn't capturing); quick settings (from `me.options`, cached as `quickOffer`); links to Recordings and Settings |
 | `recorder.html/js` | The recorder window (minimized while recording; asks before closing): shows the `desktopCapture` picker (window/screen) or uses the tab stream, mixes page sound and microphone into one track, records with `MediaRecorder`, saves progress every 5 s, sends `recording-ping` every `pingMs`, shows the time left and stops at `maxRecordingMs`, sends `recording-stop` with the app export's input, keeps the recording in IndexedDB (or downloads it when it can't), opens the Replay page |
 | `background.js` | Service worker: owns the recording state, opens the recorder window, attaches the debugger (Network, Runtime, Log, Page), fetches response bodies (XHR, Fetch, Document, EventSource, Other; up to 1 MB, not binary), forwards events to the recorder; starts/stops the server capture and tags the tab's requests; REC badge (orange with the reason when the server capture is off); stops on debugger detach, tab closed or recorder closed; crash recovery |
 | `viewer.html/js`, `viewer.css` | Replay UI shared by every replay page (the extension's, the plugin's, downloaded HTML, standalone): video + synced lists, timeline, request details, Features drawer |

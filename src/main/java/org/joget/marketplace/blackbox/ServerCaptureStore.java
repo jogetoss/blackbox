@@ -59,7 +59,7 @@ public class ServerCaptureStore {
         return start(id, owner, maxBytes, keepMs, false, "", false);
     }
 
-    /** traces: also copy the Glowroot traces of slow and failed requests, from glowrootUrl ("" = the local agent). */
+    /** traces: also copy the Glowroot traces of slow, failed and error-logging requests, from glowrootUrl ("" = the local agent). */
     public boolean start(String id, String owner, long maxBytes, long keepMs, boolean traces, String glowrootUrl, boolean gauges)
             throws IOException {
         return start(id, owner, maxBytes, keepMs, traces, glowrootUrl, gauges, false);

@@ -8,7 +8,7 @@ window.blackboxPage = 'file'; // for the Features list
     const meta = JSON.parse(text('bb-meta'));
     const report = JSON.parse(text('bb-session'));
     const systemLog = text('bb-systemlog') ? JSON.parse(text('bb-systemlog')) : null;
-    const traces = text('bb-traces') ? JSON.parse(text('bb-traces')) : null; // summaries; the full pages are in the ZIP
+    const traces = text('bb-traces') ? JSON.parse(text('bb-traces')) : null; // summaries; full pages: tracePages()
     const gauges = text('bb-gauges') ? JSON.parse(text('bb-gauges')) : null;
     const serverInfo = text('bb-serverinfo') ? JSON.parse(text('bb-serverinfo')) : null;
     const apps = text('bb-apps') ? JSON.parse(text('bb-apps')) : null; // the list; the .jwa files are in the ZIP
@@ -29,11 +29,30 @@ window.blackboxPage = 'file'; // for the Features list
     const video = b64 ? await (await fetch('data:video/webm;base64,' + b64)).blob() : null;
     $('serverLegend').hidden = !systemLog;
     window.blackboxTimeInUrl = true; // blackbox-….html?t=… opens at that moment
-    window.blackboxOpen(video, report, { systemLog, traces, gauges, serverInfo, apps, title: meta.title, info: uploadInfo(meta) });
+    const pages = await tracePages();
+    window.blackboxOpen(video, report, {
+      systemLog, traces, gauges, serverInfo, apps, title: meta.title, info: uploadInfo(meta),
+      traceUrl: (t) => pages.get(t.file) || null, // Open full trace: the page from this file, in a new tab
+    });
     $('recStatus').hidden = false;
   } catch (e) {
     $('loading').textContent = '';
     window.blackboxShowError('This file could not be opened: ' + (e.message || e));
+  }
+
+  // The full trace pages (bb-trace-N blocks, gzipped Glowroot export pages as base64) as blob: URLs by file name.
+  // A browser without DecompressionStream, or a damaged block, gets no link: the Traces tab then says so.
+  async function tracePages() {
+    const pages = new Map();
+    if (typeof DecompressionStream !== 'function') return pages;
+    for (const block of document.querySelectorAll('script[type="application/gzip"][id^="bb-trace-"]')) {
+      try {
+        const gz = await (await fetch('data:application/gzip;base64,' + block.textContent.trim())).blob();
+        const html = await new Response(gz.stream().pipeThrough(new DecompressionStream('gzip'))).blob();
+        pages.set(block.dataset.file, URL.createObjectURL(new Blob([html], { type: 'text/html' })));
+      } catch (e) { /* skip this one */ }
+    }
+    return pages;
   }
 
   // "Uploaded by" rows for the Info tab; the same as BB.uploadInfo on the server (common.js is not in this file)

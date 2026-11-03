@@ -9,11 +9,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Base64;
+import java.util.Map;
+import java.util.zip.GZIPOutputStream;
 
 /**
  * Writes one recording as a single .html file that replays it in any browser, with no server or extension:
  * the replay page (view.html) with viewer.css, viewer.js and display.js (Theme and Text size) inlined, the recording in data blocks
- * (meta, session.json, system-log.json, apps.json, the video as base64) and export.js to open it.
+ * (meta, session.json, system-log.json, apps.json, the full trace pages gzipped as base64, the video as base64) and
+ * export.js to open it.
  *
  * Data blocks are &lt;script type="application/json"&gt; elements. JSON text never needs a raw '&lt;' (in strings it can
  * be written <), so every '&lt;' is escaped and no "&lt;/script" can end a block early.
@@ -64,7 +67,7 @@ public class RecordingHtml {
         write(out, meta, session, systemLog, video, null, null, null);
     }
 
-    /** traces: the recording's Glowroot trace summaries (TraceStore.merge), or null. The trace pages are not included. */
+    /** traces: the recording's Glowroot trace summaries (TraceStore.merge), or null. */
     public void write(OutputStream out, String meta, Path session, Path systemLog, Path video, String traces, String gauges,
             Path serverInfo) throws IOException {
         write(out, meta, session, systemLog, video, traces, gauges, serverInfo, null);
@@ -73,6 +76,16 @@ public class RecordingHtml {
     /** apps: the recording's app/apps.json (the App tab), or null. The .jwa files are not included: they are in the ZIP. */
     public void write(OutputStream out, String meta, Path session, Path systemLog, Path video, String traces, String gauges,
             Path serverInfo, Path apps) throws IOException {
+        write(out, meta, session, systemLog, video, traces, gauges, serverInfo, apps, null);
+    }
+
+    /**
+     * traceFiles: the full trace pages (Glowroot's export page of each saved trace) by file name, or null. Each goes in
+     * its own block, gzipped (a page is ~450 KB, mostly Glowroot's script, ~105 KB gzipped) as base64; export.js unzips
+     * them so Open full trace works in the file. Names must pass TraceStore.isTraceFile (they go in an attribute).
+     */
+    public void write(OutputStream out, String meta, Path session, Path systemLog, Path video, String traces, String gauges,
+            Path serverInfo, Path apps, Map<String, Path> traceFiles) throws IOException {
         out.write(head.getBytes(StandardCharsets.UTF_8));
         block(out, "bb-meta", "application/json");
         escaped(new java.io.ByteArrayInputStream(meta.getBytes(StandardCharsets.UTF_8)), out);
@@ -113,26 +126,49 @@ public class RecordingHtml {
             }
             end(out);
         }
+        if (traceFiles != null) {
+            int n = 0;
+            for (Map.Entry<String, Path> e : traceFiles.entrySet()) {
+                if (!TraceStore.isTraceFile(e.getKey()) || e.getValue() == null || !Files.isRegularFile(e.getValue())) {
+                    continue;
+                }
+                out.write(("\n<script type=\"application/gzip\" data-file=\"" + e.getKey() + "\" id=\"bb-trace-" + n++ + "\">")
+                        .getBytes(StandardCharsets.UTF_8));
+                try (InputStream in = Files.newInputStream(e.getValue())) {
+                    base64(in, out, true);
+                }
+                end(out);
+            }
+        }
         if (video != null) {
-            // Base64 has no '<'; the encoder must be closed to write its padding, but not the response stream
             block(out, "bb-video", "text/plain");
-            try (OutputStream b64 = Base64.getEncoder().wrap(new FilterOutputStream(out) {
-                    @Override
-                    public void write(byte[] b, int off, int len) throws IOException {
-                        out.write(b, off, len);
-                    }
-
-                    @Override
-                    public void close() throws IOException {
-                        flush();
-                    }
-                }); InputStream in = Files.newInputStream(video)) {
-                copy(in, b64);
+            try (InputStream in = Files.newInputStream(video)) {
+                base64(in, out, false);
             }
             end(out);
         }
         out.write(tail.getBytes(StandardCharsets.UTF_8));
         out.flush();
+    }
+
+    /** Copies in to out as base64, gzipped first if asked. Base64 has no '<'. Leaves out open. */
+    private static void base64(InputStream in, OutputStream out, boolean gzip) throws IOException {
+        // The encoder (and gzip) must be closed to write their last bytes, but not the response stream
+        OutputStream keepOpen = new FilterOutputStream(out) {
+            @Override
+            public void write(byte[] b, int off, int len) throws IOException {
+                out.write(b, off, len);
+            }
+
+            @Override
+            public void close() throws IOException {
+                flush();
+            }
+        };
+        try (OutputStream b64 = Base64.getEncoder().wrap(keepOpen);
+                OutputStream dst = gzip ? new GZIPOutputStream(b64, 64 * 1024) : b64) {
+            copy(in, dst);
+        }
     }
 
     private static void block(OutputStream out, String id, String type) throws IOException {
