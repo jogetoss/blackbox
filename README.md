@@ -25,8 +25,8 @@ same version.
 - **Replay page:** `<context>/blackbox/view?id=<id>`. **Features** in its header lists what it can do.
 - **Uploading:** set the extension's **Upload URL** to `<context>/api/blackbox`. Uploads use your Joget login in that
   browser; when you are logged in, a stopped recording uploads and opens here by itself.
-- **Downloads:** **Download ZIP** (to import elsewhere) and **Download HTML** (replays without Joget). Both include
-  the server data, so share them only with people who may see it.
+- **Downloads:** **Download ZIP** (to import elsewhere) and **Download HTML** (replays without Joget; **Open full trace**
+  works in it too). Both include the server data, so share them only with people who may see it.
 
 ## Settings
 

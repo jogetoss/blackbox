@@ -1736,7 +1736,7 @@ const FEATURES = [
   ['System logs tab', 'The Joget log lines written while serving the recorded requests, lined up with the video and filtered by level. Captured by the server for every recording that reaches it; shown to everyone who can view the recording.', ['server', 'file'],
     { file: 'Included when the recording was downloaded from a BlackBox server.' }],
   ['Traces tab', 'Glowroot traces of slow and failed requests: time, CPU, SQL count and time, slowest queries and the error.', ['server', 'file'],
-    { server: 'Open full trace shows Glowroot\'s page. Retry looks again for failed ones. The tab updates by itself while traces are still being collected.', file: 'Summaries only; the full trace pages are in the ZIP download.' }],
+    { server: 'Open full trace shows Glowroot\'s page. Retry looks again for failed ones. The tab updates by itself while traces are still being collected.', file: 'Open full trace shows Glowroot\'s page, from inside this file (it opens in a new tab).' }],
   ['Server load strip', 'Under the timeline: CPU, heap, busy request threads and database connections (as % of each maximum) and GC time, sampled every second on the server. Hover for values, click to seek.', ['server', 'file']],
   ['Info tab', 'The recording: tab title and URL, start, stop, length, stop reason, counts and the browser.', ALL,
     { extension: 'Also says whether server data was captured; they show on the server after the upload.', server: 'Also a snapshot of the server at recording start: host, process, Java, Joget, database, connection pool, license and system properties.', file: 'Also the server snapshot at recording start, when it was included.' }],

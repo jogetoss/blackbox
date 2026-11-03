@@ -490,15 +490,24 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         response.setContentType("text/html;charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=\"blackbox-" + id + ".html\"");
         String traces = null;
+        java.util.Map<String, Path> traceFiles = new java.util.LinkedHashMap<>(); // full pages, so Open full trace works in the file
         if (systemLog != null) {
             JSONArray list = TraceStore.merge(store.dir(id), System.currentTimeMillis());
             traces = list.length() > 0 ? list.toString() : null;
+            for (int i = 0; i < list.length(); i++) {
+                JSONObject t = list.optJSONObject(i);
+                String file = t != null ? t.optString("file") : "";
+                Path page = file.isEmpty() ? null : store.traceFile(id, file);
+                if (page != null) {
+                    traceFiles.put(file, page);
+                }
+            }
         }
         JSONObject gauges = systemLog != null ? GaugeStore.merge(store.dir(id)) : null;
         Path info = systemLog != null ? store.file(id, ServerInfo.FILE) : null;
         Path apps = access.canViewServerData(meta) ? AppExport.list(store.dir(id)) : null;
         export.write(response.getOutputStream(), meta.toString(), session, systemLog, store.file(id, RecordingStore.VIDEO), traces,
-                gauges != null ? gauges.toString() : null, info, apps);
+                gauges != null ? gauges.toString() : null, info, apps, traceFiles);
         LogUtil.info(getClassName(), "Recording " + id + " downloaded as HTML by " + access.user.getUsername());
     }
 

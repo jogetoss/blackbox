@@ -524,7 +524,7 @@ in its rows (activity ids resolved with `getActivityById`), kept when the proces
 | `SessionFile` | Copies `session.json` / `system-log.json` to disk, checks them and reads them as streams |
 | `JsonStream` | The small pull parser `SessionFile` uses |
 | `RecordingZip` | `download&format=zip` and `import`: the recording as one ZIP and back |
-| `RecordingHtml` | `download&format=html`: view.html with viewer.css/js inlined and display.js in `<head>`, the recording in `<script>` data blocks, `export.js` to open it |
+| `RecordingHtml` | `download&format=html`: view.html with viewer.css/js inlined and display.js in `<head>`, the recording in `<script>` data blocks, `export.js` to open it. The full trace pages go in too, one `application/gzip` block each (base64, ~105 KB instead of ~450 KB); `export.js` unzips them with `DecompressionStream` into `blob:` URLs for **Open full trace** (no link in a browser without it) |
 | `ServerCaptureFilter` | Marks requests that carry `X-BlackBox-Id` (all URLs, before Spring Security) |
 | `ServerCapture` | Root-logger appender, per-thread marking, pending files, flush/idle/cleanup timer |
 | `ServerCaptureStore` | Pending capture folders: start, stop, the stop's copy of the lines (`writeLines`), state such as `appExport` (`put`), attach (merge nodes, sort by time, move traces, gauges, Glowroot data, `server-info.json` and `app/`), clean up |
