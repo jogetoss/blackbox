@@ -1,7 +1,7 @@
 // Download Glowroot data opened in a standalone Glowroot, as its README.txt says: a recording with one slow and one
 // failed request, its Glowroot ZIP (the same one in the recording's Download ZIP), then for each Glowroot dist
-// (BB_GLOWROOT_DISTS, default 0.14.2 and 0.14.4 in ~/Joget) a throwaway Java container with that agent and the ZIP's
-// data/, config.json and admin.json, checked through Glowroot's UI and its backend API.
+// (BB_GLOWROOT_DISTS, default 0.14.2 and 0.14.4 in ~/Joget) its offline viewer (java -jar glowroot.jar) on the ZIP's
+// data/ in a throwaway Java container, checked through Glowroot's UI and its backend API.
 //
 // The slow request: a form load while the test holds a WRITE lock on its table for 4 s (Glowroot's slow threshold is
 // 2 s). The failed one: the same load with its waiting query killed (KILL QUERY), which Joget answers with 500.
@@ -157,34 +157,30 @@ test('Download Glowroot data opens in a standalone Glowroot (slow and failed req
 
     const data = path.join(dir, 'data');
     unzip(zip, data);
-    for (const f of ['data/data.h2.db', 'config.json', 'admin.json', 'README.txt', 'Sleep.java']) {
-      expect(fs.existsSync(path.join(data, f)), f).toBe(true);
-    }
+    // only data/ and README.txt: the offline viewer writes its own admin.json and config.json
+    const entries = execFileSync('unzip', ['-Z1', zip], { encoding: 'utf8' }).trim().split('\n');
+    expect(entries.filter((e) => !e.startsWith('data/')), 'files besides data/').toEqual(['README.txt']);
+    expect(entries, 'data/').toContain('data/data.h2.db');
     const readme = fs.readFileSync(path.join(data, 'README.txt'), 'utf8');
     const [, from, to] = readme.match(/from=(\d+)&to=(\d+)/);
 
     for (const dist of DISTS) {
       const version = path.basename(dist).match(/glowroot-(.+)-dist\.zip/)[1];
-      // README steps 1-2: unzip the dist, copy data/, config.json and admin.json into its glowroot folder
+      // README steps 1-2: unzip the dist, copy data/ into its glowroot folder
       const home = path.join(dir, version);
       unzip(dist, home);
       const g = path.join(home, 'glowroot');
       fs.cpSync(path.join(data, 'data'), path.join(g, 'data'), { recursive: true });
-      for (const f of ['config.json', 'admin.json']) fs.copyFileSync(path.join(data, f), path.join(g, f));
-      fs.copyFileSync(path.join(data, 'Sleep.java'), path.join(home, 'Sleep.java'));
-      // admin.json listens on localhost only; in a container that is unreachable, so it listens on the container's
-      // own interfaces and the port is published on the host's localhost only
-      const admin = JSON.parse(fs.readFileSync(path.join(g, 'admin.json'), 'utf8'));
-      expect(admin.web.bindAddress).toBe('127.0.0.1');
-      admin.web.bindAddress = '0.0.0.0';
-      fs.writeFileSync(path.join(g, 'admin.json'), JSON.stringify(admin, null, 2));
+      // The viewer listens on 127.0.0.1 by default, unreachable from outside a container: as the README says, the
+      // bindAddress is 0.0.0.0 here (an admin.json with only that), and the port is published on the host's localhost
+      fs.writeFileSync(path.join(g, 'admin.json'), JSON.stringify({ web: { bindAddress: '0.0.0.0' } }));
 
-      // README step 3: any JVM with the agent
+      // README step 3: java -jar glowroot.jar, the offline viewer
       const name = `bb-e2e-glowroot-${version.replace(/\W/g, '')}-${Date.now()}`;
       containers.push(name);
       execFileSync('docker', ['run', '-d', '--name', name, '--user', `${process.getuid()}:${process.getgid()}`,
-        '-p', `127.0.0.1:${PORT}:${admin.web.port || 4000}`, '-v', `${home}:/g`, '-w', '/g', JAVA_IMAGE,
-        'java', '-javaagent:/g/glowroot/glowroot.jar', 'Sleep.java'], { encoding: 'utf8' });
+        '-p', `127.0.0.1:${PORT}:4000`, '-v', `${home}:/g`, '-w', '/g/glowroot', JAVA_IMAGE,
+        'java', '-jar', 'glowroot.jar'], { encoding: 'utf8' });
       const base = `http://127.0.0.1:${PORT}`;
       const ui = await context.newPage();
       await expect.poll(async () => (await ui.request.get(base + '/').catch(() => null))?.status() ?? 0,

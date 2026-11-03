@@ -100,8 +100,9 @@ server data**.
 - `tests/glowroot-standalone.spec.js`: a recording (quick settings: Glowroot trace files and data on) whose tab makes
   one slow request (a datalist read while the test holds a table lock for 4 s) and one failed one (a form load whose
   waiting query is killed: 500). BlackBox saves both traces; **Download Glowroot data** equals `glowroot/<node>.zip` in
-  the Download ZIP; then, for each dist, the ZIP's `README.txt` steps in a throwaway Java container (`admin.json`'s
-  `bindAddress` set to `0.0.0.0` inside it, the port published on localhost only): the slow trace (≥ 2 s) and the error
+  the Download ZIP, which holds only `data/` and `README.txt`; then, for each dist, the README's steps (`java -jar
+  glowroot.jar`, the offline viewer) in a throwaway Java container (an `admin.json` with only `bindAddress` `0.0.0.0`,
+  the port published on localhost only): the slow trace (≥ 2 s) and the error
   trace in the recording's window, both tagged with the capture id, and the Transactions page. Screenshots of each
   Glowroot's pages are in the test's output folder. About 2 minutes.
 
