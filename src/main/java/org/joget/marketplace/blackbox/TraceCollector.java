@@ -95,6 +95,11 @@ final class TraceCollector {
     }
 
     static void end(Running r, int status, long ms, Throwable failure) {
+        end(r, status, ms, failure, false);
+    }
+
+    /** loggedError: the request logged an ERROR line; GlowrootTag.keep() asked Glowroot to keep its trace. */
+    static void end(Running r, int status, long ms, Throwable failure, boolean loggedError) {
         if (r == null) {
             return;
         }
@@ -106,6 +111,7 @@ final class TraceCollector {
         r.status = status;
         r.ms = ms;
         r.failed = failure != null;
+        r.loggedError = loggedError;
         r.ended = System.currentTimeMillis();
         ex.execute(() -> ended(r));
     }
@@ -132,16 +138,16 @@ final class TraceCollector {
         GlowrootClient g = client(r);
         boolean keeps;
         if (g == null) {
-            keeps = r.listed || r.failed || r.status >= 500 || r.ms >= DEFAULT_THRESHOLD_MS;
+            keeps = r.listed || r.failed || r.loggedError || r.status >= 500 || r.ms >= DEFAULT_THRESHOLD_MS;
             if (keeps && (r.listed || reserve(r))) {
                 write(r, entry(r, "failed", "Glowroot is not running on " + NODE));
             }
             return;
         }
         try {
-            keeps = g.settings().keeps(r.ms, r.status, r.failed);
+            keeps = r.loggedError || g.settings().keeps(r.ms, r.status, r.failed);
         } catch (IOException e) {
-            keeps = r.failed || r.status >= 500 || r.ms >= DEFAULT_THRESHOLD_MS;
+            keeps = r.failed || r.loggedError || r.status >= 500 || r.ms >= DEFAULT_THRESHOLD_MS;
         }
         if (!keeps && !r.listed) {
             return;
@@ -512,6 +518,7 @@ final class TraceCollector {
         int status;
         long ms = -1; // -1: the end was not seen
         boolean failed;
+        boolean loggedError; // logged an ERROR line: kept even when fast and 200
         long ended;
 
         Running(String captureId, String glowrootUrl, String method, String url, long start) {

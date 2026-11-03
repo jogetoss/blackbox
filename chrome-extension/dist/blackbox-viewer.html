@@ -1844,7 +1844,7 @@ function updateTracesTab() {
   $('tracesTab').hidden = !current.traces;
   const pending = traceItems.filter((e) => e.state === 'pending').length;
   $('tracesCount').textContent = traceItems.length + (pending ? ` ⏳${pending}` : '');
-  $('tracesTab').title = pending ? `${pending} still being collected` : 'Glowroot traces of slow and failed requests';
+  $('tracesTab').title = pending ? `${pending} still being collected` : 'Glowroot traces of slow and failed requests, and of requests that logged an error';
 }
 
 // Above the Traces list: says when traces are still coming, or why there are none
@@ -2388,7 +2388,7 @@ const FEATURES = [
   ['Requests strip', 'At the top of the Network tab: one bar per request, from start to end, coloured by kind. Drag across it to list only the requests in that time range; double-click or ✕ shows all again.', ALL],
   ['System logs tab', 'The Joget log lines written while serving the recorded requests, lined up with the video and filtered by level. Captured by the server for every recording that reaches it; shown to everyone who can view the recording.', ['server', 'file'],
     { file: 'Included when the recording was downloaded from a BlackBox server.' }],
-  ['Traces tab', 'Glowroot traces of slow and failed requests: time, CPU, SQL count and time, slowest queries and the error.', ['server', 'file'],
+  ['Traces tab', 'Glowroot traces of slow and failed requests, and of requests that logged an error: time, CPU, SQL count and time, slowest queries and the error.', ['server', 'file'],
     { server: 'Open full trace shows Glowroot\'s page. Retry looks again for failed ones. The tab updates by itself while traces are still being collected.', file: 'Open full trace shows Glowroot\'s page, from inside this file (it opens in a new tab).' }],
   ['Server load strip', 'Under the timeline: CPU, heap, busy request threads and database connections (as % of each maximum) and GC time, sampled every second on the server. Hover for values, click to seek.', ['server', 'file']],
   ['Info tab', 'The recording: tab title and URL, start, stop, length, stop reason, counts and the browser.', ALL,

@@ -528,7 +528,7 @@ in its rows (activity ids resolved with `getActivityById`), kept when the proces
 | `ServerCaptureFilter` | Marks requests that carry `X-BlackBox-Id` (all URLs, before Spring Security) |
 | `ServerCapture` | Root-logger appender, per-thread marking, pending files, flush/idle/cleanup timer |
 | `ServerCaptureStore` | Pending capture folders: start, stop, the stop's copy of the lines (`writeLines`), state such as `appExport` (`put`), attach (merge nodes, sort by time, move traces, gauges, Glowroot data, `server-info.json` and `app/`), clean up |
-| `TraceCollector` | Per node: picks the slow and failed recorded requests, finds their Glowroot trace (retries), saves it; Retry requests per node |
+| `TraceCollector` | Per node: picks the slow and failed recorded requests, and those that logged an ERROR (`ServerCapture` saw the line on the request's thread and `GlowrootTag.keep()` set Glowroot's slow threshold to 0 for that request), finds their Glowroot trace (retries), saves it; Retry requests per node |
 | `GlowrootClient` | Glowroot's JSON backend and trace export; finds the local agent's port |
 | `GlowrootData`, `GlowrootPackager`, `GlowrootTag` | Glowroot data packages; tagging recorded requests |
 | `ServerInfo` | System Info snapshot at recording-start (host, cluster, plugins, Java, Joget, DB, pool, license) |

@@ -111,7 +111,8 @@ Shown on the replay page and in the ZIP and HTML downloads, to everyone who can 
   (scheduler, email, other users) on the nodes the recording reached. Greyed under the filter **This tab + other
   server threads**, not counted as errors.
 - **Traces** tab: the [Glowroot](https://glowroot.org) trace of each recorded request Glowroot kept (slow or failed,
-  by Glowroot's own settings). Failed lookups have **Retry**. Glowroot must allow anonymous access.
+  by Glowroot's own settings), and of each one that logged an ERROR, even when it was fast and returned 200 (BlackBox
+  asks Glowroot to keep those). Failed lookups have **Retry**. Glowroot must allow anonymous access.
 - **Download Glowroot data**: the recording's slice of Glowroot's data, ready 30–90 s after the stop, to open in a
   standalone Glowroot 0.14.2 (see its `README.txt`). About 1 MB for 35 s. Building it needs free temp space about the
   size of Glowroot's `data.h2.db`.
