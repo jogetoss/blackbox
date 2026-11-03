@@ -138,7 +138,7 @@ uses each profile's `lostMs` for that profile's captures, and runs every `checkM
 - Real uploaded files in sample data are copied into the `.jwa` from disk at `addTo` (`Table.fileSources`), and
   `TraceStore.moveFolder` appends index files as streams.
 - Read whole on purpose, all small or bounded: `meta.json` and status files, ZIP `meta.json` / `apps.json` /
-  `server-info.json` (64 KB to 1 MB), Glowroot's `config.json` and JSON replies (20 MB cap), the app definition text
+  `server-info.json` (64 KB to 1 MB), Glowroot's JSON replies (20 MB cap), the app definition text
   used for masking, the stop's copy of the log lines (`ServerCaptureStore.writeLines`) and the system log merge at
   upload (each node's file capped by **Max size of system logs per node per recording**; it sorts all nodes' lines).
 
@@ -324,10 +324,11 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
   the same ring size, rewrites the capped ids, and compacts the copy. It runs on one low-priority thread inside Joget,
   with a small H2 cache; temporary files go to `java.io.tmpdir` and are deleted afterwards. A block Glowroot
   overwrites before it is read is left out, and the status says how many.
-- **The ZIP:** `data/` (`data.h2.db` and the five capped files), `config.json` (the server's, without gauges, alerts
-  and synthetic monitors, so the viewer adds no samples of its own JVM, sends no mail and calls no live URL),
-  `admin.json` (localhost on port 4000, nothing expires; none of the server's users, LDAP or SMTP), `README.txt` with
-  the steps and the time range, and `Sleep.java` (an idle JVM for the agent).
+- **The ZIP:** `data/` (`data.h2.db` and the five capped files) and `README.txt` with the steps and the time range.
+  It opens in Glowroot's offline viewer (`java -jar glowroot.jar` in a dist folder holding `data/`), which only reads:
+  it starts no agent (no samples of its own JVM, no alerts or monitors) and schedules no reaper, so nothing expires.
+  On its first start it writes Glowroot's default `admin.json` (127.0.0.1:4000) and `config.json`; none of the
+  server's users, LDAP or SMTP are shipped. Checked on 0.14.2 and 0.14.4.
 - **Disk space while building:** one copy of Glowroot's `data.h2.db` in Joget's temp folder (`java.io.tmpdir`,
   `/opt/tomcat/temp` in the Joget image), plus the new capped files holding only the kept blocks, all deleted when the
   package is done; the live capped files are read in place, not copied. The ZIP is written to the capture's folder.
