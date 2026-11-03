@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build dist/blackbox-viewer.html: viewer.html with viewer.css and viewer.js inlined, no extension needed.
+"""Build dist/blackbox-viewer.html: viewer.html with viewer.css, viewer.js, zip.js and display.js inlined, no extension needed.
 
 Run after changing the viewer:  python3 build-standalone.py
 """
@@ -11,8 +11,9 @@ html = (here / 'viewer.html').read_text()
 css = (here / 'viewer.css').read_text()
 js = (here / 'viewer.js').read_text()
 zipjs = (here / 'zip.js').read_text()
+displayjs = (here / 'display.js').read_text()
 
-for name, code in (('viewer.css', css), ('viewer.js', js), ('zip.js', zipjs)):
+for name, code in (('viewer.css', css), ('viewer.js', js), ('zip.js', zipjs), ('display.js', displayjs)):
     if '</style' in code or '</script' in code:
         raise SystemExit(f'{name} contains a closing tag and cannot be inlined')
 
@@ -20,7 +21,8 @@ parts = [
     ('<link rel="stylesheet" href="viewer.css">', f'<style>\n{css}</style>'),
     ('<script src="viewer.js"></script>', f'<script>\n{js}</script>'),
     ('<script src="zip.js"></script>', f'<script>\n{zipjs}</script>'),  # opens recording ZIPs
-    ('  <script src="theme.js"></script>\n', ''),  # the standalone file follows the OS theme
+    # theme.js reads the extension's Settings; the standalone file has its own Theme and Text size pickers
+    ('  <script src="theme.js"></script>\n', f'  <script>\n{displayjs}</script>\n'),
     # extension only (chrome.* APIs, the extension's storage): recordings list, linked folder, status
     ('  <script src="idb.js"></script>\n', ''),
     ('  <script src="store.js"></script>\n', ''),

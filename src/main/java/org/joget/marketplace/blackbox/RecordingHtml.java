@@ -12,7 +12,7 @@ import java.util.Base64;
 
 /**
  * Writes one recording as a single .html file that replays it in any browser, with no server or extension:
- * the replay page (view.html) with viewer.css and viewer.js inlined, the recording in data blocks
+ * the replay page (view.html) with viewer.css, viewer.js and display.js (Theme and Text size) inlined, the recording in data blocks
  * (meta, session.json, system-log.json, apps.json, the video as base64) and export.js to open it.
  *
  * Data blocks are &lt;script type="application/json"&gt; elements. JSON text never needs a raw '&lt;' (in strings it can
@@ -22,6 +22,7 @@ public class RecordingHtml {
 
     static final String RESOURCES = "static/blackbox/";
     private static final String CSS_LINK = "<link rel=\"stylesheet\" href=\"assets/viewer.css\">";
+    private static final String HEAD_END = "</head>";
     private static final String COMMON_JS = "<script src=\"assets/common.js\"></script>";
     private static final String VIEWER_JS = "<script src=\"assets/viewer.js\"></script>";
     private static final String VIEW_JS = "<script src=\"assets/view.js\"></script>";
@@ -33,16 +34,19 @@ public class RecordingHtml {
     /** Builds the page from the plugin's own resources. */
     public static RecordingHtml fromResources() throws IOException {
         ClassLoader cl = RecordingHtml.class.getClassLoader();
-        return new RecordingHtml(read(cl, "view.html"), read(cl, "viewer.css"), read(cl, "viewer.js"), read(cl, "export.js"));
+        return new RecordingHtml(read(cl, "view.html"), read(cl, "viewer.css"), read(cl, "viewer.js"), read(cl, "display.js"),
+                read(cl, "export.js"));
     }
 
-    RecordingHtml(String viewHtml, String css, String viewerJs, String exportJs) throws IOException {
-        for (String code : new String[]{css, viewerJs, exportJs}) {
+    RecordingHtml(String viewHtml, String css, String viewerJs, String displayJs, String exportJs) throws IOException {
+        for (String code : new String[]{css, viewerJs, displayJs, exportJs}) {
             if (code.contains("</style") || code.contains("</script")) {
                 throw new IOException("A viewer file contains a closing tag and cannot be inlined");
             }
         }
         String page = replaceOnce(viewHtml, CSS_LINK, "<style>\n" + css + "</style>");
+        // in <head>: the saved Theme and Text size apply before the page draws
+        page = replaceOnce(page, HEAD_END, "<script>\n" + displayJs + "</script>\n" + HEAD_END);
         page = replaceOnce(page, COMMON_JS, "");
         page = replaceOnce(page, VIEWER_JS, "<script>\n" + viewerJs + "</script>");
         int at = page.indexOf(VIEW_JS);
