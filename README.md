@@ -22,8 +22,8 @@ same version.
 
 ### From 8.2.1
 
-**The plugin settings were reorganised and their old values are not read.** After the upgrade every setting falls
-back to its default (see [Settings](#settings)). Open **Configure** and set them again; check the access settings
+**The plugin settings were reorganised; renamed and removed settings lose their values.** After the upgrade they fall
+back to their defaults (see [Settings](#settings)). Open **Configure** and set them again; check the access settings
 first, as a restricted install opens up otherwise:
 
 | 8.2.1 setting (key) | Now (key) | Default now |
@@ -39,6 +39,9 @@ first, as a restricted install opens up otherwise:
 | Sample server load during recordings (`captureGauges`) | Allow capturing server load (`allowCaptureGauges`) | No (was Yes) |
 | Copy Glowroot traces of slow and failed requests (`captureTraces`) | Allow capturing Glowroot traces… (`allowCaptureTraces`) | No (was Yes) |
 | Copy Glowroot data for the recording (`captureGlowrootData`) | Allow capturing Glowroot data (`allowCaptureGlowrootData`) | No |
+| Max file size (MB) (`maxSizeMb`) | unchanged: value kept | |
+| Max size of system logs per recording (MB) (`systemLogMaxMb`) | Max size of system logs per node per recording (MB), same key: value kept | |
+| Glowroot address (`glowrootUrl`) | unchanged: value kept | |
 
 Server load, traces, Glowroot data, app export and apps data are now asked per recording in the popup's
 **Quick Settings**; the **Allow…** settings decide whether non-admins see those boxes. New settings are listed under
