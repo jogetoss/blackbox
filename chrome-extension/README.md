@@ -29,8 +29,8 @@ Popup → **Settings** (this browser only; server options are in the plugin READ
 
 ## Record
 
-1. On the page to debug, click the extension icon and pick **Record this tab** (no URL bar), **Record a window** (with
-   the URL bar) or **Record the screen**. Logs always come from the tab you started from. **Quick Settings** sets:
+1. On the page to debug, click the extension icon and pick **Record the screen**, **Record a window** (pick a Chrome
+   window for the URL bar) or **Record this tab** (no picker, no URL bar). Logs always come from the tab you started from. **Quick Settings** sets:
    - **Page sound** (off): the starting tab's sound, also for a window or the screen.
    - **Microphone** (off): Chrome asks on first use. If you blocked it, allow it at
      `chrome://settings/content/siteDetails?site=chrome-extension://<extension id>`.
