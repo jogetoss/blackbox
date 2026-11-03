@@ -35,13 +35,15 @@ public class RecordingHtmlTest {
         }
         Path webm = Files.write(dir.resolve("recording.webm"), video);
 
-        RecordingHtml export = new RecordingHtml(VIEW, "body{}", "var viewer=1;", "var boot=1;");
+        RecordingHtml export = new RecordingHtml(VIEW, "body{}", "var viewer=1;", "var display=1;", "var boot=1;");
         ByteArrayOutputStream out = new ByteArrayOutputStream();
         export.write(out, "{\"title\":\"a<b\"}", session, null, webm);
         String html = new String(out.toByteArray(), StandardCharsets.UTF_8);
 
         assertTrue(html.contains("<style>\nbody{}</style>"));
         assertTrue(html.contains("<script>\nvar viewer=1;</script>"));
+        assertTrue("Theme and Text size in <head>, before the page draws",
+                html.indexOf("<script>\nvar display=1;</script>") >= 0 && html.indexOf("var display=1;") < html.indexOf("</head>"));
         assertFalse(html.contains("assets/"));
         assertTrue("start-up code after the data", html.indexOf("var boot=1;") > html.indexOf("id=\"bb-video\""));
 
@@ -54,6 +56,6 @@ public class RecordingHtmlTest {
 
     @Test(expected = java.io.IOException.class)
     public void refusesCodeThatWouldCloseItsTag() throws Exception {
-        new RecordingHtml(VIEW, "body{}", "x='</script>'", "");
+        new RecordingHtml(VIEW, "body{}", "x='</script>'", "", "");
     }
 }

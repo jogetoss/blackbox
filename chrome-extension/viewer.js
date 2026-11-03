@@ -1732,8 +1732,10 @@ const FEATURES = [
   ['← Recordings', 'Back to the recordings list.', ['extension', 'server']],
   ['Link to a moment', 'The address carries the playhead time (?t=5.8) and follows it. Copy the address to share that moment; opening it starts there.', ['extension', 'server', 'file']],
   ['Resize', 'Drag the line between the video and the panel, or above a row\'s details. Double-click a line to reset it. Remembered in this browser.', ALL],
-  ['Text size and Theme', 'Set in the extension\'s Settings.', ['extension', 'server'],
-    { server: 'Used when the BlackBox extension\'s Upload URL is this server. Without it the page follows the system theme; use the browser\'s zoom.' }],
+  ['Text size and Theme', 'Set in the extension\'s Settings, or with the Text size and Theme pickers in the header of a downloaded HTML file or the standalone viewer.', ALL,
+    { server: 'Used when the BlackBox extension\'s Upload URL is this server. Without it the page follows the system theme; use the browser\'s zoom.',
+      file: 'The pickers in the header. Remembered in this browser for every BlackBox file opened from disk.',
+      viewer: 'The pickers in the header. Remembered in this browser for every BlackBox file opened from disk.' }],
 ];
 
 function renderFeatures() {
