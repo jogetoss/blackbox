@@ -59,7 +59,6 @@ final class GlowrootData {
     private static final int BLOCK_HEADER = 8;  // the block's length (long), then its LZF bytes
     private static final long OVERWRITE_MARGIN = 1024 * 1024; // at most this much of a ring (see CappedReader.margin)
     private static final int DELETE_BATCH = 20_000;
-    private static final long KEEP_HOURS = 876_000L; // ~100 years: the viewer must not expire the copied data
 
     private GlowrootData() {
     }
@@ -334,41 +333,6 @@ final class GlowrootData {
 
     // ---------- the package ----------
 
-    /**
-     * The agent's config.json for the viewer: no gauges (the viewer would add samples of its own JVM), no alerts and
-     * no synthetic monitors (they would send mail and call the live URLs). The rest stays as on the server.
-     */
-    static String viewerConfig(String agentConfig) throws JSONException {
-        JSONObject c = agentConfig == null || agentConfig.trim().isEmpty() ? new JSONObject() : new JSONObject(agentConfig);
-        c.put("gauges", new JSONArray());
-        c.put("alerts", new JSONArray());
-        c.put("syntheticMonitors", new JSONArray());
-        return c.toString(2);
-    }
-
-    /**
-     * admin.json for the viewer: only localhost, and nothing expires. Users, LDAP, SMTP and the other settings of the
-     * server's admin.json are left out on purpose (Glowroot's defaults: anonymous admin).
-     */
-    static String viewerAdmin(int traceCappedMb, int[] rollupCappedMb) throws JSONException {
-        JSONArray expire = new JSONArray();
-        JSONArray sizes = new JSONArray();
-        for (int mb : rollupCappedMb) {
-            expire.put(KEEP_HOURS);
-            sizes.put(mb);
-        }
-        JSONObject storage = new JSONObject()
-                .put("rollupExpirationHours", expire)
-                .put("traceExpirationHours", KEEP_HOURS)
-                .put("fullQueryTextExpirationHours", KEEP_HOURS)
-                .put("rollupCappedDatabaseSizesMb", sizes)
-                .put("traceCappedDatabaseSizeMb", traceCappedMb);
-        return new JSONObject()
-                .put("web", new JSONObject().put("port", 4000).put("bindAddress", "127.0.0.1"))
-                .put("storage", storage)
-                .toString(2);
-    }
-
     static String readme(String recordingId, String node, String agentVersion, long from, long to) {
         String range = "from=" + from + "&to=" + to;
         String version = agentVersion == null ? null : agentVersion.split(",")[0].trim(); // "0.14.2, built ..." -> "0.14.2"
@@ -378,27 +342,23 @@ final class GlowrootData {
                 + "\n"
                 + "Recording: " + java.time.Instant.ofEpochMilli(from) + " to " + java.time.Instant.ofEpochMilli(to) + " (UTC)\n"
                 + "\n"
-                + "Open it in a standalone Glowroot of the same version:\n"
+                + "Open it in Glowroot's offline viewer, of the same version:\n"
                 + "1. Download glowroot-" + (version == null ? "0.14.2" : version) + "-dist.zip from\n"
                 + "   https://github.com/glowroot/glowroot/releases and unzip it.\n"
-                + "2. Copy data/, config.json and admin.json from this ZIP into that glowroot folder.\n"
-                + "3. Start any JVM with the agent, e.g. with the Sleep.java in this ZIP:\n"
-                + "     java -javaagent:glowroot/glowroot.jar Sleep.java\n"
+                + "2. Copy data/ from this ZIP into that glowroot folder (next to glowroot.jar).\n"
+                + "3. In that folder run: java -jar glowroot.jar\n"
+                + "   It prints \"Offline viewer listening on 127.0.0.1:4000\". Port 4000 must be free.\n"
                 + "4. Open http://localhost:4000/transaction/average?transaction-type=Web&" + range + "\n"
                 + "   Traces: http://localhost:4000/transaction/traces?transaction-type=Web&" + range + "\n"
                 + "\n"
-                + "admin.json makes the viewer listen on localhost only and never expire this data. Port 4000 must be\n"
-                + "free. The data holds SQL with its parameter values and request details: share it accordingly.\n";
+                + "The offline viewer only reads the data: it records nothing and deletes nothing, however old. On its\n"
+                + "first start it writes Glowroot's default admin.json; change its bindAddress to 0.0.0.0 only to open the\n"
+                + "viewer from another machine or a container. The data holds SQL with its parameter values and request\n"
+                + "details: share it accordingly.\n";
     }
 
-    static final String SLEEP_JAVA = "public class Sleep {\n"
-            + "    public static void main(String[] args) throws Exception {\n"
-            + "        Thread.sleep(Long.MAX_VALUE); // an idle JVM for the Glowroot agent; stop it with Ctrl+C\n"
-            + "    }\n"
-            + "}\n";
-
-    /** Zips the cut data folder plus config.json, admin.json, README.txt and Sleep.java into zip (written atomically). */
-    static void zip(Path data, String config, String admin, String readme, Path zip) throws IOException {
+    /** Zips the cut data folder plus README.txt into zip (written atomically). */
+    static void zip(Path data, String readme, Path zip) throws IOException {
         Files.createDirectories(zip.getParent());
         Path tmp = zip.resolveSibling(zip.getFileName() + ".part");
         try (OutputStream o = Files.newOutputStream(tmp); ZipOutputStream z = new ZipOutputStream(o)) {
@@ -411,10 +371,7 @@ final class GlowrootData {
                     }
                 }
             }
-            entry(z, "config.json", config);
-            entry(z, "admin.json", admin);
             entry(z, "README.txt", readme);
-            entry(z, "Sleep.java", SLEEP_JAVA);
         }
         Files.move(tmp, zip, StandardCopyOption.REPLACE_EXISTING);
     }

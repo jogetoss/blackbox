@@ -1,11 +1,9 @@
 package org.joget.marketplace.blackbox;
 
 import java.io.IOException;
-import java.io.RandomAccessFile;
 import java.net.InetAddress;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Driver;
@@ -235,8 +233,6 @@ final class GlowrootPackager {
                 Driver h2 = (Driver) Class.forName(H2_DRIVER, true, cl).getDeclaredConstructor().newInstance();
                 r = GlowrootData.slice(h2, agent.resolve("data"), data, from, to, id);
             }
-            String config = GlowrootData.viewerConfig(read(agent.resolve("config.json"), jar.getParent().resolve("config.json")));
-            String admin = GlowrootData.viewerAdmin(cappedMb(data.resolve(GlowrootData.TRACE_CAPPED)), rollupMb(data));
             String readme = GlowrootData.readme(id, NODE, version, from, to);
 
             Path dir = TraceCollector.captureDir(id); // pending, or the recording's folder once uploaded
@@ -244,7 +240,7 @@ final class GlowrootPackager {
                 return; // the capture expired or the recording was deleted meanwhile
             }
             Path zip = dir.resolve(GlowrootData.DIR).resolve(NODE + ".zip");
-            GlowrootData.zip(data, config, admin, readme, zip);
+            GlowrootData.zip(data, readme, zip);
             JSONObject done = new JSONObject()
                     .put("bytes", Files.size(zip))
                     .put("traces", r.traces)
@@ -294,33 +290,6 @@ final class GlowrootPackager {
             }
         }
         return null;
-    }
-
-    private static String read(Path... files) throws IOException {
-        for (Path f : files) {
-            if (Files.isRegularFile(f)) {
-                return new String(Files.readAllBytes(f), StandardCharsets.UTF_8);
-            }
-        }
-        return "";
-    }
-
-    /** A capped file's ring size in MB, from its header (500 when it can't be read). */
-    private static int cappedMb(Path f) {
-        try (RandomAccessFile r = new RandomAccessFile(f.toFile(), "r")) {
-            r.readLong();
-            return Math.max(1, r.readInt() / 1024);
-        } catch (IOException e) {
-            return 500;
-        }
-    }
-
-    private static int[] rollupMb(Path data) {
-        int[] mb = new int[GlowrootData.AGGREGATE_MS.length];
-        for (int i = 0; i < mb.length; i++) {
-            mb[i] = cappedMb(data.resolve(GlowrootData.rollupCapped(i)));
-        }
-        return mb;
     }
 
     /** This node's status in the capture's folder (pending, or the recording's once uploaded). */
