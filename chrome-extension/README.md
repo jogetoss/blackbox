@@ -25,7 +25,7 @@ Popup → **Settings** (this browser only; server options are in the plugin READ
 - **Open recordings on the server when you are logged in** (on): a stopped recording uploads and opens on the server.
   Otherwise it replays here and shows **⚠ Upload** (hover for why).
 - **Text size** and **Theme**: for the extension's pages and the server's BlackBox pages. Downloaded HTML and the
-  standalone viewer follow the system theme.
+  standalone viewer have their own Text size and Theme pickers in the header, remembered in that browser.
 
 ## Record
 

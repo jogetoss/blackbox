@@ -23,7 +23,8 @@
   --current: #e8f0fe;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
-/* Theme: System follows the OS; Light/Dark come from the extension settings (theme.js sets data-theme) */
+/* Theme: System follows the OS; Light/Dark come from the extension settings (theme.js) or the standalone pages'
+   own pickers (display.js), which set data-theme */
 :root { color-scheme: light dark; }
 :root[data-theme="light"] { color-scheme: light; }
 @media (prefers-color-scheme: dark) {
@@ -102,7 +103,10 @@ header h1 { font-size: 15px; margin: 0; flex: 1; min-width: 0; white-space: nowr
 header h1 a { color: var(--accent); text-decoration: none; margin-right: 10px; font-weight: normal; }
 body.page-recordings { overflow: auto; }
 body.page-recordings .library { max-height: none; border-bottom: 0; background: var(--bg); }
-.actions { display: flex; gap: 8px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+/* Theme and Text size pickers of the downloaded HTML and the standalone viewer (display.js) */
+.display-settings { display: flex; gap: 8px; align-items: center; }
+.display-pick { color: var(--fg-2); font-size: 12px; white-space: nowrap; }
 #error { background: var(--error-bg); color: var(--error); padding: 8px 16px; }
 .incognito-note { margin: 0; background: var(--warn-bg); color: var(--warn); padding: 8px 16px; }
 .empty { flex: 1; display: grid; place-items: center; color: var(--fg-2); padding: 16px; text-align: center; }
