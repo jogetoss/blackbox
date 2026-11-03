@@ -28,7 +28,7 @@ server data**.
 | `BB_USER` | `admin` | |
 | `BB_PASSWORD` | the user name | Local test servers use the user name as password |
 | `BB_INCOGNITO_USER` | `cat` | The user `incognito.spec.js` logs in as in the incognito window (password = user name) |
-| `BB_EXTENSION` | `../chrome-extension` | The extension to load, e.g. an older release to test this plugin with it |
+| `BB_EXTENSION` | `../chrome-extension` | The extension to load |
 | `BB_CONTAINER`, `BB_WFLOW` | `j8213`, `/opt/wflow` | Where `legacy-names.spec.js` edits a `meta.json` (`docker exec`) |
 | `BB_DB_CONTAINER`, `BB_DB` | `mariadb`, `jw8` | Where `export-import.spec.js` and `glowroot-standalone.spec.js` read and lock iService's tables (`docker exec`) |
 | `BB_GLOWROOT_DISTS` | `~/Joget/glowroot-0.14.2-dist.zip,~/Joget/glowroot-0.14.4-dist.zip` | The standalone Glowroot dists `glowroot-standalone.spec.js` opens the data in |
@@ -43,10 +43,9 @@ server data**.
 - `tests/quick-settings.spec.js`: the popup's quick settings (shown as `me.options` allows, remembered), the app export
   at `recording-stop` kept by the upload, apps turned off at stop, and the automatic upload sending the choices saved
   with the recording; apps data without Mask data keeps real values (skipped when the user may not capture apps data).
-- `tests/legacy-names.spec.js`: recordings, ZIPs and extensions of 8.2.1 (capture summary `systemLog`) work: the extension's own capture start and upload, a kept recording with `systemLog`, a `meta.json`
-  with `systemLog`, and an old ZIP imported on the server and in the extension. Run the whole suite a second time with
-  the previous extension (`git archive <tag> chrome-extension | tar -x -C /some/dir`, then
-  `BB_EXTENSION=/some/dir/chrome-extension npx playwright test`); its ZIP test is skipped there.
+- `tests/legacy-names.spec.js`: recordings and ZIPs of 8.2.1 (capture summary `systemLog`) work: the extension's own
+  capture start and upload, a kept recording with `systemLog`, a `meta.json` with `systemLog`, and an old ZIP imported
+  on the server and in the extension.
 - `tests/incognito.spec.js`: turns on Allow in Incognito, logs in as `BB_INCOGNITO_USER` (default `cat`) in an
   incognito window and checks that the incognito copy of the extension calls the server as that user (the normal copy
   as `BB_USER`), shows its note, and keeps its own recording state, capture rule and badge. Playwright can't see

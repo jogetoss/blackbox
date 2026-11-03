@@ -55,11 +55,11 @@ MAC addresses) and every `-D` system property, which may hold secrets. If that i
 
 - The `canViewSystemLog` flag in the API's recording JSON is now `canViewServerData`.
 - The capture summary `systemLog` is now `serverCapture` (in `meta.json`, in `session.json`'s `recording`, and in the
-  `recording-start` answer, which still also sends `systemLog` for the extension of plugin 8.2.1). Existing
-  recordings, ZIPs and the extension of plugin 8.2.1 keep working: their `systemLog` is still read.
+  `recording-start` answer). Recordings and ZIPs made with 8.2.1 still open, upload and import: their `systemLog` is
+  still read.
 
-**One case breaks: extension 1.2.0 with plugin 8.2.1 or older** uploads recordings without their server data.
-Upgrade the plugin before (or with) the extension.
+**Plugin 8.2.2 needs extension 1.2.0.** Older extensions are not supported with it, and extension 1.2.0 with plugin
+8.2.1 or older uploads recordings without their server data. Upgrade the plugin and the extension together.
 
 ## Use
 
