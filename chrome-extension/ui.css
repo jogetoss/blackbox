@@ -1,21 +1,35 @@
-/* Colors for the small extension pages (popup, settings, recorder). The viewer has its own in viewer.css. */
+/* Colors for the small extension pages (popup, settings, recorder): the same green theme as viewer.css.
+   --page is the settings page's ground, --bg the popup's and the cards'. */
 :root {
   color-scheme: light dark;
-  --bg: #ffffff; --fg: #1f2328; --muted: #5f6368; --line: #dadce0; --field: #ffffff;
-  --accent: #1a73e8; --on-accent: #ffffff; --danger: #d93025; --ok: #188038; --warn: #b06000;
+  --page: #f6f7f6; --bg: #ffffff; --fg: #0b2a21; --muted: #5d6c66; --line: #e1e7e4; --field: #ffffff; --field-line: #c9d4cf;
+  --accent: #087c5e; --on-accent: #ffffff; --danger: #c62f22; --ok: #087c5e; --warn: #9a6400;
+  --brand: #105045; --soft: #f0f3f1;
+  --display: Poppins, system-ui, sans-serif; /* only if installed: no web font */
 }
 :root[data-theme="light"] { color-scheme: light; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #1f1f1f; --fg: #e8eaed; --muted: #9aa0a6; --line: #3c4043; --field: #282a2d;
-    --accent: #8ab4f8; --on-accent: #1f1f1f; --danger: #f28b82; --ok: #81c995; --warn: #fdd663;
+    --page: #0c1613; --bg: #13201c; --fg: #e3eeea; --muted: #92a59e; --line: #24352f; --field: #0f1a17; --field-line: #2e433c;
+    --accent: #2fbf8f; --on-accent: #062018; --danger: #f28b82; --ok: #4fd1a5; --warn: #f0b45a;
+    --brand: #1a6556; --soft: #182824;
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #1f1f1f; --fg: #e8eaed; --muted: #9aa0a6; --line: #3c4043; --field: #282a2d;
-  --accent: #8ab4f8; --on-accent: #1f1f1f; --danger: #f28b82; --ok: #81c995; --warn: #fdd663;
+  --page: #0c1613; --bg: #13201c; --fg: #e3eeea; --muted: #92a59e; --line: #24352f; --field: #0f1a17; --field-line: #2e433c;
+  --accent: #2fbf8f; --on-accent: #062018; --danger: #f28b82; --ok: #4fd1a5; --warn: #f0b45a;
+  --brand: #1a6556; --soft: #182824;
 }
 body { background: var(--bg); color: var(--fg); }
 a { color: var(--accent); }
-input, select, textarea { background: var(--field); color: var(--fg); border: 1px solid var(--line); border-radius: 4px; }
+h1 { font-family: var(--display); font-weight: 600; letter-spacing: -.01em; }
+/* Brand mark before each page's title: dark green tile with the red "recording" dot */
+h1::before {
+  content: ""; display: inline-block; width: 20px; height: 20px; margin-right: 8px; vertical-align: -4px; border-radius: 6px;
+  background: radial-gradient(circle, var(--danger) 0 3.5px, color-mix(in srgb, var(--danger) 35%, var(--brand)) 4px 6px, var(--brand) 6.5px);
+}
+input, select, textarea { background: var(--field); color: var(--fg); border: 1px solid var(--field-line); border-radius: 8px; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
+input[type=checkbox] { accent-color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

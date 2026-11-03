@@ -887,18 +887,43 @@ function serverList(items) {
 
 // ---------- resizable panes ----------
 
-// Drag the line left of the panel (its width) or above the detail pane (its height); double-click resets it.
-// Sizes are CSS variables on #app, so the one-column layout of narrow windows still wins. Remembered per browser.
+// Drag the grip left of the panel (its width) or above the detail pane (its height), or focus it and use the arrow
+// keys (Shift: bigger steps); double-click resets it. Sizes are CSS variables on #app, so the one-column layout of
+// narrow windows still wins. Remembered per browser. `edge` measures from the panel itself (not #app, which has
+// padding); `keep` is the room left for the video (or the list) plus #app's padding and gap.
 const SPLITS = {
-  panel: { varName: '--panel-w', min: 320, edge: 'left', box: () => $('app'), keep: 320 },
-  detail: { varName: '--detail-h', min: 80, edge: 'top', box: () => document.querySelector('.panel'), keep: 120 },
+  panel: { varName: '--panel-w', min: 320, edge: 'left', box: () => $('app'), keep: 372, label: 'Resize the video and the panel', keys: { ArrowLeft: 1, ArrowRight: -1 } },
+  detail: { varName: '--detail-h', min: 80, edge: 'top', box: () => document.querySelector('.panel'), keep: 120, label: 'Resize the detail pane', keys: { ArrowUp: 1, ArrowDown: -1 } },
 };
+
+// The size to set for a wanted size in page pixels: within the splitter's minimum and the room its box leaves
+function fitSplit(name, px) {
+  const sp = SPLITS[name];
+  const zoom = parseFloat(document.documentElement.style.zoom) || 1;
+  const box = sp.box().getBoundingClientRect();
+  const room = (sp.edge === 'left' ? box.width : box.height) / zoom - sp.keep;
+  return Math.round(Math.max(sp.min, Math.min(px, room)));
+}
 
 function addSplitter(name, host, cls) {
   const sp = SPLITS[name];
   const handle = el('div', `splitter ${cls}`);
-  handle.title = 'Drag to resize, double-click to reset';
+  handle.title = 'Drag or use the arrow keys to resize, double-click to reset';
+  handle.tabIndex = 0;
+  handle.setAttribute('role', 'separator');
+  handle.setAttribute('aria-orientation', sp.edge === 'left' ? 'vertical' : 'horizontal');
+  handle.setAttribute('aria-label', sp.label);
   host.prepend(handle);
+  handle.addEventListener('keydown', (e) => {
+    const dir = sp.keys[e.key];
+    if (!dir) return;
+    e.preventDefault();
+    const zoom = parseFloat(document.documentElement.style.zoom) || 1;
+    const now = parseInt($('app').style.getPropertyValue(sp.varName))
+      || (sp.edge === 'left' ? host.getBoundingClientRect().width : host.getBoundingClientRect().height) / zoom;
+    setSplit(name, fitSplit(name, now + dir * (e.shiftKey ? 64 : 16)));
+    saveSplits();
+  });
   handle.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -906,10 +931,9 @@ function addSplitter(name, host, cls) {
     const move = (ev) => {
       // Rects and pointer positions are in zoomed pixels; the size is set in the page's own (Text size) pixels
       const zoom = parseFloat(document.documentElement.style.zoom) || 1;
-      const box = sp.box().getBoundingClientRect();
-      const px = sp.edge === 'left' ? box.right - ev.clientX : box.bottom - ev.clientY;
-      const room = (sp.edge === 'left' ? box.width : box.height) / zoom - sp.keep;
-      setSplit(name, Math.round(Math.max(sp.min, Math.min(px / zoom, room))));
+      const edge = host.getBoundingClientRect(); // the panel's right edge / the detail pane's bottom edge
+      const px = sp.edge === 'left' ? edge.right - ev.clientX : edge.bottom - ev.clientY;
+      setSplit(name, fitSplit(name, px / zoom));
     };
     const end = () => {
       handle.removeEventListener('pointermove', move);
@@ -1731,7 +1755,7 @@ const FEATURES = [
     { extension: 'Recordings in browser storage and the linked folder.', server: 'Your recordings (admins: every recording).' }],
   ['← Recordings', 'Back to the recordings list.', ['extension', 'server']],
   ['Link to a moment', 'The address carries the playhead time (?t=5.8) and follows it. Copy the address to share that moment; opening it starts there.', ['extension', 'server', 'file']],
-  ['Resize', 'Drag the line between the video and the panel, or above a row\'s details. Double-click a line to reset it. Remembered in this browser.', ALL],
+  ['Resize', 'Drag the grip between the video and the panel, or above a row\'s details, or click it and use the arrow keys (Shift for bigger steps). Double-click a grip to reset it. Remembered in this browser.', ALL],
   ['Text size and Theme', 'Set in the extension\'s Settings, or with the Text size and Theme pickers in the header of a downloaded HTML file or the standalone viewer.', ALL,
     { server: 'Used when the BlackBox extension\'s Upload URL is this server. Without it the page follows the system theme; use the browser\'s zoom.',
       file: 'The pickers in the header. Remembered in this browser for every BlackBox file opened from disk.',
