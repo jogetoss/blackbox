@@ -102,7 +102,7 @@ below add the other parts.
 |---|---|---|---|
 | Recent changes period (days) | 7 | Info tab: changed app versions and wflow files; at most 365 | |
 | Allow exporting the apps used in the recording | Yes | | **Export the apps used** |
-| Max apps to export | 5 | 0 = no limit (0–9999; anything else means 5); apps not allowed don't count | |
+| Max apps to export | 3 | 0 = no limit (0–9999; anything else means 3); apps not allowed don't count | |
 | Who can export apps they don't administer | nobody | Only apps Joget lets them access | |
 | Allow capturing apps data | No | Needs **Allow exporting the apps used…**; see [Apps data](#apps-data) | **Capture apps data** |
 | Allow masking apps data | No | Shown when apps data is allowed | **Mask data** |

@@ -32,7 +32,7 @@ final class AppExport {
 
     static final String DIR = "app";
     static final String LIST = "apps.json";
-    static final int MAX_APPS = 5;
+    static final int MAX_APPS = 3;
     static final String FILE_NAME = "[A-Za-z0-9_-]+-\\d+\\.jwa";
 
     /** Joget's own App Center: usually just the way into the app in question, so kept only when it had problems or was the only app. */

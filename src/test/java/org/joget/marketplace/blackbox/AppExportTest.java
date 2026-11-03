@@ -149,7 +149,7 @@ public class AppExportTest {
             d.setVersion(version != null ? Long.valueOf(version) : 1L);
             d.setPublished(version == null);
             return d;
-        });
+        }, null, 5); // limit 5 (not the default): gone, hr, bad, a1, a2 tried; a3 skipped
         assertEquals("hr, a1, a2 exported; a3 is the 6th app", 3, summary.length());
         assertEquals("App hr", summary.getJSONObject(0).getString("name"));
         assertEquals(3, summary.getJSONObject(0).getLong("version"));

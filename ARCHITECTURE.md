@@ -470,7 +470,7 @@ then) and the system log (requests, 5xx or an `error` = a problem; error lines =
 URL-decoded. `find` matches them against Joget's app URL patterns (`appOf`; app icons and screenshots name none). The
 browser's requests name the apps; system log hits only add to those (it also gets other tabs' service worker
 requests, which carry no tab id), unless the browser named none. App Center is dropped unless it had problems or was
-alone. Apps rank by problems, then requests; the top `maxApps` (default 5, 0 = all) that the user may have exported
+alone. Apps rank by problems, then requests; the top `maxApps` (default 3, 0 = all) that the user may have exported
 are exported with `AppService.exportApp` (reads the current request's parameters, which carry no `tablenames`, `usergroups` or
 `exportplugins`, so no data, groups or plugins go in). `apps.json` records each app's state: `saved`, `missing`,
 `denied`, `failed` or `skipped` (beyond the cap), all but `saved` with a `reason`, and `problems`; a failing sample hook leaves
