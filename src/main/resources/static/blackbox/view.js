@@ -119,7 +119,8 @@ window.blackboxPage = 'server'; // for the Features list
       } else {
         const b = document.createElement('button');
         b.disabled = true;
-        b.textContent = n.state === 'failed' ? label + ': failed' : label + ': preparing…';
+        const node = nodes.length > 1 ? ' (' + n.node + ')' : ''; // which node, on a cluster
+        b.textContent = (n.state === 'failed' ? 'No Glowroot data' : 'Preparing Glowroot data') + node;
         b.title = n.reason || '';
         box.append(b);
       }
