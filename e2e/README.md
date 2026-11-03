@@ -94,7 +94,7 @@ server data**.
   `data/` rows (real: original ids; masked: the idMap's new ids, `userN`), Import ZIP on the server, and the `.jwa`
   imported over iService through App Center's import form (a new iService version, its rows in the tables). The test
   deletes the version and the masked rows afterwards. Also Download HTML opened from disk with Joget blocked (App tab),
-  the standalone viewer (`dist/blackbox-viewer.html`) with the server ZIP and with `session.json`, Import ZIP in the
+  its Theme and Text size pickers (kept after a reload and shared with the standalone viewer), the standalone viewer (`dist/blackbox-viewer.html`) with the server ZIP and with `session.json`, Import ZIP in the
   extension, and the extension's Download ZIP imported on the server. About 6 minutes (each ZIP waits for Glowroot data).
 
 - `tests/glowroot-standalone.spec.js`: a recording (quick settings: Glowroot trace files and data on) whose tab makes

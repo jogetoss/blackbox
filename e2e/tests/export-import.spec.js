@@ -254,6 +254,19 @@ test('Download HTML replays without Joget; the standalone viewer and the extensi
     await expect(offline.locator('#appsTab')).toBeVisible();
     await offline.click('#appsTab');
     await expect(offline.locator('#appsPage')).toContainText('Support Request');
+
+    // Theme and Text size pickers (display.js): applied at once, kept after a reload
+    const display = (p) => p.evaluate(() => ({ theme: document.documentElement.dataset.theme || '', zoom: document.documentElement.style.zoom }));
+    await expect(offline.locator('#themePick')).toHaveValue('');
+    await expect(offline.locator('#textSizePick')).toHaveValue('1');
+    await offline.selectOption('#themePick', 'dark');
+    await offline.selectOption('#textSizePick', '1.5');
+    expect(await display(offline)).toEqual({ theme: 'dark', zoom: '1.5' });
+    await offline.reload();
+    await expect(offline.locator('#app')).toBeVisible({ timeout: 30_000 });
+    expect(await display(offline), 'after a reload').toEqual({ theme: 'dark', zoom: '1.5' });
+    await expect(offline.locator('#themePick')).toHaveValue('dark');
+    await expect(offline.locator('#textSizePick')).toHaveValue('1.5');
     expect(errors, 'no script errors').toEqual([]);
 
     // The standalone viewer (dist/blackbox-viewer.html) opens the server's ZIP
@@ -265,6 +278,11 @@ test('Download HTML replays without Joget; the standalone viewer and the extensi
     await viewer.setInputFiles('#files', zip);
     await expect(viewer.locator('#app')).toBeVisible({ timeout: 30_000 });
     await expect(viewer.locator('#recTitle')).toContainText(rec.title);
+    // the same choice in every file opened from disk; back to System and 100% from here
+    expect(await display(viewer), 'set in the downloaded HTML').toEqual({ theme: 'dark', zoom: '1.5' });
+    await viewer.selectOption('#themePick', '');
+    await viewer.selectOption('#textSizePick', '1');
+    expect(await display(viewer)).toEqual({ theme: '', zoom: '' });
     expect(viewerErrors, 'no script errors').toEqual([]);
 
     // The standalone viewer also opens session.json on its own
