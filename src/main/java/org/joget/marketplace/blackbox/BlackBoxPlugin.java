@@ -320,7 +320,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             }
         } else if ("exporting".equals(done)) {
             deliverStopExport(captureId); // in case it ended just now
-        } else if (!"off".equals(done) && access.allows("allowAppExport", true) && !"false".equals(request.getParameter("apps"))) {
+        } else if (!"off".equals(done) && access.allows("allowAppExport", false) && !"false".equals(request.getParameter("apps"))) {
             // No export at stop (no server capture, or the stop's export failed): the apps as they are now, in the
             // background; the recording lists them when it ends
             java.util.concurrent.Callable<JSONArray> job = exportJob(store.dir(recId), store.file(recId, RecordingStore.SESSION),
@@ -749,7 +749,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         if (pending.has("appExport") || pending.has("recording")) {
             return pending.optJSONObject("appExport") != null ? pending.getJSONObject("appExport") : new JSONObject().put("state", "off");
         }
-        boolean off = !access.allows("allowAppExport", true) || "false".equals(request.getParameter("apps"));
+        boolean off = !access.allows("allowAppExport", false) || "false".equals(request.getParameter("apps"));
         Path dir = logs.dir(id);
         Path session = dir.resolve("stop-session.json");
         Path systemLog = dir.resolve("stop-system-log.json");
@@ -1030,7 +1030,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
      * allServer needs canCaptureServerData. None needs the upload permission, which applies only to uploads.
      */
     private JSONObject quickSettings(Access access, User user) throws JSONException {
-        boolean apps = access.allows("allowAppExport", true) && access.mayExportApps();
+        boolean apps = access.allows("allowAppExport", false) && access.mayExportApps();
         boolean sample = apps && access.allows("allowCaptureAppsData", false);
         return new JSONObject()
                 .put("serverCapture", true) // every recording is captured
