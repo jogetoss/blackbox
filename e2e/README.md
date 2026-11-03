@@ -30,6 +30,9 @@ server data**.
 | `BB_INCOGNITO_USER` | `cat` | The user `incognito.spec.js` logs in as in the incognito window (password = user name) |
 | `BB_EXTENSION` | `../chrome-extension` | The extension to load, e.g. an older release to test this plugin with it |
 | `BB_CONTAINER`, `BB_WFLOW` | `j8213`, `/opt/wflow` | Where `legacy-names.spec.js` edits a `meta.json` (`docker exec`) |
+| `BB_DB_CONTAINER`, `BB_DB` | `mariadb`, `jw8` | Where `export-import.spec.js` and `glowroot-standalone.spec.js` read and lock iService's tables (`docker exec`) |
+| `BB_GLOWROOT_DISTS` | `~/Joget/glowroot-0.14.2-dist.zip,~/Joget/glowroot-0.14.4-dist.zip` | The standalone Glowroot dists `glowroot-standalone.spec.js` opens the data in |
+| `BB_GLOWROOT_PORT`, `BB_JAVA_IMAGE` | `14000`, `eclipse-temurin:17-jdk` | The standalone Glowroot's host port (localhost only) and its throwaway container's image |
 
 ## How it works
 
@@ -85,5 +88,22 @@ server data**.
   the file that was there after; about 7 minutes. Uploads are deleted.
 - `tests/upload-form.spec.js`: the apps data and Mask data choices on the upload form, the `sampleData` parameter it sends, and the
   App data the server builds.
+
+- `tests/export-import.spec.js`: for apps without data, with real data and with masked data: the server's Download
+  ZIP (recording, server data, `app/apps.json`, the `.jwa`, same as the App tab's **Download .jwa**), the `.jwa`'s
+  `data/` rows (real: original ids; masked: the idMap's new ids, `userN`), Import ZIP on the server, and the `.jwa`
+  imported over iService through App Center's import form (a new iService version, its rows in the tables). The test
+  deletes the version and the masked rows afterwards. Also Download HTML opened from disk with Joget blocked (App tab),
+  its Theme and Text size pickers (kept after a reload and shared with the standalone viewer), the standalone viewer (`dist/blackbox-viewer.html`) with the server ZIP and with `session.json`, Import ZIP in the
+  extension, and the extension's Download ZIP imported on the server. About 6 minutes (each ZIP waits for Glowroot data).
+
+- `tests/glowroot-standalone.spec.js`: a recording (quick settings: Glowroot trace files and data on) whose tab makes
+  one slow request (a datalist read while the test holds a table lock for 4 s) and one failed one (a form load whose
+  waiting query is killed: 500). BlackBox saves both traces; **Download Glowroot data** equals `glowroot/<node>.zip` in
+  the Download ZIP, which holds only `data/` and `README.txt`; then, for each dist, the README's steps (`java -jar
+  glowroot.jar`, the offline viewer) in a throwaway Java container (an `admin.json` with only `bindAddress` `0.0.0.0`,
+  the port published on localhost only): the slow trace (≥ 2 s) and the error
+  trace in the recording's window, both tagged with the capture id, and the Transactions page. Screenshots of each
+  Glowroot's pages are in the test's output folder. About 2 minutes.
 
 A failed test keeps a trace in `test-results/` (`npx playwright show-trace <trace.zip>`).
