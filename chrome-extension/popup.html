@@ -12,14 +12,13 @@
     h1::before { background: radial-gradient(circle, #ff6b5e 0 3.5px, rgba(255, 255, 255, .18) 4px); }
     button { width: 100%; padding: 10px; border: 0; border-radius: 10px; color: var(--on-accent); font: 600 13px system-ui, sans-serif; cursor: pointer; }
     button:disabled { opacity: .6; cursor: default; }
-    /* Record buttons: the hint shows as a second line; "Record this tab" is the main action, full width,
-       the other two side by side */
-    .start { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
-    .start button:first-child { grid-column: 1 / -1; }
-    .start button { display: flex; flex-direction: column; justify-content: flex-start; text-align: left; padding: 8px 12px; background: var(--bg); color: var(--fg); border: 1px solid var(--field-line); }
+    /* Record buttons in one row: screen, window, tab; the hint shows under the label; "Record the screen" is the
+       main action */
+    .start { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+    .start button { display: flex; flex-direction: column; justify-content: flex-start; gap: 3px; text-align: left; padding: 8px 9px; line-height: 1.25; background: var(--bg); color: var(--fg); border: 1px solid var(--field-line); }
     .start button:hover:not(:disabled) { border-color: var(--accent); }
     .start button:first-child { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
-    .start button small { display: block; font-weight: 400; font-size: 11.5px; color: var(--muted); }
+    .start button small { display: block; font-weight: 400; font-size: 11px; color: var(--muted); }
     .start button:first-child small { color: inherit; opacity: .85; }
     #stop { background: var(--danger); }
     #status { margin-top: 8px; color: var(--muted); min-height: 1em; }
@@ -42,9 +41,9 @@
 <body>
   <h1>BlackBox</h1>
   <div id="start" class="start">
-    <button data-mode="tab" title="Records this tab's page directly, no picker (no URL bar in the video)">Record this tab<small>No picker, no URL bar in the video</small></button>
-    <button data-mode="window" title="Pick a window; pick a Chrome window to get the URL bar">Record a window<small>Pick a Chrome window to get the URL bar</small></button>
     <button data-mode="screen" title="Pick a screen">Record the screen<small>Pick a screen</small></button>
+    <button data-mode="window" title="Pick a window; pick a Chrome window to get the URL bar">Record a window<small>Pick a Chrome window to get the URL bar</small></button>
+    <button data-mode="tab" title="Records this tab's page directly, no picker (no URL bar in the video)">Record this tab<small>No picker, no URL bar in the video</small></button>
   </div>
   <!-- Quick settings for the next recording: sound is this browser's; the rest the server offers (BlackBox plugin
        settings and this user's rights, me.options). Every box starts unticked and asks for its part. -->
