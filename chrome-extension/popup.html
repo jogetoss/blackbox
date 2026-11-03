@@ -5,15 +5,18 @@
   <link rel="stylesheet" href="ui.css">
   <script src="theme.js"></script>
   <style>
-    body { width: 260px; margin: 0; padding: 12px; font: 13px system-ui, sans-serif; }
+    /* Chrome caps popups at 600px tall (800px wide): wider, so everything fits without scrolling */
+    body { width: 340px; margin: 0; padding: 12px; font: 13px system-ui, sans-serif; }
     /* Title as a dark green band across the top */
     h1 { font-size: 15px; margin: -12px -12px 12px; padding: 10px 12px; background: var(--brand); color: #fff; }
     h1::before { background: radial-gradient(circle, #ff6b5e 0 3.5px, rgba(255, 255, 255, .18) 4px); }
     button { width: 100%; padding: 10px; border: 0; border-radius: 10px; color: var(--on-accent); font: 600 13px system-ui, sans-serif; cursor: pointer; }
     button:disabled { opacity: .6; cursor: default; }
-    /* Record buttons: the hint shows as a second line; "Record this tab" is the main action */
-    .start { display: grid; gap: 7px; }
-    .start button { text-align: left; padding: 8px 12px; background: var(--bg); color: var(--fg); border: 1px solid var(--field-line); }
+    /* Record buttons: the hint shows as a second line; "Record this tab" is the main action, full width,
+       the other two side by side */
+    .start { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+    .start button:first-child { grid-column: 1 / -1; }
+    .start button { display: flex; flex-direction: column; justify-content: flex-start; text-align: left; padding: 8px 12px; background: var(--bg); color: var(--fg); border: 1px solid var(--field-line); }
     .start button:hover:not(:disabled) { border-color: var(--accent); }
     .start button:first-child { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
     .start button small { display: block; font-weight: 400; font-size: 11.5px; color: var(--muted); }
@@ -22,11 +25,12 @@
     #status { margin-top: 8px; color: var(--muted); min-height: 1em; }
     #serverNote, #incognitoNote { margin-top: 8px; color: var(--warn); overflow-wrap: anywhere; }
     #error { margin-top: 8px; color: var(--danger); white-space: pre-wrap; }
-    #viewer, #settings { display: block; margin-top: 10px; font-weight: 600; text-decoration: none; }
+    #viewer, #settings { display: inline-block; margin: 10px 16px 0 0; font-weight: 600; text-decoration: none; }
     #viewer:hover, #settings:hover { text-decoration: underline; }
     #quick { margin: 10px 0 0; padding: 6px 10px 10px; border: 1px solid var(--line); border-radius: 10px; }
     #quick legend { padding: 0 4px; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
-    #quick label { display: flex; gap: 6px; align-items: center; margin-top: 4px; }
+    #quick label { display: flex; gap: 6px; align-items: center; margin-top: 3px; }
+    #quick > label { display: inline-flex; margin-right: 16px; } /* Page sound and Microphone on one row */
     #quick label input { margin: 0; }
     #quick .sub { margin-left: 18px; }
     #quick .sub2 { margin-left: 36px; }
