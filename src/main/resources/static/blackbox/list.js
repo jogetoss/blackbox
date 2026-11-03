@@ -42,7 +42,7 @@
       open.href = url;
       open.textContent = 'Open it';
       $('notice').replaceChildren(`Imported "${meta.title || meta.id}" without its server data (system logs, traces, `
-        + 'apps): importing it needs "Who can view server data" in the BlackBox settings. ', open);
+        + 'apps): importing it needs "Who can capture other users' server data" in the BlackBox settings. ', open);
       $('notice').hidden = false;
       await load();
     } catch (e) {

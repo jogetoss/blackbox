@@ -104,7 +104,7 @@
             "label" : "Allow exporting the apps used in the recording",
             "description" : "For non-admins; admins may always use it. When the recording stops (or at upload, when there was no capture or that export failed), the apps found in the recorded tab's URLs (apps with problems first, then the most used; App Center only when it had problems or was the only app) are exported with Joget's own app export (.jwa, without form data, plugins or groups) and kept with the recording. Whose apps: see \"Who can export apps they don't administer\". Each recording gets it only when \"Export the apps used\" is ticked in the extension's popup (unticked by default). App definitions can hold plugin settings and environment variables.",
             "type" : "checkbox",
-            "value" : "",
+            "value" : "true",
             "options" : [{"value" : "true", "label" : ""}]
         },
         {
@@ -112,7 +112,7 @@
             "label" : "Max apps to export",
             "description" : "Per recording. Apps the user may not have exported don't count. 0 = no limit; empty or not a whole number up to 9999 = 5.",
             "type" : "textfield",
-            "value" : "3"
+            "value" : "5"
         },
         {
             "name" : "canExportOtherApps",

@@ -213,7 +213,9 @@ When the extension recovers a crashed recording (`recoverPartials`, report.js), 
 body, so no app export) for the partial meta's capture with `stoppedAt = lastSavedAt`, the last crash-safety save.
 `ServerCaptureStore.stop(id, owner, clientStoppedAt, lostMs)` takes that time only between `startedAt` and
 `lastSeenAt + lostMs` (both inclusive; with no `lastSeenAt`, between `startedAt` and now); otherwise it uses
-`lastSeenAt`, or now when there is none. A stop without `stoppedAt` (the recorder's normal stop)
+`lastSeenAt`, or now when there is none. `lastSavedAt` is the browser's clock and the bounds are the server's, with
+no correction for clock skew: a skewed browser clock moves the stop time by the skew, and a skew that puts it outside
+the bounds gives `lastSeenAt` instead. A stop without `stoppedAt` (the recorder's normal stop)
 uses now. A capture that already has `stoppedAt` (for example stopped as `browser-lost`) keeps it; the
 owner's stop still answers 200. The extension doesn't retry a stop that fails (offline, logged out): the lost-browser
 check above closes the capture. Closing the recorder window sends a plain stop first, so that stop's time wins there.
@@ -560,7 +562,7 @@ for in Settings or on the first upload.
 | `actions.js` | Upload (with its form; `uploadNow` without it, `uploadMany` for a batch), Move to folder, Download ZIP and Delete of one recording; links in messages |
 | `replay.js` | Replay page (`viewer.html?id=` or `?disk=`): loads the recording, its status bar, ⚠ Upload and the fix box, Move to folder / Download ZIP / Delete, Older / Newer; with `upload=server` it uploads and opens the server's copy |
 | `report.js` | Builds `session.json`; turns a recording interrupted by a crash or a closed recorder into a normal one (`recovered`, stop reason "interrupted") and stops its server capture at the last save |
-| `quick.js` | Quick settings (`chrome.storage.local` `quick`): `apps`, `sample`, `real` are the per-recording app export choices (`recording.options`, the export parameters); `allServer`, `gauges`, `traces` and `glowrootData` go to `recording-start` |
+| `quick.js` | Quick settings (`chrome.storage.local` `quick`): `apps`, `sample`, `mask` are the per-recording app export choices (`recording.options`, the export parameters); `allServer`, `gauges`, `traces` and `glowrootData` go to `recording-start` |
 | `store.js` | Row list (kept, on disk: newest 50, upload history), badges, loading a recording, the linked folder |
 | `server.js` | Calls the Upload endpoint with the browser's cookies; Upload URL and Recording page URL, host access, 15 s timeout on GETs |
 | `zip.js` | Reads and writes recording ZIPs (no library: `CompressionStream` / `DecompressionStream`; top-level files only, no ZIP64) |

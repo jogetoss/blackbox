@@ -18,6 +18,46 @@ Built against `wflow-core` 8.2-SNAPSHOT (javax.servlet). The jar includes the ex
 after changing `chrome-extension/viewer.js` or `viewer.css`. Install the plugin before (or with) the extension of the
 same version.
 
+## Upgrading
+
+### From 8.2.1
+
+**The plugin settings were reorganised and their old values are not read.** After the upgrade every setting falls
+back to its default (see [Settings](#settings)). Open **Configure** and set them again; check the access settings
+first, as a restricted install opens up otherwise:
+
+| 8.2.1 setting (key) | Now (key) | Default now |
+|---|---|---|
+| Who can upload (`uploadPermission`) | Who can upload (`canUpload`) | any logged-in user: **a restriction set in 8.2.1 is lost** |
+| Who can view all recordings (`viewPermission`) | removed: admins see every recording, others their own | |
+| Who can delete any recording (`deletePermission`) | removed: admins delete any recording, others their own | |
+| Uploaders can view and delete their own recordings (`ownerAccess`) | removed: always on | |
+| Capture system logs during recordings (`captureSystemLogs`) | removed: every recording is captured | |
+| Who can view system logs (`systemLogPermission`) | Who can capture other users' server data (`canCaptureServerData`): **All server log lines** and keeping a ZIP's server data on import | admins only |
+| Uploaders can view the server data of their own recordings (`ownServerData`) | removed: always on | |
+| Delete system logs not uploaded after (days) (`systemLogKeepDays`) | Delete server data not uploaded after (days) (`serverDataKeepDays`) | 7 |
+| Sample server load during recordings (`captureGauges`) | Allow capturing server load (`allowCaptureGauges`) | No (was Yes) |
+| Copy Glowroot traces of slow and failed requests (`captureTraces`) | Allow capturing Glowroot traces… (`allowCaptureTraces`) | No (was Yes) |
+| Copy Glowroot data for the recording (`captureGlowrootData`) | Allow capturing Glowroot data (`allowCaptureGlowrootData`) | No |
+
+Server load, traces, Glowroot data, app export and apps data are now asked per recording in the popup's
+**Quick Settings**; the **Allow…** settings decide whether non-admins see those boxes. New settings are listed under
+[Settings](#settings).
+
+**Every uploader now sees their own recording's server data**, with no setting to turn it off. In 8.2.1 this was
+off by default (no capture, and `ownServerData` No). It includes the **Info** tab: the license table (system key,
+MAC addresses) and every `-D` system property, which may hold secrets. If that is a problem, limit **Who can upload**.
+
+**Also renamed:**
+
+- The `canViewSystemLog` flag in the API's recording JSON is now `canViewServerData`.
+- The capture summary `systemLog` is now `serverCapture` (in `meta.json`, in `session.json`'s `recording`, and in the
+  `recording-start` answer, which still also sends `systemLog` for the extension of plugin 8.2.1). Existing
+  recordings, ZIPs and the extension of plugin 8.2.1 keep working: their `systemLog` is still read.
+
+**One case breaks: extension 1.2.0 with plugin 8.2.1 or older** uploads recordings without their server data.
+Upgrade the plugin before (or with) the extension.
+
 ## Use
 
 - **Recordings list:** `<context>/blackbox/`: your own recordings (admins: all). Tick rows to
@@ -140,7 +180,8 @@ settings and environment variables.
 - No ping for 3 minutes (browser crashed, killed or offline): the server ends the capture at the last ping, with stop
   reason `browser-lost`. A capture that never got a ping is ended only by the hard limit.
 - A recording recovered after a crash ends its capture at its last save (every 5 s), if that fits the capture (after
-  its start, at most 3 minutes after the last ping); otherwise at the last ping.
+  its start, at most 3 minutes after the last ping); otherwise at the last ping. The save time comes from the
+  browser's clock, so a browser clock that is off moves the end by the same amount.
 
 ### Limits
 

@@ -52,6 +52,9 @@ server data**.
   as `BB_USER`), shows its note, and keeps its own recording state, capture rule and badge. Playwright can't see
   incognito windows, so it uses the browser's DevTools port (`--remote-debugging-port=0`, `openIncognito` in
   `fixtures.js`). Skipped for an extension without `"incognito": "split"`.
+- `tests/normal-recording.spec.js`: a real screen recording in the normal window as `BB_USER`, from `start` to the
+  automatic upload: its console and network logs, the attached server capture and the video. It records the screen,
+  so it runs only with `BB_HEADED=1` (picker auto-selected, as below).
 - `tests/incognito-recording.spec.js`: a real screen recording in incognito, from `start` to the automatic upload:
   the picker is skipped by `--auto-select-desktop-capture-source=Entire screen` (`fixtures.js`), then MediaRecorder,
   the console and network logs, the server capture, stop, and the upload as `BB_INCOGNITO_USER` with its video. It
