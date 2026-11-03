@@ -229,28 +229,6 @@ public class GlowrootDataTest {
     // ---------- the package ----------
 
     @Test
-    public void viewerConfigDropsGaugesAlertsAndMonitors() throws Exception {
-        JSONObject c = new JSONObject(GlowrootData.viewerConfig("{\"transactions\":{\"slowThresholdMillis\":2000},"
-                + "\"gauges\":[{\"mbeanObjectName\":\"java.lang:type=Memory\"}],\"alerts\":[{}],\"syntheticMonitors\":[{}]}"));
-        assertEquals(0, c.getJSONArray("gauges").length());
-        assertEquals(0, c.getJSONArray("alerts").length());
-        assertEquals(0, c.getJSONArray("syntheticMonitors").length());
-        assertEquals(2000, c.getJSONObject("transactions").getInt("slowThresholdMillis"));
-        assertEquals("no config.json", 0, new JSONObject(GlowrootData.viewerConfig("")).getJSONArray("gauges").length());
-    }
-
-    @Test
-    public void viewerAdminIsLocalAndNeverExpires() throws Exception {
-        JSONObject a = new JSONObject(GlowrootData.viewerAdmin(500, new int[]{500, 400, 300, 200}));
-        assertEquals("127.0.0.1", a.getJSONObject("web").getString("bindAddress"));
-        JSONObject st = a.getJSONObject("storage");
-        assertEquals(500, st.getInt("traceCappedDatabaseSizeMb"));
-        assertEquals(300, st.getJSONArray("rollupCappedDatabaseSizesMb").getInt(2));
-        assertTrue(st.getLong("traceExpirationHours") > 24L * 365 * 50);
-        assertFalse("no users, LDAP or SMTP from the server", a.has("users") || a.has("ldap") || a.has("smtp"));
-    }
-
-    @Test
     public void overallStateAndSpaceNeeded() throws Exception {
         JSONArray s = new JSONArray();
         assertNull(GlowrootData.overall(s));
@@ -272,7 +250,7 @@ public class GlowrootDataTest {
     }
 
     @Test
-    public void zipsDataAndViewerFiles() throws Exception {
+    public void zipsOnlyDataAndReadme() throws Exception {
         Path data = Files.createDirectories(dir.resolve("data"));
         Files.write(data.resolve("data.h2.db"), new byte[]{1, 2, 3});
         Path zip = dir.resolve("rec").resolve(GlowrootData.DIR).resolve("node-a.zip");
@@ -280,11 +258,13 @@ public class GlowrootDataTest {
         assertTrue(readme.contains("Cut out of Glowroot 0.14.2 in its own format"));
         assertTrue(readme.contains("glowroot-0.14.2-dist.zip"));
         assertTrue("the recording's time range", readme.contains("from=" + FROM + "&to=" + TO));
-        GlowrootData.zip(data, "{}", "{}", readme, zip);
+        assertTrue("opened with the offline viewer", readme.contains("java -jar glowroot.jar"));
+        GlowrootData.zip(data, readme, zip);
         try (ZipFile z = new ZipFile(zip.toFile())) {
-            for (String name : Arrays.asList("data/data.h2.db", "config.json", "admin.json", "README.txt", "Sleep.java")) {
-                assertNotNull(name, z.getEntry(name));
-            }
+            java.util.List<String> names = new java.util.ArrayList<>();
+            z.stream().forEach(e -> names.add(e.getName()));
+            // the offline viewer needs only data/: it writes its own default admin.json and config.json
+            assertEquals(Arrays.asList("data/data.h2.db", "README.txt"), names);
         }
         assertEquals(zip, GlowrootData.zipFile(dir.resolve("rec"), "node-a"));
         assertNull("not a node name", GlowrootData.zipFile(dir.resolve("rec"), "../x"));
