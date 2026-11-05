@@ -4,6 +4,9 @@ The BlackBox Chrome extension records the browser side of a problem (video, soun
 This plugin stores those recordings in Joget, adds the server side (system logs, Glowroot traces, server load, system
 info, the apps used) and replays both together. Recordings download as ZIP or as one HTML file that replays anywhere.
 
+**Demo (1:07):** [the bug nobody could reproduce](demo/hero.mp4). More clips (app export, reading a replay, slow
+requests, setup): [demo/README.md](demo/README.md).
+
 Internals, API and storage: [ARCHITECTURE.md](ARCHITECTURE.md). Extension: [chrome-extension/README.md](chrome-extension/README.md).
 Browser tests: [e2e/README.md](e2e/README.md).
 
