@@ -36,6 +36,7 @@ public class OtherTracesTest {
 
     private HttpServer server;
     private final Map<String, JSONObject> headers = new HashMap<>();
+    private final List<String> calls = java.util.Collections.synchronizedList(new ArrayList<>());
 
     @Before
     public void start() throws Exception {
@@ -62,6 +63,7 @@ public class OtherTracesTest {
 
     private void answer(HttpExchange ex) throws IOException {
         String path = ex.getRequestURI().getPath();
+        calls.add(path);
         Map<String, String> q = new HashMap<>();
         for (String kv : ex.getRequestURI().getRawQuery().split("&")) {
             int eq = kv.indexOf('=');
@@ -104,7 +106,7 @@ public class OtherTracesTest {
         GlowrootClient g = new GlowrootClient("http://127.0.0.1:" + server.getAddress().getPort());
         Path dir = Files.createTempDirectory("bb-others");
         List<JSONObject> out = new ArrayList<>();
-        TraceCollector.collectOthers(g, CAPTURE, FROM, TO, dir, out::add);
+        TraceCollector.collectOthers(g, CAPTURE, FROM, TO, dir, out::add, Long.MAX_VALUE);
 
         assertEquals("bob's request and the background job", 2, out.size());
         JSONObject bob = out.get(0);
@@ -121,5 +123,20 @@ public class OtherTracesTest {
         JSONObject job = out.get(1);
         assertEquals("Background", job.getString("type"));
         assertEquals("Email tool", job.getString("url"));
+    }
+
+    @Test
+    public void aSlowGlowrootOnlyGetsCountedOnceTheTimeIsUp() throws Exception {
+        GlowrootClient g = new GlowrootClient("http://127.0.0.1:" + server.getAddress().getPort());
+        List<JSONObject> out = new ArrayList<>();
+        TraceCollector.collectOthers(g, CAPTURE, FROM, TO, Files.createTempDirectory("bb-others"), out::add, 0);
+
+        assertEquals("only the note", 1, out.size());
+        assertEquals("none", out.get(0).getString("state"));
+        assertTrue(out.get(0).getString("reason"), out.get(0).getString("reason").contains("too slow")
+                && out.get(0).getString("reason").contains("Up to 3 more"));
+        for (String c : calls) {
+            assertTrue("no header or export call after the deadline: " + c, c.endsWith("/points"));
+        }
     }
 }

@@ -23,6 +23,11 @@ same version.
 
 ## Upgrading
 
+### From 8.2.2
+
+**Failed trace lookups of recordings made with 8.2.2 or older lose their Retry button.** Their entries don't carry
+the recording's Glowroot tag, which a trace must now have to be matched. Traces already copied stay.
+
 ### From 8.2.1
 
 **The plugin settings were reorganised; renamed and removed settings lose their values.** After the upgrade they fall
@@ -192,10 +197,12 @@ Shown on the replay page and in the ZIP and HTML downloads, to everyone who can 
   by Glowroot's own settings), and of each one that logged an ERROR, even when it was fast and returned 200 (BlackBox
   asks Glowroot to keep those). Only traces Glowroot tagged with this recording are used, so another user's request
   on the same page at the same moment is never shown as yours. Failed lookups have **Retry** (not for imported
-  recordings). Glowroot must allow anonymous access.
+  recordings, nor for ones recorded with plugin 8.2.2 or older). Glowroot must allow anonymous access.
 - **Other users' traces** (popup's **Include other users' traces**): about 30 s after the stop, each node the
   recording reached adds the traces Glowroot kept of every other request and background job during the recording
-  (up to 200 per node), with the user. Listed under the Traces filter **Other users' traces**, never as a recorded
+  (up to 200 per node, and what a slow Glowroot gives within 5 minutes), with the user when Glowroot records it: set
+  its Servlet plugin's **Session user attribute** to `SPRING_SECURITY_CONTEXT.authentication.name` (empty by default:
+  shown as "user unknown"). Listed under the Traces filter **Other users' traces**, never as a recorded
   request's trace. With **Capture Glowroot data**, the downloaded data keeps all traces of that time too.
 - **Download Glowroot data**: the recording's slice of Glowroot's data, ready 30–90 s after the stop, to open in a
   standalone Glowroot 0.14.2 (see its `README.txt`). About 1 MB for 35 s. Building it needs free temp space about the

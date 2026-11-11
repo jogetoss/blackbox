@@ -56,6 +56,7 @@ final class TraceCollector {
     // recording reached; at most MAX_OTHERS per node
     static final long OTHERS_AFTER_MS = 30_000L;  // Glowroot stores a trace only after its request ended
     static final int MAX_OTHERS = 200;
+    static final long OTHERS_BUDGET_MS = 5 * 60_000L; // per recording and node: a slow Glowroot can't hold the copy up
     private static final long OTHERS_MAX_WAIT_MS = 3 * 3600 * 1000L; // a capture never stopped
     private static final String[] OTHER_TYPES = {"Web", "Background"};
     private static final Map<String, Long> OTHERS = new ConcurrentHashMap<>(); // capture id -> watched since
@@ -65,6 +66,9 @@ final class TraceCollector {
     private static final Map<String, AtomicInteger> COUNTS = new ConcurrentHashMap<>();
     private static final AtomicLong SEQ = new AtomicLong();
     private static volatile ScheduledExecutorService jobs;
+    // Other users' traces have their own thread: up to MAX_OTHERS * 3 Glowroot calls per recording must not delay the
+    // heartbeat, lookups and retries on jobs
+    private static volatile ScheduledExecutorService othersJobs;
 
     private TraceCollector() {
     }
@@ -81,13 +85,22 @@ final class TraceCollector {
         jobs.scheduleWithFixedDelay(TraceCollector::heartbeat, 2, 2, TimeUnit.SECONDS);
         jobs.scheduleWithFixedDelay(() -> COUNTS.clear(), 1, 1, TimeUnit.DAYS);
         jobs.scheduleWithFixedDelay(TraceCollector::retryScan, RETRY_SCAN_S, RETRY_SCAN_S, TimeUnit.SECONDS);
-        jobs.scheduleWithFixedDelay(TraceCollector::othersTick, 10, 10, TimeUnit.SECONDS);
+        othersJobs = Executors.newSingleThreadScheduledExecutor(r -> {
+            Thread t = new Thread(r, "BlackBox other traces");
+            t.setDaemon(true);
+            return t;
+        });
+        othersJobs.scheduleWithFixedDelay(TraceCollector::othersTick, 10, 10, TimeUnit.SECONDS);
     }
 
     static synchronized void stop() {
         if (jobs != null) {
             jobs.shutdownNow();
             jobs = null;
+        }
+        if (othersJobs != null) {
+            othersJobs.shutdownNow();
+            othersJobs = null;
         }
         RUNNING.clear();
         CLIENTS.clear();
@@ -98,7 +111,7 @@ final class TraceCollector {
 
     /** The capture is open on this node: if it asked for other users' traces, copy them after the stop. */
     static void watchOthers(ServerCapture.Capture capture) {
-        if (jobs != null && capture.traces && capture.otherTraces) {
+        if (othersJobs != null && capture.traces && capture.otherTraces) {
             OTHERS.putIfAbsent(capture.id, System.currentTimeMillis());
         }
     }
@@ -132,19 +145,28 @@ final class TraceCollector {
             writeOther(id, otherNote(id, "failed", "Glowroot is not running on " + NODE));
             return;
         }
-        collectOthers(g, id, meta.optLong("startedAt"), meta.optLong("stoppedAt"), dir(id), e -> writeOther(id, e));
+        collectOthers(g, id, meta.optLong("startedAt"), meta.optLong("stoppedAt"), dir(id), e -> writeOther(id, e),
+                System.currentTimeMillis() + OTHERS_BUDGET_MS);
     }
 
-    /** copyOthers without the capture store: each other trace (and the limit note) goes to out; files to dir. */
+    /**
+     * copyOthers without the capture store: each other trace (and the limit note) goes to out; files to dir. Stops
+     * copying at MAX_OTHERS or at deadline (epoch ms); what is left is only counted, with no further Glowroot call.
+     */
     static void collectOthers(GlowrootClient g, String id, long from, long to, Path dir,
-            java.util.function.Consumer<JSONObject> out) throws IOException {
+            java.util.function.Consumer<JSONObject> out, long deadline) throws IOException {
         int copied = 0;
-        int skipped = 0;
+        int left = 0; // not looked at: may include the recording's own
+        boolean late = false;
         java.util.Set<String> seen = new java.util.HashSet<>();
         for (String type : OTHER_TYPES) { // requests, and scheduler / background jobs
             for (GlowrootClient.Point p : g.points(from, to + OTHERS_AFTER_MS, type)) {
                 if (!seen.add(p.traceId) || p.endMs - p.durationMs > to) {
                     continue; // listed twice, or started after the stop
+                }
+                if (copied >= MAX_OTHERS || late || (late = System.currentTimeMillis() > deadline)) {
+                    left++;
+                    continue;
                 }
                 JSONObject h;
                 try {
@@ -155,17 +177,14 @@ final class TraceCollector {
                 if (TraceStore.tagged(h, id) || h.optLong("startTime") > to) {
                     continue; // the recording's own (find() copies those), or started after the stop
                 }
-                if (copied >= MAX_OTHERS) {
-                    skipped++;
-                    continue;
-                }
                 out.accept(other(g, id, p.traceId, h, dir));
                 copied++;
             }
         }
-        if (skipped > 0) {
-            out.accept(otherNote(id, "none", "Only the first " + MAX_OTHERS + " other traces on " + NODE + " are kept: "
-                    + skipped + " more were not copied"));
+        if (left > 0) {
+            out.accept(otherNote(id, "none", (late ? "Glowroot on " + NODE + " was too slow: copying stopped after "
+                    + OTHERS_BUDGET_MS / 60_000 + " minutes. " : "Only the first " + MAX_OTHERS + " other traces on " + NODE
+                    + " are kept. ") + "Up to " + left + " more were not copied"));
         }
     }
 

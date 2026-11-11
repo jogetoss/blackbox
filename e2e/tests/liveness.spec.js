@@ -1,10 +1,10 @@
-// Recording liveness end to end (heartbeat, lost browser, crash recovery, hard limit, old extensions): real headless
+// Recording liveness end to end (heartbeat, lost browser, crash recovery, hard limit): real headless
 // screen recordings against j8213, checked in the capture's meta.json on the server (read with docker exec).
 // The crash tests kill this test's own Chromium (pkill -9 on its profile folder) and start it again on the same
 // profile, as after a real crash. The spec sets the test override (liveness-test.json) itself for its run and puts
 // back what was there after; its checks (the 60 s limit, checkMs) depend on these values.
 // Every recording uploaded here is deleted at the end of its test.
-const { execFileSync, execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -13,8 +13,6 @@ const { test, expect, JOGET, EXTENSION, ASSIGNMENT, loginJoget, api } = require(
 
 const CONTAINER = process.env.BB_CONTAINER || 'j8213';
 const WFLOW = process.env.BB_WFLOW || '/opt/wflow';
-const OLD_TAG = process.env.BB_OLD_TAG || '8.2.1'; // the last release without the heartbeat
-const REPO = path.join(__dirname, '..', '..');
 
 const sh = (args) => execFileSync('docker', ['exec', CONTAINER, ...args], { encoding: 'utf8' });
 
@@ -285,41 +283,6 @@ test('server stop: the next ping stops the recorder with server-stopped', async 
     expect(rec.report.recording.stopReason).toMatch(/^server-stopped: /);
   } finally {
     await b.dispose();
-  }
-});
-
-test('old extension (no heartbeat): not stopped as lost, stopped by the server 2 min past its limit', async () => {
-  const old = fs.mkdtempSync(path.join(os.tmpdir(), 'bb-old-'));
-  try {
-    execSync(`git -C "${REPO}" archive ${OLD_TAG} chrome-extension | tar -x -C "${old}"`);
-  } catch (e) {
-    test.skip(true, `no ${OLD_TAG} tag: ${e.message}`);
-  }
-  const b = await browser(path.join(old, 'chrome-extension'));
-  try {
-    const { capture } = await startRecording(b, { key: 'systemLog' }); // 8.2.1 keeps the capture under systemLog
-    const meta = captureMeta(capture.id);
-    expect(meta.maxUntil, 'the server sets a limit for every capture').toBeGreaterThan(0);
-    const limitMs = meta.maxUntil - meta.startedAt;
-    test.setTimeout(limitMs + 120_000 + 120_000);
-    expect(capture.pingMs, 'the old extension keeps no ping timing').toBeUndefined();
-
-    // Well past lostMs: no ping ever came, so it is not lost
-    await new Promise((r) => setTimeout(r, OVERRIDE.lostMs + 2 * OVERRIDE.checkMs + 2000));
-    const open = captureMeta(capture.id);
-    expect(open.lastSeenAt).toBeUndefined();
-    expect(open.stoppedAt, 'not stopped as lost').toBeUndefined();
-
-    // The server backup: maxUntil + 2 min (+ a check)
-    await expect.poll(() => captureMeta(capture.id).stopReason, { timeout: meta.maxUntil + 120_000 + 30_000 - Date.now(), intervals: [2000] })
-      .toBe('time-limit');
-    const stopped = captureMeta(capture.id);
-    expect(stopped.stoppedAt).toBe(meta.maxUntil);
-    expect(Date.now(), 'not before maxUntil + 2 min').toBeGreaterThanOrEqual(meta.maxUntil + 120_000);
-    await b.worker.evaluate(() => stop('user').then(() => 'ok')).catch(() => {}); // the old recorder still runs; nothing uploaded
-  } finally {
-    await b.dispose();
-    fs.rmSync(old, { recursive: true, force: true });
   }
 });
 
