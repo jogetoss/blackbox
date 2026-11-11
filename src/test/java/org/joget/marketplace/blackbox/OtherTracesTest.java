@@ -106,9 +106,11 @@ public class OtherTracesTest {
         GlowrootClient g = new GlowrootClient("http://127.0.0.1:" + server.getAddress().getPort());
         Path dir = Files.createTempDirectory("bb-others");
         List<JSONObject> out = new ArrayList<>();
-        TraceCollector.collectOthers(g, CAPTURE, FROM, TO, dir, out::add, Long.MAX_VALUE);
+        TraceCollector.collectOthers(g, CAPTURE, FROM, TO, () -> dir, out::add, Long.MAX_VALUE);
 
-        assertEquals("bob's request and the background job", 2, out.size());
+        assertEquals("bob's request, the background job and the closing note", 3, out.size());
+        assertEquals("none", out.get(2).getString("state"));
+        assertTrue(out.get(2).getString("reason"), out.get(2).getString("reason").startsWith("2 other traces copied"));
         JSONObject bob = out.get(0);
         assertEquals("bob", bob.getString("user"));
         assertTrue(bob.getBoolean("other"));
@@ -129,14 +131,33 @@ public class OtherTracesTest {
     public void aSlowGlowrootOnlyGetsCountedOnceTheTimeIsUp() throws Exception {
         GlowrootClient g = new GlowrootClient("http://127.0.0.1:" + server.getAddress().getPort());
         List<JSONObject> out = new ArrayList<>();
-        TraceCollector.collectOthers(g, CAPTURE, FROM, TO, Files.createTempDirectory("bb-others"), out::add, 0);
+        Path dir = Files.createTempDirectory("bb-others");
+        TraceCollector.collectOthers(g, CAPTURE, FROM, TO, () -> dir, out::add, 0);
 
         assertEquals("only the note", 1, out.size());
         assertEquals("none", out.get(0).getString("state"));
         assertTrue(out.get(0).getString("reason"), out.get(0).getString("reason").contains("too slow")
-                && out.get(0).getString("reason").contains("Up to 3 more"));
+                && out.get(0).getString("reason").contains("0 copied, up to 3 more"));
         for (String c : calls) {
             assertTrue("no header or export call after the deadline: " + c, c.endsWith("/points"));
         }
+    }
+
+    @Test
+    public void aRestartPicksUpTheCapturesThisNodeStillOwesOtherTracesFor() throws Exception {
+        ServerCaptureStore store = new ServerCaptureStore(Files.createTempDirectory("bb-pending"));
+        String owed = "00000000-0000-4000-8000-000000000001";
+        String done = "00000000-0000-4000-8000-000000000002";
+        String plain = "00000000-0000-4000-8000-000000000003";
+        for (String id : new String[] {owed, done, plain}) {
+            assertTrue(store.start(id, "admin", 1 << 20, 60_000, true, "", false, false, false, 0, true));
+        }
+        store.put(owed, TraceCollector.OTHERS_PENDING, true);
+        store.put(done, TraceCollector.OTHERS_PENDING, false);
+        store.put(plain, "othersPending-another-node", true);
+        TraceCollector.stop(); // clears what is watched
+        assertEquals(java.util.Arrays.asList(owed), TraceCollector.recoverOthers(store, 1));
+        assertTrue("already watched: not added twice", TraceCollector.recoverOthers(store, 2).isEmpty());
+        TraceCollector.stop();
     }
 }

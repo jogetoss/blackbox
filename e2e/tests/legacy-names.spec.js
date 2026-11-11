@@ -1,6 +1,7 @@
 // Names from before the "server capture" rename: plugin 8.2.1 and its extension keep the capture summary under
 // "systemLog" (meta.json, session.json's recording, the recording-start answer). This plugin and extension still read
-// them. Run the suite with BB_EXTENSION=<the extension folder of plugin 8.2.1> too, to test this plugin with the old extension.
+// them. The 8.2.1 extension itself is not supported with this plugin (README: plugin 8.2.2 needs extension 1.2.0; its
+// requests are refused unless Allowed extension IDs is emptied), so these tests feed the old names to this extension.
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');

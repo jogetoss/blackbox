@@ -312,7 +312,11 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
   with `user` (Glowroot's, empty unless its Servlet plugin's `sessionUserAttribute` is set, e.g.
   `SPRING_SECURITY_CONTEXT.authentication.name`), `type`, the summary and the export, keyed `<node>-other-<traceId>`. It runs on its own thread
   ("BlackBox other traces"), so it never delays the heartbeat, lookups or retries, and stops calling Glowroot after
-  `OTHERS_BUDGET_MS` (5 min); past either limit the rest are only counted, in one "none" note. Copied once: no retry. The viewer
+  `OTHERS_BUDGET_MS` (5 min); past either limit the rest are only counted. One note per node (`<node>-other-note`)
+  says where it stands: "pending" from the stop until the copy (so the replay page keeps polling), then "none" with
+  how many were copied and why any were left out, or "failed". The folder is looked up for each trace, as the upload
+  may move the capture to its recording meanwhile. The capture's `meta.json` has `othersPending-<node>: true` from
+  the watch until the copy ends, so after a restart `recoverOthers` watches it again. Copied once: no retry. The viewer
   lists them only under the filter "Other users' traces" and never matches them to a network request;
   `ServerData.traces` counts them apart (`others`). `GlowrootData.slice(..., allTraces)` then keeps every trace
   that overlapped the recording (`CAPTURE_TIME >= from` and `START_TIME <= to`).

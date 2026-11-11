@@ -133,6 +133,9 @@ test('the recording keeps its own trace; another user\'s comes apart, marked oth
     expect(theirsEntry().state).toBe('saved');
     expect(theirsEntry().ms).toBeGreaterThan(2000);
     expect(traces.filter((t) => t.other && t.url?.includes('/data/list/')), 'only the other session\'s request as other').toHaveLength(1);
+    const note = traces.find((t) => t.other && t.key?.endsWith('-other-note'));
+    expect(note?.state, 'the node\'s closing note replaced its pending one').toBe('none');
+    expect(note.reason).toMatch(/^\d+ other traces copied from /);
   } finally {
     if (rec) await api(joget, 'delete', { id: rec.id }, 'POST');
     await other.close();

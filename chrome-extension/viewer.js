@@ -1014,16 +1014,22 @@ function setTab(name) {
     $('filter').hidden = !FILTERS[name];
     appFilter.hidden = !(name === 'network' || name === 'server') || Number(appFilter.dataset.count || 0) < 2;
     for (const t of Object.keys(LEVEL_BOXES)) levelBoxes(t).hidden = t !== name;
-    if (FILTERS[name]) {
-      $('filter').replaceChildren(...FILTERS[name].map(([v, label]) => {
-        const o = el('option', null, label);
-        o.value = v;
-        return o;
-      }));
-    }
+    fillFilter(name);
     renderList();
   }
   closeDetail();
+}
+
+// The filter list's options for a tab; the chosen one stays chosen when it is still offered
+function fillFilter(name) {
+  if (!FILTERS[name]) return;
+  const chosen = $('filter').value;
+  $('filter').replaceChildren(...FILTERS[name].map(([v, label]) => {
+    const o = el('option', null, label);
+    o.value = v;
+    return o;
+  }));
+  if (tab === name && FILTERS[name].some(([v]) => v === chosen)) $('filter').value = chosen;
 }
 
 // A tab's level checkboxes, made on first use next to the filter list
@@ -1192,6 +1198,7 @@ function updateTracesTab() {
   // Other users' traces (capture option otherTraces): their own filter, never mixed into this recording's
   const others = traceItems.filter((e) => e.other && e.state === 'saved').length;
   FILTERS.traces = TRACE_FILTERS.concat(traceItems.some((e) => e.other) ? [['others', `Other users' traces (${others})`]] : []);
+  if (tab === 'traces') fillFilter('traces'); // other traces arrive about 30 s after the stop, maybe with the tab open
   if (!$('tracesTab')) return;
   $('tracesTab').hidden = !current.traces;
   const own = traceItems.filter((e) => !e.other);

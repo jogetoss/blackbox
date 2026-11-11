@@ -8,8 +8,10 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
@@ -60,6 +62,9 @@ final class TraceCollector {
     private static final long OTHERS_MAX_WAIT_MS = 3 * 3600 * 1000L; // a capture never stopped
     private static final String[] OTHER_TYPES = {"Web", "Background"};
     private static final Map<String, Long> OTHERS = new ConcurrentHashMap<>(); // capture id -> watched since
+    private static final Set<String> OTHERS_NOTED = ConcurrentHashMap.newKeySet(); // stopped: "pending" note written
+    // Saved in the capture's meta.json while this node still owes its other traces, so a restart picks them up again
+    static final String OTHERS_PENDING = "othersPending-" + NODE;
 
     private static final Map<Running, Boolean> RUNNING = new ConcurrentHashMap<>();
     private static final Map<String, GlowrootClient> CLIENTS = new ConcurrentHashMap<>();
@@ -90,6 +95,13 @@ final class TraceCollector {
             t.setDaemon(true);
             return t;
         });
+        othersJobs.schedule(() -> {
+            try {
+                recoverOthers(ServerCapture.store(), System.currentTimeMillis());
+            } catch (IOException | RuntimeException e) {
+                LogUtil.warn(TraceCollector.class.getName(), "Could not check for other users' traces still to copy: " + e);
+            }
+        }, 1, TimeUnit.SECONDS);
         othersJobs.scheduleWithFixedDelay(TraceCollector::othersTick, 10, 10, TimeUnit.SECONDS);
     }
 
@@ -105,14 +117,36 @@ final class TraceCollector {
         RUNNING.clear();
         CLIENTS.clear();
         OTHERS.clear();
+        OTHERS_NOTED.clear();
     }
 
     // ---------- other users' traces ----------
 
     /** The capture is open on this node: if it asked for other users' traces, copy them after the stop. */
     static void watchOthers(ServerCapture.Capture capture) {
-        if (othersJobs != null && capture.traces && capture.otherTraces) {
-            OTHERS.putIfAbsent(capture.id, System.currentTimeMillis());
+        if (othersJobs != null && capture.traces && capture.otherTraces
+                && OTHERS.putIfAbsent(capture.id, System.currentTimeMillis()) == null) {
+            markOthers(capture.id, true);
+        }
+    }
+
+    /** After a restart: captures whose meta says this node still owes their other traces are watched again. */
+    static List<String> recoverOthers(ServerCaptureStore store, long now) throws IOException {
+        List<String> watched = new ArrayList<>();
+        for (String id : store.ids()) {
+            JSONObject meta = store.readMeta(id);
+            if (meta != null && meta.optBoolean(OTHERS_PENDING) && OTHERS.putIfAbsent(id, now) == null) {
+                watched.add(id);
+            }
+        }
+        return watched;
+    }
+
+    private static void markOthers(String id, boolean pending) {
+        try {
+            ServerCapture.store().put(id, OTHERS_PENDING, pending);
+        } catch (IOException e) {
+            LogUtil.warn(TraceCollector.class.getName(), "Could not save the other traces' state of capture " + id + ": " + e.getMessage());
         }
     }
 
@@ -121,15 +155,31 @@ final class TraceCollector {
         for (Map.Entry<String, Long> w : OTHERS.entrySet()) {
             String id = w.getKey();
             JSONObject meta = ServerCapture.store().readMeta(id);
-            if (meta == null || (!meta.has("stoppedAt") && now - w.getValue() > OTHERS_MAX_WAIT_MS)) {
-                OTHERS.remove(id); // expired, deleted, or never stopped
+            if (meta == null) {
+                OTHERS.remove(id); // expired or deleted
+                OTHERS_NOTED.remove(id);
+            } else if (meta.has("stoppedAt") && now < meta.optLong("stoppedAt") + OTHERS_AFTER_MS) {
+                if (OTHERS_NOTED.add(id)) { // the replay page keeps polling while a trace is pending
+                    writeOther(id, otherNote(id, "pending", "Other users' traces on " + NODE + " are copied about "
+                            + OTHERS_AFTER_MS / 1000 + " s after the stop"));
+                }
+            } else if (!meta.has("stoppedAt") && now - w.getValue() > OTHERS_MAX_WAIT_MS) {
+                OTHERS.remove(id); // never stopped
+                markOthers(id, false);
             } else if (meta.has("stoppedAt") && now >= meta.optLong("stoppedAt") + OTHERS_AFTER_MS) {
-                OTHERS.remove(id);
                 try {
                     copyOthers(id, meta);
                 } catch (IOException | RuntimeException e) {
-                    writeOther(id, otherNote(id, "failed", "Could not read other users' traces from Glowroot: " + e.getMessage()));
+                    if (!Thread.currentThread().isInterrupted()) {
+                        writeOther(id, otherNote(id, "failed", "Could not read other users' traces from Glowroot: " + e.getMessage()));
+                    }
                 }
+                if (Thread.currentThread().isInterrupted()) {
+                    return; // the plugin is stopping: still pending in meta.json, copied again after the restart
+                }
+                OTHERS.remove(id);
+                OTHERS_NOTED.remove(id);
+                markOthers(id, false);
             }
         }
     }
@@ -145,15 +195,16 @@ final class TraceCollector {
             writeOther(id, otherNote(id, "failed", "Glowroot is not running on " + NODE));
             return;
         }
-        collectOthers(g, id, meta.optLong("startedAt"), meta.optLong("stoppedAt"), dir(id), e -> writeOther(id, e),
+        // The folder is looked up per trace: the upload may move the capture to its recording during the copy
+        collectOthers(g, id, meta.optLong("startedAt"), meta.optLong("stoppedAt"), () -> dir(id), e -> writeOther(id, e),
                 System.currentTimeMillis() + OTHERS_BUDGET_MS);
     }
 
     /**
-     * copyOthers without the capture store: each other trace (and the limit note) goes to out; files to dir. Stops
+     * copyOthers without the capture store: each other trace (and the limit note) goes to out; files to dir.get(). Stops
      * copying at MAX_OTHERS or at deadline (epoch ms); what is left is only counted, with no further Glowroot call.
      */
-    static void collectOthers(GlowrootClient g, String id, long from, long to, Path dir,
+    static void collectOthers(GlowrootClient g, String id, long from, long to, java.util.function.Supplier<Path> dir,
             java.util.function.Consumer<JSONObject> out, long deadline) throws IOException {
         int copied = 0;
         int left = 0; // not looked at: may include the recording's own
@@ -161,6 +212,9 @@ final class TraceCollector {
         java.util.Set<String> seen = new java.util.HashSet<>();
         for (String type : OTHER_TYPES) { // requests, and scheduler / background jobs
             for (GlowrootClient.Point p : g.points(from, to + OTHERS_AFTER_MS, type)) {
+                if (Thread.currentThread().isInterrupted()) {
+                    return; // the plugin is stopping; copied again after the restart
+                }
                 if (!seen.add(p.traceId) || p.endMs - p.durationMs > to) {
                     continue; // listed twice, or started after the stop
                 }
@@ -177,15 +231,15 @@ final class TraceCollector {
                 if (TraceStore.tagged(h, id) || h.optLong("startTime") > to) {
                     continue; // the recording's own (find() copies those), or started after the stop
                 }
-                out.accept(other(g, id, p.traceId, h, dir));
+                out.accept(other(g, id, p.traceId, h, dir.get()));
                 copied++;
             }
         }
-        if (left > 0) {
-            out.accept(otherNote(id, "none", (late ? "Glowroot on " + NODE + " was too slow: copying stopped after "
-                    + OTHERS_BUDGET_MS / 60_000 + " minutes. " : "Only the first " + MAX_OTHERS + " other traces on " + NODE
-                    + " are kept. ") + "Up to " + left + " more were not copied"));
-        }
+        // Always one note at the end: it replaces the "pending" one
+        out.accept(otherNote(id, "none", left == 0 ? copied + " other traces copied from " + NODE
+                : (late ? "Glowroot on " + NODE + " was too slow: copying stopped after " + OTHERS_BUDGET_MS / 60_000
+                + " minutes. " : "Only the first " + MAX_OTHERS + " other traces on " + NODE + " are kept. ")
+                + copied + " copied, up to " + left + " more were not"));
     }
 
     private static JSONObject other(GlowrootClient g, String captureId, String traceId, JSONObject h, Path dir) throws IOException {
@@ -247,6 +301,15 @@ final class TraceCollector {
         Path dir = dir(captureId);
         if (dir != null) {
             write(dir, captureId, null, e);
+        }
+        // its export may have gone to the pending folder just before the upload moved it
+        Path pending = ServerCapture.store().dir(captureId);
+        if (!pending.equals(dir) && Files.isDirectory(pending)) {
+            try {
+                moveIfUploaded(captureId, pending);
+            } catch (IOException ex) {
+                LogUtil.warn(TraceCollector.class.getName(), "Could not move a trace of capture " + captureId + ": " + ex.getMessage());
+            }
         }
     }
 

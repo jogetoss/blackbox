@@ -202,7 +202,7 @@ Shown on the replay page and in the ZIP and HTML downloads, to everyone who can 
   recording reached adds the traces Glowroot kept of every other request and background job during the recording
   (up to 200 per node, and what a slow Glowroot gives within 5 minutes), with the user when Glowroot records it: set
   its Servlet plugin's **Session user attribute** to `SPRING_SECURITY_CONTEXT.authentication.name` (empty by default:
-  shown as "user unknown"). Listed under the Traces filter **Other users' traces**, never as a recorded
+  shown as "user unknown"). A note in that list says when they are still coming and how many were copied. Listed under the Traces filter **Other users' traces**, never as a recorded
   request's trace. With **Capture Glowroot data**, the downloaded data keeps all traces of that time too.
 - **Download Glowroot data**: the recording's slice of Glowroot's data, ready 30–90 s after the stop, to open in a
   standalone Glowroot 0.14.2 (see its `README.txt`). About 1 MB for 35 s. Building it needs free temp space about the

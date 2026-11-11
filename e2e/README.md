@@ -28,9 +28,11 @@ server data**.
 | `BB_USER` | `admin` | |
 | `BB_PASSWORD` | the user name | Local test servers use the user name as password |
 | `BB_INCOGNITO_USER` | `cat` | The user `incognito.spec.js` logs in as in the incognito window (password = user name) |
-| `BB_EXTENSION` | `../chrome-extension` | The extension to load |
+| `BB_EXTENSION` | `../chrome-extension` | The extension to load (1.2.0 or later: older ones are refused by **Allowed extension IDs**) |
 | `BB_CONTAINER`, `BB_WFLOW` | `j8213`, `/opt/wflow` | Where `legacy-names.spec.js` edits a `meta.json` (`docker exec`) |
-| `BB_DB_CONTAINER`, `BB_DB` | `mariadb`, `jw8` | Where `export-import.spec.js` and `glowroot-standalone.spec.js` read and lock iService's tables (`docker exec`) |
+| `BB_DB_CONTAINER`, `BB_DB` | `mariadb`, `jw8` | Where `export-import.spec.js`, `glowroot-standalone.spec.js` and `other-traces.spec.js` read and lock iService's tables (`docker exec`) |
+| `BB_OTHER_USER`, `BB_OTHER_PASSWORD` | `BB_USER`, the user name | The second session in `other-traces.spec.js` (must be able to read iService's list: not `cat`) |
+| `BB_GLOWROOT_UI` | `http://j8213.local:4001` | j8213's Glowroot, whose Servlet plugin setting `other-traces.spec.js` sets and puts back |
 | `BB_GLOWROOT_DISTS` | `~/Joget/glowroot-0.14.2-dist.zip,~/Joget/glowroot-0.14.4-dist.zip` | The standalone Glowroot dists `glowroot-standalone.spec.js` opens the data in |
 | `BB_GLOWROOT_PORT`, `BB_JAVA_IMAGE` | `14000`, `eclipse-temurin:17-jdk` | The standalone Glowroot's host port (localhost only) and its throwaway container's image |
 

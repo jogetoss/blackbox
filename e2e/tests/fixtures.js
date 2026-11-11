@@ -9,7 +9,8 @@ const path = require('path');
 const JOGET = process.env.BB_JOGET || 'http://localhost:3128/jw';
 const USER = process.env.BB_USER || 'admin';
 const PASSWORD = process.env.BB_PASSWORD || USER; // local test servers: the password is the username
-// The extension under test: this repo's, or BB_EXTENSION (e.g. an older release, to test this plugin with it)
+// The extension under test: this repo's, or BB_EXTENSION (another build of extension 1.2.0 or later: older ones are
+// refused by the plugin's Allowed extension IDs)
 const EXTENSION = process.env.BB_EXTENSION || path.join(__dirname, '..', '..', 'chrome-extension');
 // The extension of plugin 8.2.1 and older keeps the server capture under recording.systemLog; later ones under serverCapture
 const LEGACY_EXTENSION = !fs.readFileSync(path.join(EXTENSION, 'report.js'), 'utf8').includes('serverCapture');
