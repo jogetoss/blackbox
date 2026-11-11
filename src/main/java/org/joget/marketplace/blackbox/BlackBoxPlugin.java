@@ -617,7 +617,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             return;
         }
         ServerCapture.find(id); // this node samples the server load from now (GaugeSampler)
-        ServerInfo.save(ServerCapture.store().dir(id), request, (int) Math.min(positive("recentChangesDays", 7), 365)); // System Info as it is now
+        ServerInfo.save(ServerCapture.store().dir(id), request, (int) Math.min(positive("recentChangesDays", 7), 365),
+                new Secrets(getPropertyString("secretNames"))); // System Info as it is now, secrets masked
         JSONObject started = new JSONObject().put("id", id).put("maxMb", maxBytes / (1024 * 1024))
                 .put("traces", traces).put("gauges", gauges).put("glowrootData", glowrootData).put("allServer", allServer)
                 .put("slowThresholdMs", slowMs());

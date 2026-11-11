@@ -33,8 +33,10 @@ import org.json.JSONObject;
  * Cluster holds Joget's node name and node lists (ServerUtil) and Tomcat's jvmRoute and session replication.
  * Plugins lists every jar in app_plugins with its date and size, marking jars that loaded no plugin.
  * Database and connectionPool hold the current profile's app_datasource file and the pool settings Joget really uses.
- * Apart from the database password (left out, and masked in JDBC URLs), nothing is left out or masked, so it can hold
- * secrets passed as -D options: it is shown only to users allowed to view server data, like the system log itself.
+ * The database password is left out. JVM arguments, system properties, the datasource file and pool settings go through
+ * {@link Secrets}: values with a secret name (built-in words plus the admin's secretNames setting) and values shaped like
+ * secrets are masked. The license table is kept as it is. It is shown only to users allowed to view server data, like
+ * the system log itself.
  */
 final class ServerInfo {
 
@@ -44,11 +46,11 @@ final class ServerInfo {
     }
 
     static JSONObject collect(HttpServletRequest request) throws JSONException {
-        return collect(request, 0);
+        return collect(request, 0, new Secrets(null));
     }
 
-    /** recentDays: how far back "recentChanges" looks (0: not collected). */
-    static JSONObject collect(HttpServletRequest request, int recentDays) throws JSONException {
+    /** recentDays: how far back "recentChanges" looks (0: not collected); secrets: what to mask. */
+    static JSONObject collect(HttpServletRequest request, int recentDays, Secrets secrets) throws JSONException {
         long now = System.currentTimeMillis();
         Runtime rt = Runtime.getRuntime();
         java.lang.management.RuntimeMXBean jvm = ManagementFactory.getRuntimeMXBean();
@@ -75,7 +77,11 @@ final class ServerInfo {
         put(java, "Heap used", (rt.totalMemory() - rt.freeMemory()) / MB + " MB");
         put(java, "Heap committed", rt.totalMemory() / MB + " MB");
         put(java, "Heap max", rt.maxMemory() / MB + " MB");
-        put(java, "Arguments", String.join("\n", jvm.getInputArguments()));
+        java.util.List<String> args = new java.util.ArrayList<>();
+        for (String a : jvm.getInputArguments()) {
+            args.add(secrets.maskArgument(a));
+        }
+        put(java, "Arguments", String.join("\n", args));
 
         JSONObject joget = new JSONObject();
         String version;
@@ -96,13 +102,13 @@ final class ServerInfo {
         Properties dsFile = null;
         try {
             dsFile = DynamicDataSourceManager.getProperties();
-            db = database(DynamicDataSourceManager.getCurrentProfile(), dsFile);
+            db = database(DynamicDataSourceManager.getCurrentProfile(), dsFile, secrets);
         } catch (RuntimeException | LinkageError e) {
             // not readable here
         }
         JSONObject pool = null;
         try {
-            pool = pool(AppUtil.getApplicationContext().getBean("setupDataSource"), dsFile);
+            pool = pool(AppUtil.getApplicationContext().getBean("setupDataSource"), dsFile, secrets);
         } catch (Exception | LinkageError e) {
             // outside a running Joget
         }
@@ -150,7 +156,7 @@ final class ServerInfo {
         if (license != null) {
             result.put("license", sorted(license));
         }
-        return result.put("systemProperties", sorted(system));
+        return result.put("systemProperties", masked(system, secrets));
     }
 
     /** A formatter for pattern + " UTC" in UTC: every time on the Info tab is in UTC, whatever the server's time zone. */
@@ -195,20 +201,20 @@ final class ServerInfo {
     }
 
     /** The datasource file of the current profile: profile, driver, URL, user, then its other keys. No password. */
-    static JSONObject database(String profile, Properties file) throws JSONException {
+    static JSONObject database(String profile, Properties file, Secrets secrets) throws JSONException {
         JSONObject db = new JSONObject();
         put(db, "Profile", profile);
         if (file == null) {
             return db;
         }
         put(db, "JDBC driver", file.getProperty("workflowDriver"));
-        put(db, "JDBC URL", maskPasswords(file.getProperty("workflowUrl")));
+        put(db, "JDBC URL", secrets.maskValue(maskPasswords(file.getProperty("workflowUrl"))));
         put(db, "User", file.getProperty("workflowUser"));
         for (String key : new TreeMap<>(propertyMap(file)).keySet()) {
             if (key.equals("workflowDriver") || key.equals("workflowUrl") || key.equals("workflowUser") || isSecret(key)) {
                 continue;
             }
-            put(db, key, maskPasswords(file.getProperty(key)));
+            put(db, key, secrets.mask(key, maskPasswords(file.getProperty(key))));
         }
         return db;
     }
@@ -217,7 +223,7 @@ final class ServerInfo {
      * The pool's settings as it uses them, a value that differs from the file marked "(file says x)", the file's keys
      * the pool has no setting for (Joget ignores them without a word), and the pool state now.
      */
-    static JSONObject pool(Object ds, Properties file) throws JSONException {
+    static JSONObject pool(Object ds, Properties file, Secrets secrets) throws JSONException {
         JSONObject p = new JSONObject();
         if (ds == null) {
             return p;
@@ -228,10 +234,10 @@ final class ServerInfo {
         }
         for (String name : POOL_SETTINGS) {
             Object v = bean(ds, name);
-            String used = v != null ? maskPasswords(String.valueOf(v)) : null;
+            String used = v != null ? secrets.mask(name, maskPasswords(String.valueOf(v))) : null;
             String inFile = file != null ? file.getProperty(name) : null;
             if (inFile != null && !sameValue(inFile, v)) {
-                used = (used != null ? used : "(not set)") + " (file says " + maskPasswords(inFile.trim()) + ")";
+                used = (used != null ? used : "(not set)") + " (file says " + secrets.mask(name, maskPasswords(inFile.trim())) + ")";
             }
             put(p, name, used);
         }
@@ -589,12 +595,12 @@ final class ServerInfo {
     }
 
     static void save(Path captureDir, HttpServletRequest request) {
-        save(captureDir, request, 0);
+        save(captureDir, request, 0, new Secrets(null));
     }
 
-    static void save(Path captureDir, HttpServletRequest request, int recentDays) {
+    static void save(Path captureDir, HttpServletRequest request, int recentDays, Secrets secrets) {
         try {
-            Files.write(captureDir.resolve(FILE), collect(request, recentDays).toString().getBytes(StandardCharsets.UTF_8));
+            Files.write(captureDir.resolve(FILE), collect(request, recentDays, secrets).toString().getBytes(StandardCharsets.UTF_8));
         } catch (Exception e) {
             LogUtil.warn(ServerInfo.class.getName(), "Could not save the server info of a recording: " + e.getMessage());
         }
@@ -612,6 +618,16 @@ final class ServerInfo {
         m.put("platform.jvm.max", rt.maxMemory() / MB + " MB");
         m.put("platform.jvm.processors", String.valueOf(rt.availableProcessors()));
         return m;
+    }
+
+    /** Sorted, each value through {@link Secrets#mask} by its name. */
+    static JSONObject masked(Map<?, ?> map, Secrets secrets) throws JSONException {
+        JSONObject o = new JSONObject();
+        for (Map.Entry<?, ?> e : new TreeMap<>(map).entrySet()) {
+            String k = String.valueOf(e.getKey());
+            o.put(k, e.getValue() == null ? "" : secrets.mask(k, String.valueOf(e.getValue())));
+        }
+        return o;
     }
 
     private static JSONObject sorted(Map<?, ?> map) throws JSONException {

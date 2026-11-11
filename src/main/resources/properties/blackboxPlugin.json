@@ -89,6 +89,13 @@
             "value" : ""
         },
         {
+            "name" : "secretNames",
+            "label" : "More secret names to mask in System Info",
+            "description" : "Comma-separated words; * matches anything; case doesn't matter. A JVM argument (-Dname=value), system property, datasource key or pool setting whose name contains one is masked. These are added to the built-in ones, which are always masked: password, passwd, passphrase, pwd, secret, token, api key, access key, private key, client secret, auth key, credential, signing key, encryption key, salt, cert, and names that start or end with pass or key. Values shaped like secrets are masked whatever their name: user:password@ in URLs, Bearer and Basic tokens, JWTs, private keys, Joget-encrypted passwords, AWS, GitHub, Slack, Google and OpenAI-style keys. Applies to recordings started after saving.",
+            "type" : "textfield",
+            "value" : ""
+        },
+        {
             "label" : "Support data: the apps the recording used, their data, and the recent changes in the Info tab.",
             "type" : "header"
         },

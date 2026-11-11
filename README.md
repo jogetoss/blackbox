@@ -101,6 +101,7 @@ below add the other parts.
 | Allow capturing Glowroot traces of slow and failed requests | No | | **Capture Glowroot trace files** |
 | Allow capturing Glowroot data | No | Needs Glowroot 0.14 | **Capture Glowroot data** |
 | Glowroot address | empty | Empty = this Joget's own agent (usually `http://localhost:4000`) | |
+| More secret names to mask in System Info | empty | Words, `*` wildcard. Added to the built-in names, which are always masked; see [Sensitive data](#sensitive-data-in-system-info) | |
 
 ### Support data
 
@@ -173,9 +174,24 @@ Shown on the replay page and in the ZIP and HTML downloads, to everyone who can 
     Joget logins don't follow unless **Session replication** is on (a Tomcat cluster, Enterprise only), so the load
     balancer needs sticky sessions.
 
-**Sensitive data:** traces and Glowroot data hold SQL with parameter values and request details; Info holds JVM
-arguments and system properties, which can include secrets passed as `-D` options; app definitions can hold plugin
-settings and environment variables.
+**Sensitive data:** traces and Glowroot data hold SQL with parameter values and request details; app definitions can
+hold plugin settings and environment variables. Info masks secrets in JVM arguments and system properties (below), but
+keeps the license table as System Info shows it.
+
+#### Sensitive data in System Info
+
+JVM arguments, system properties, the datasource file and pool settings are masked as `****` when:
+
+- **the name** contains a built-in word: `password`, `passwd`, `passphrase`, `pwd`, `secret`, `token`, `api key`,
+  `access key`, `private key`, `client secret`, `auth key`, `credential`, `signing key`, `encryption key`, `salt`,
+  `cert`, or starts or ends with `pass` or `key` (`smtp.pass`, `platform.systemKey`); or a word from **More secret
+  names to mask in System Info**. Built-in words can't be turned off.
+- **the value** looks like a secret, whatever its name: `user:password@` in a URL, `Bearer`/`Basic` tokens, JWTs,
+  private keys, Joget-encrypted passwords (`%%%%…%%%%`), AWS, GitHub, Slack, Google and OpenAI-style keys, and
+  `name=value` pairs with a secret name inside a longer value (`user=root;pwd=****`).
+
+The lists come from Joget Upgrade Advisor's secret masker. The snapshot is taken at recording start, so a changed
+setting applies to recordings started after it.
 
 ### Liveness
 

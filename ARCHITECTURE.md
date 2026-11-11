@@ -409,6 +409,12 @@ the server's time zone; so are **Uploaded** and **First uploaded** (`BB.fmtDate`
 - **System properties**: System Info's system table (`SysInfo.getSystemProperties()`): every Java system property plus
   JVM memory and processors. On Community the same values are read directly.
 
+**Masking** (`Secrets`, applied when the snapshot is taken, so `server-info.json` and every export hold only the masked
+values): JVM arguments (`-Dname=value` by name, others by value), system properties, datasource keys and pool settings.
+A secret name (built-in words from Upgrade Advisor's `SecretMasker`, plus the `secretNames` setting) masks the whole
+value; secret-shaped values (URL user info, Bearer/Basic, JWT, private keys, `%%%%…%%%%`, known API key prefixes,
+secret-named `name=value` pairs) are masked inside any value. The license table is not masked.
+
 ## App export
 
 **When:** at stop, with the upload as the fallback.
@@ -534,6 +540,7 @@ in its rows (activity ids resolved with `getActivityById`), kept when the proces
 | `GlowrootClient` | Glowroot's JSON backend and trace export; finds the local agent's port |
 | `GlowrootData`, `GlowrootPackager`, `GlowrootTag` | Glowroot data packages; tagging recorded requests |
 | `ServerInfo` | System Info snapshot at recording-start (host, cluster, plugins, Java, Joget, DB, pool, license) |
+| `Secrets` | Masks secrets in the System Info snapshot: built-in secret names and value shapes (from Upgrade Advisor), plus the `secretNames` setting |
 | `AppExport` | Finds the apps in the recorded URLs, exports them (at stop, else at upload), lists them in `app/apps.json` |
 | `AppAdmins` | An app's own admins from `app_src/<app>/app.properties`, as App Composer reads them |
 | `ExportJobs` | The background thread app exports run on, so requests answer within about 20 s |
