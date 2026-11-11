@@ -1668,22 +1668,26 @@ function setTab(name) {
     $('filter').hidden = !FILTERS[name];
     appFilter.hidden = !(name === 'network' || name === 'server') || Number(appFilter.dataset.count || 0) < 2;
     for (const t of Object.keys(LEVEL_BOXES)) levelBoxes(t).hidden = t !== name;
-    fillFilter(name);
+    fillFilter(name, false);
     renderList();
   }
   closeDetail();
 }
 
-// The filter list's options for a tab; the chosen one stays chosen when it is still offered
-function fillFilter(name) {
+// The filter list's options for a tab: on a tab switch from its first option; with keep (new options for the open
+// tab), only when they changed, and the chosen one stays chosen
+function fillFilter(name, keep) {
   if (!FILTERS[name]) return;
-  const chosen = $('filter').value;
-  $('filter').replaceChildren(...FILTERS[name].map(([v, label]) => {
+  const sel = $('filter');
+  const chosen = sel.value;
+  if (keep && [...sel.options].map((o) => o.value + '\n' + o.textContent).join('\n')
+    === FILTERS[name].map(([v, label]) => v + '\n' + label).join('\n')) return; // unchanged: an open list stays open
+  sel.replaceChildren(...FILTERS[name].map(([v, label]) => {
     const o = el('option', null, label);
     o.value = v;
     return o;
   }));
-  if (tab === name && FILTERS[name].some(([v]) => v === chosen)) $('filter').value = chosen;
+  if (keep && FILTERS[name].some(([v]) => v === chosen)) sel.value = chosen;
 }
 
 // A tab's level checkboxes, made on first use next to the filter list
@@ -1852,7 +1856,7 @@ function updateTracesTab() {
   // Other users' traces (capture option otherTraces): their own filter, never mixed into this recording's
   const others = traceItems.filter((e) => e.other && e.state === 'saved').length;
   FILTERS.traces = TRACE_FILTERS.concat(traceItems.some((e) => e.other) ? [['others', `Other users' traces (${others})`]] : []);
-  if (tab === 'traces') fillFilter('traces'); // other traces arrive about 30 s after the stop, maybe with the tab open
+  if (tab === 'traces') fillFilter('traces', true); // other traces arrive about 30 s after the stop, maybe with the tab open
   if (!$('tracesTab')) return;
   $('tracesTab').hidden = !current.traces;
   const own = traceItems.filter((e) => !e.other);

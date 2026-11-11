@@ -116,6 +116,10 @@ test('the recording keeps its own trace; another user\'s comes apart, marked oth
     await page.goto(`chrome-extension://${extensionId}/viewer.html?id=${id}`);
     expect(await page.evaluate(async (id) => Actions.uploadNow((await Store.allRows()).find((r) => r.id === id)), id)).toBe(true);
     rec = await uploaded(joget, id);
+    // Right after the upload, before the copy: the node's pending note keeps the replay page polling
+    const first = await api(joget, 'traces', { id: rec.id });
+    expect(first.traces.find((t) => t.other && t.key?.endsWith('-other-note'))?.state, 'pending note before the copy').toBe('pending');
+    expect(first.pending).toBeGreaterThan(0);
 
     // Own trace by tag; the other user's about 30 s after the stop, as an "other" entry with the user
     let traces = [];

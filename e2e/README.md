@@ -28,7 +28,7 @@ server data**.
 | `BB_USER` | `admin` | |
 | `BB_PASSWORD` | the user name | Local test servers use the user name as password |
 | `BB_INCOGNITO_USER` | `cat` | The user `incognito.spec.js` logs in as in the incognito window (password = user name) |
-| `BB_EXTENSION` | `../chrome-extension` | The extension to load (1.2.0 or later: older ones are refused by **Allowed extension IDs**) |
+| `BB_EXTENSION` | `../chrome-extension` | The extension to load. It must have this repo's manifest `key` (ID `anmfmkacddnmmgdcnkgkfjhagnilmkmp`): any other ID, like the released 1.2.0's unpacked, is refused unless **Allowed extension IDs** is emptied |
 | `BB_CONTAINER`, `BB_WFLOW` | `j8213`, `/opt/wflow` | Where `legacy-names.spec.js` edits a `meta.json` (`docker exec`) |
 | `BB_DB_CONTAINER`, `BB_DB` | `mariadb`, `jw8` | Where `export-import.spec.js`, `glowroot-standalone.spec.js` and `other-traces.spec.js` read and lock iService's tables (`docker exec`) |
 | `BB_OTHER_USER`, `BB_OTHER_PASSWORD` | `BB_USER`, the user name | The second session in `other-traces.spec.js` (must be able to read iService's list: not `cat`) |

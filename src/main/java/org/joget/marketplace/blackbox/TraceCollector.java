@@ -62,7 +62,9 @@ final class TraceCollector {
     private static final long OTHERS_MAX_WAIT_MS = 3 * 3600 * 1000L; // a capture never stopped
     private static final String[] OTHER_TYPES = {"Web", "Background"};
     private static final Map<String, Long> OTHERS = new ConcurrentHashMap<>(); // capture id -> watched since
-    private static final Set<String> OTHERS_NOTED = ConcurrentHashMap.newKeySet(); // stopped: "pending" note written
+    // capture id -> when this node last wrote its "pending" note; rewritten well within TraceStore.STALE_MS
+    private static final Map<String, Long> OTHERS_NOTED = new ConcurrentHashMap<>();
+    static final long OTHERS_NOTE_EVERY_MS = 2 * 60_000L;
     // Saved in the capture's meta.json while this node still owes its other traces, so a restart picks them up again
     static final String OTHERS_PENDING = "othersPending-" + NODE;
 
@@ -127,7 +129,15 @@ final class TraceCollector {
         if (othersJobs != null && capture.traces && capture.otherTraces
                 && OTHERS.putIfAbsent(capture.id, System.currentTimeMillis()) == null) {
             markOthers(capture.id, true);
+            noteOthers(capture.id, System.currentTimeMillis()); // from the start: the replay page polls while it is pending
         }
+    }
+
+    /** This node's "pending" note: other users' traces are still to come. */
+    private static void noteOthers(String id, long now) {
+        OTHERS_NOTED.put(id, now);
+        writeOther(id, otherNote(id, "pending", "Other users' traces on " + NODE + " are copied about "
+                + OTHERS_AFTER_MS / 1000 + " s after the stop"));
     }
 
     /** After a restart: captures whose meta says this node still owes their other traces are watched again. */
@@ -137,6 +147,7 @@ final class TraceCollector {
             JSONObject meta = store.readMeta(id);
             if (meta != null && meta.optBoolean(OTHERS_PENDING) && OTHERS.putIfAbsent(id, now) == null) {
                 watched.add(id);
+                noteOthers(id, now);
             }
         }
         return watched;
@@ -150,38 +161,51 @@ final class TraceCollector {
         }
     }
 
+    /**
+     * Every 10 s: drops captures that are gone or never stopped, keeps each waiting capture's "pending" note fresh, and
+     * copies at most one capture that is due, so the notes of the others are kept fresh between copies.
+     */
     private static void othersTick() {
         long now = System.currentTimeMillis();
+        String due = null;
+        JSONObject dueMeta = null;
         for (Map.Entry<String, Long> w : OTHERS.entrySet()) {
             String id = w.getKey();
             JSONObject meta = ServerCapture.store().readMeta(id);
             if (meta == null) {
                 OTHERS.remove(id); // expired or deleted
                 OTHERS_NOTED.remove(id);
-            } else if (meta.has("stoppedAt") && now < meta.optLong("stoppedAt") + OTHERS_AFTER_MS) {
-                if (OTHERS_NOTED.add(id)) { // the replay page keeps polling while a trace is pending
-                    writeOther(id, otherNote(id, "pending", "Other users' traces on " + NODE + " are copied about "
-                            + OTHERS_AFTER_MS / 1000 + " s after the stop"));
-                }
             } else if (!meta.has("stoppedAt") && now - w.getValue() > OTHERS_MAX_WAIT_MS) {
                 OTHERS.remove(id); // never stopped
-                markOthers(id, false);
-            } else if (meta.has("stoppedAt") && now >= meta.optLong("stoppedAt") + OTHERS_AFTER_MS) {
-                try {
-                    copyOthers(id, meta);
-                } catch (IOException | RuntimeException e) {
-                    if (!Thread.currentThread().isInterrupted()) {
-                        writeOther(id, otherNote(id, "failed", "Could not read other users' traces from Glowroot: " + e.getMessage()));
-                    }
-                }
-                if (Thread.currentThread().isInterrupted()) {
-                    return; // the plugin is stopping: still pending in meta.json, copied again after the restart
-                }
-                OTHERS.remove(id);
                 OTHERS_NOTED.remove(id);
                 markOthers(id, false);
+                writeOther(id, otherNote(id, "none", "The recording never stopped: other users' traces were not copied"));
+            } else {
+                if (now - OTHERS_NOTED.getOrDefault(id, 0L) >= OTHERS_NOTE_EVERY_MS) {
+                    noteOthers(id, now);
+                }
+                if (due == null && meta.has("stoppedAt") && now >= meta.optLong("stoppedAt") + OTHERS_AFTER_MS) {
+                    due = id;
+                    dueMeta = meta;
+                }
             }
         }
+        if (due == null) {
+            return;
+        }
+        try {
+            copyOthers(due, dueMeta);
+        } catch (IOException | RuntimeException e) {
+            if (!Thread.currentThread().isInterrupted()) {
+                writeOther(due, otherNote(due, "failed", "Could not read other users' traces from Glowroot: " + e.getMessage()));
+            }
+        }
+        if (Thread.currentThread().isInterrupted()) {
+            return; // the plugin is stopping: still pending in meta.json, copied again after the restart
+        }
+        OTHERS.remove(due);
+        OTHERS_NOTED.remove(due);
+        markOthers(due, false);
     }
 
     /**

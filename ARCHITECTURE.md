@@ -313,8 +313,10 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
   `SPRING_SECURITY_CONTEXT.authentication.name`), `type`, the summary and the export, keyed `<node>-other-<traceId>`. It runs on its own thread
   ("BlackBox other traces"), so it never delays the heartbeat, lookups or retries, and stops calling Glowroot after
   `OTHERS_BUDGET_MS` (5 min); past either limit the rest are only counted. One note per node (`<node>-other-note`)
-  says where it stands: "pending" from the stop until the copy (so the replay page keeps polling), then "none" with
-  how many were copied and why any were left out, or "failed". The folder is looked up for each trace, as the upload
+  says where it stands: "pending" from when the capture opens on the node (or is recovered) until the copy, rewritten
+  every 2 minutes so it never turns stale (the replay page keeps polling while it is pending), then "none" with how
+  many were copied and why any were left out, or "failed". Each 10 s tick copies at most one capture, so the other
+  notes stay fresh between copies. The folder is looked up for each trace, as the upload
   may move the capture to its recording meanwhile. The capture's `meta.json` has `othersPending-<node>: true` from
   the watch until the copy ends, so after a restart `recoverOthers` watches it again. Copied once: no retry. The viewer
   lists them only under the filter "Other users' traces" and never matches them to a network request;
@@ -328,6 +330,11 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
   other users' traces, and with a `capture` id. A lookup with no known end searches at most 10 minutes from the
   request's start. Glowroot keeps traces for 14 days by default, so older ones may be gone. The newest state wins across
   nodes, so node clocks should be in sync.
+- **Virtual hosts (known limit):** the trace threads ("BlackBox traces", "BlackBox other traces", "BlackBox
+  Glowroot data") find capture and recording folders through `ServerCapture.store()`, `BlackBoxPlugin.store()` and
+  `SetupManager.getBaseDirectory()`, which follow the profile the thread inherited when the plugin started. Unlike the
+  liveness check they don't go through `checkDirs`, so with virtual hosts on, traces, other users' traces and Glowroot
+  data are saved only for that one profile; other profiles' captures read as gone.
 - **Viewing a trace:** `trace&file=…` serves Glowroot's page with `Content-Security-Policy: sandbox allow-scripts
   allow-popups` and `Referrer-Policy: no-referrer`, so its script runs without access to Joget's cookies or pages. It
   loads Google Fonts and Font Awesome from the internet.
