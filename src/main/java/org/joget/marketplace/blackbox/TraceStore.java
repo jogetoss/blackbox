@@ -226,6 +226,18 @@ final class TraceStore {
                 && Math.abs(header.optLong("startTime") - start) <= 2000;
     }
 
+    /** Does the trace carry GlowrootTag's attribute with this capture id? Glowroot: "attributes": {name: [values]}. */
+    static boolean tagged(JSONObject header, String captureId) {
+        JSONObject attributes = header.optJSONObject("attributes");
+        JSONArray values = attributes != null ? attributes.optJSONArray(GlowrootTag.ATTRIBUTE) : null;
+        for (int i = 0; captureId != null && !captureId.isEmpty() && values != null && i < values.length(); i++) {
+            if (captureId.equals(values.optString(i))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /**
      * The numbers the Traces tab shows: duration, CPU, SQL count and time, where the time went (self time per timer)
      * and the slowest queries. header and queries are Glowroot's JSON for one trace.

@@ -126,6 +126,7 @@ below add the other parts.
 | Delete server data not uploaded after (days) | 7 | | |
 | Allow capturing server load | No | | **Capture server load** |
 | Allow capturing Glowroot traces of slow and failed requests | No | | **Capture Glowroot trace files** |
+| Allow capturing other users' traces | No | Needs the setting above. Other users' SQL with values and URLs | **Include other users' traces** |
 | Allow capturing Glowroot data | No | Needs Glowroot 0.14 | **Capture Glowroot data** |
 | Glowroot address | empty | Empty = this Joget's own agent (usually `http://localhost:4000`) | |
 | More secret names to mask in System Info | empty | Words, `*` wildcard. Added to the built-in names, which are always masked; see [Sensitive data](#sensitive-data-in-system-info) | |
@@ -168,6 +169,7 @@ automatic uploads use them too. The server checks every choice again.
 | **All server log lines** | The user is in **Who can capture other users' server data** |
 | **Capture server load** | Admins always; others when **Allow capturing server load** is on |
 | **Capture Glowroot trace files** | Admins always; others when **Allow capturing Glowroot traces of slow and failed requests** is on |
+| **Include other users' traces** | Admins always; others when **Allow capturing other users' traces** is on too. Needs **Capture Glowroot trace files** ticked |
 | **Capture Glowroot data** | Admins always; others when **Allow capturing Glowroot data** is on |
 | **Record passwords and tokens unmasked** | Admins always; others when **Allow recording passwords and tokens unmasked** is on. Unticked: credentials are masked |
 
@@ -188,7 +190,13 @@ Shown on the replay page and in the ZIP and HTML downloads, to everyone who can 
   server threads**, not counted as errors.
 - **Traces** tab: the [Glowroot](https://glowroot.org) trace of each recorded request Glowroot kept (slow or failed,
   by Glowroot's own settings), and of each one that logged an ERROR, even when it was fast and returned 200 (BlackBox
-  asks Glowroot to keep those). Failed lookups have **Retry**. Glowroot must allow anonymous access.
+  asks Glowroot to keep those). Only traces Glowroot tagged with this recording are used, so another user's request
+  on the same page at the same moment is never shown as yours. Failed lookups have **Retry** (not for imported
+  recordings). Glowroot must allow anonymous access.
+- **Other users' traces** (popup's **Include other users' traces**): about 30 s after the stop, each node the
+  recording reached adds the traces Glowroot kept of every other request and background job during the recording
+  (up to 200 per node), with the user. Listed under the Traces filter **Other users' traces**, never as a recorded
+  request's trace. With **Capture Glowroot data**, the downloaded data keeps all traces of that time too.
 - **Download Glowroot data**: the recording's slice of Glowroot's data, ready 30–90 s after the stop, to open in a
   standalone Glowroot 0.14.2 (see its `README.txt`). About 1 MB for 35 s. Building it needs free temp space about the
   size of Glowroot's `data.h2.db`.

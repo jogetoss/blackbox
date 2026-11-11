@@ -52,6 +52,14 @@ final class TraceCollector {
     private static final String NODE = ServerCapture.nodeName();
     private static final Pattern NODE_NAME = Pattern.compile("^[A-Za-z0-9.-]+$");
 
+    // Other users' traces (capture option otherTraces): copied once, OTHERS_AFTER_MS after the stop, from each node the
+    // recording reached; at most MAX_OTHERS per node
+    static final long OTHERS_AFTER_MS = 30_000L;  // Glowroot stores a trace only after its request ended
+    static final int MAX_OTHERS = 200;
+    private static final long OTHERS_MAX_WAIT_MS = 3 * 3600 * 1000L; // a capture never stopped
+    private static final String[] OTHER_TYPES = {"Web", "Background"};
+    private static final Map<String, Long> OTHERS = new ConcurrentHashMap<>(); // capture id -> watched since
+
     private static final Map<Running, Boolean> RUNNING = new ConcurrentHashMap<>();
     private static final Map<String, GlowrootClient> CLIENTS = new ConcurrentHashMap<>();
     private static final Map<String, AtomicInteger> COUNTS = new ConcurrentHashMap<>();
@@ -73,6 +81,7 @@ final class TraceCollector {
         jobs.scheduleWithFixedDelay(TraceCollector::heartbeat, 2, 2, TimeUnit.SECONDS);
         jobs.scheduleWithFixedDelay(() -> COUNTS.clear(), 1, 1, TimeUnit.DAYS);
         jobs.scheduleWithFixedDelay(TraceCollector::retryScan, RETRY_SCAN_S, RETRY_SCAN_S, TimeUnit.SECONDS);
+        jobs.scheduleWithFixedDelay(TraceCollector::othersTick, 10, 10, TimeUnit.SECONDS);
     }
 
     static synchronized void stop() {
@@ -82,6 +91,144 @@ final class TraceCollector {
         }
         RUNNING.clear();
         CLIENTS.clear();
+        OTHERS.clear();
+    }
+
+    // ---------- other users' traces ----------
+
+    /** The capture is open on this node: if it asked for other users' traces, copy them after the stop. */
+    static void watchOthers(ServerCapture.Capture capture) {
+        if (jobs != null && capture.traces && capture.otherTraces) {
+            OTHERS.putIfAbsent(capture.id, System.currentTimeMillis());
+        }
+    }
+
+    private static void othersTick() {
+        long now = System.currentTimeMillis();
+        for (Map.Entry<String, Long> w : OTHERS.entrySet()) {
+            String id = w.getKey();
+            JSONObject meta = ServerCapture.store().readMeta(id);
+            if (meta == null || (!meta.has("stoppedAt") && now - w.getValue() > OTHERS_MAX_WAIT_MS)) {
+                OTHERS.remove(id); // expired, deleted, or never stopped
+            } else if (meta.has("stoppedAt") && now >= meta.optLong("stoppedAt") + OTHERS_AFTER_MS) {
+                OTHERS.remove(id);
+                try {
+                    copyOthers(id, meta);
+                } catch (IOException | RuntimeException e) {
+                    writeOther(id, otherNote(id, "failed", "Could not read other users' traces from Glowroot: " + e.getMessage()));
+                }
+            }
+        }
+    }
+
+    /**
+     * Copies the traces Glowroot kept of every request on this node that overlapped the recording and is not one of
+     * its own (those have the capture's tag): other users, scheduler and background jobs. Marked "other": the viewer
+     * lists them apart, never as the trace of a recorded request.
+     */
+    private static void copyOthers(String id, JSONObject meta) throws IOException {
+        GlowrootClient g = client(meta.optString("glowrootUrl"));
+        if (g == null) {
+            writeOther(id, otherNote(id, "failed", "Glowroot is not running on " + NODE));
+            return;
+        }
+        collectOthers(g, id, meta.optLong("startedAt"), meta.optLong("stoppedAt"), dir(id), e -> writeOther(id, e));
+    }
+
+    /** copyOthers without the capture store: each other trace (and the limit note) goes to out; files to dir. */
+    static void collectOthers(GlowrootClient g, String id, long from, long to, Path dir,
+            java.util.function.Consumer<JSONObject> out) throws IOException {
+        int copied = 0;
+        int skipped = 0;
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (String type : OTHER_TYPES) { // requests, and scheduler / background jobs
+            for (GlowrootClient.Point p : g.points(from, to + OTHERS_AFTER_MS, type)) {
+                if (!seen.add(p.traceId) || p.endMs - p.durationMs > to) {
+                    continue; // listed twice, or started after the stop
+                }
+                JSONObject h;
+                try {
+                    h = g.header(p.traceId);
+                } catch (IOException e) {
+                    continue; // listed a moment before its header can be read
+                }
+                if (TraceStore.tagged(h, id) || h.optLong("startTime") > to) {
+                    continue; // the recording's own (find() copies those), or started after the stop
+                }
+                if (copied >= MAX_OTHERS) {
+                    skipped++;
+                    continue;
+                }
+                out.accept(other(g, id, p.traceId, h, dir));
+                copied++;
+            }
+        }
+        if (skipped > 0) {
+            out.accept(otherNote(id, "none", "Only the first " + MAX_OTHERS + " other traces on " + NODE + " are kept: "
+                    + skipped + " more were not copied"));
+        }
+    }
+
+    private static JSONObject other(GlowrootClient g, String captureId, String traceId, JSONObject h, Path dir) throws IOException {
+        try {
+            JSONObject detail = h.optJSONObject("detail");
+            JSONObject e = new JSONObject()
+                    .put("key", NODE + "-other-" + traceId)
+                    .put("capture", captureId)
+                    .put("node", NODE)
+                    .put("other", true)
+                    .put("ts", h.optLong("startTime"))
+                    .put("type", h.optString("transactionType"))
+                    .put("method", detail != null ? detail.optString("Request http method") : "")
+                    .put("url", h.optString("headline"))
+                    .put("user", h.optString("user"))
+                    .put("ms", Math.round(h.optLong("durationNanos") / 1e6))
+                    .put("state", "saved")
+                    .put("updated", System.currentTimeMillis())
+                    .put("traceId", traceId);
+            if (h.optJSONObject("error") != null) {
+                e.put("failed", true);
+            }
+            JSONObject queries = null;
+            if ("yes".equals(h.optString("queriesExistence"))) {
+                try {
+                    queries = g.queries(traceId);
+                } catch (IOException ex) {
+                    e.put("reason", "Saved without its SQL: " + ex.getMessage());
+                }
+            }
+            e.put("summary", TraceStore.summary(h, queries));
+            if (dir != null) {
+                String name = TraceStore.fileName(NODE, traceId);
+                try {
+                    TraceStore.writeTrace(dir, name, g.exportHtml(traceId));
+                    e.put("file", name);
+                } catch (IOException ex) {
+                    e.put("reason", "Only the summary was saved: " + ex.getMessage());
+                }
+            }
+            return e;
+        } catch (JSONException ex) {
+            throw new IOException(ex);
+        }
+    }
+
+    /** One line about this node's other traces as a whole (Glowroot missing, the limit). */
+    private static JSONObject otherNote(String captureId, String state, String reason) {
+        try {
+            return new JSONObject().put("key", NODE + "-other-note").put("capture", captureId).put("node", NODE)
+                    .put("other", true).put("ts", 0).put("url", "").put("state", state).put("reason", reason)
+                    .put("updated", System.currentTimeMillis());
+        } catch (JSONException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private static void writeOther(String captureId, JSONObject e) {
+        Path dir = dir(captureId);
+        if (dir != null) {
+            write(dir, captureId, null, e);
+        }
     }
 
     /** A tagged request has started. Returns what to pass to {@link #end}, or null when traces are off. */
@@ -169,6 +316,9 @@ final class TraceCollector {
         if (now + delay - r.ended > GIVE_UP_MS) {
             write(r, lastError != null
                     ? entry(r, "failed", "Could not read Glowroot: " + lastError)
+                    : r.untagged
+                    ? entry(r, "none", "Glowroot has a trace of the same request and time, but not tagged with this recording "
+                            + "(another user's request, or Glowroot's API was not reachable), so it was not added")
                     : entry(r, "none", "Glowroot kept no trace for this request"));
             return;
         }
@@ -196,8 +346,9 @@ final class TraceCollector {
         // ms < 0: the request's end was never seen (a retry of one still running at a restart): search until now.
         long slack = Math.max(1000, r.ms / 5);
         long end = r.start + r.ms;
+        // ms < 0: never past GIVE_UP_MS after the start, so a retry can't make Glowroot scan days of traces
         long from = r.ms >= 0 ? end - 3000 : r.start - 1000;
-        long to = r.ms >= 0 ? end + 3000 : System.currentTimeMillis() + 1000;
+        long to = r.ms >= 0 ? end + 3000 : Math.min(System.currentTimeMillis(), r.start + GIVE_UP_MS) + 1000;
         for (GlowrootClient.Point p : g.points(from, to)) {
             if (r.ms >= 0 && (Math.abs(p.durationMs - r.ms) > slack || Math.abs(p.endMs - end) > 3000)) {
                 continue;
@@ -211,8 +362,14 @@ final class TraceCollector {
                 // doesn't fail the whole lookup. If it was this request's, the next attempt finds it.
                 continue;
             }
-            if (TraceStore.matches(h, r.method, r.url, r.start)
-                    && (best == null || Math.abs(h.optLong("startTime") - r.start) < Math.abs(best.optLong("startTime") - r.start))) {
+            if (!TraceStore.matches(h, r.method, r.url, r.start)) {
+                continue;
+            }
+            if (!TraceStore.tagged(h, r.tag)) {
+                r.untagged = true; // another recording's or user's request, or Glowroot's API wasn't reachable
+                continue;
+            }
+            if ((best == null || Math.abs(h.optLong("startTime") - r.start) < Math.abs(best.optLong("startTime") - r.start))) {
                 best = h;
                 bestId = id;
             }
@@ -262,7 +419,7 @@ final class TraceCollector {
         for (int i = 0; i < traces.length(); i++) {
             JSONObject e = traces.optJSONObject(i);
             String node = e != null ? e.optString("node") : "";
-            if (e == null || !"failed".equals(e.optString("state")) || !NODE_NAME.matcher(node).matches()
+            if (e == null || !"failed".equals(e.optString("state")) || !NODE_NAME.matcher(node).matches() || !retryable(e)
                     || (!keys.isEmpty() && !keys.contains(e.optString("key")))) {
                 continue;
             }
@@ -350,13 +507,22 @@ final class TraceCollector {
         for (int i = 0; i < traces.length(); i++) {
             JSONObject e = traces.optJSONObject(i);
             if (e == null || !keys.contains(e.optString("key")) || !NODE.equals(e.optString("node"))
-                    || !"pending".equals(e.optString("state"))) {
+                    || !"pending".equals(e.optString("state")) || !retryable(e)) {
                 continue;
             }
             Running r = new Running(recId, req.optString("glowrootUrl"), e);
             write(r, entry(r, "pending", "Retrying: looking in Glowroot again"));
             attempt(r, 0, null);
         }
+    }
+
+    /**
+     * Only this server's own entries can be looked up again: not ones from a ZIP import (another server's, and written
+     * by whoever made the ZIP), nor ones without the capture id (recorded before traces were matched by their tag), nor
+     * other users' traces (copied once after the stop).
+     */
+    static boolean retryable(JSONObject e) {
+        return !e.optBoolean("imported") && !e.optBoolean("other") && !e.optString("capture").isEmpty();
     }
 
     private static Path retryDir() {
@@ -386,7 +552,11 @@ final class TraceCollector {
     }
 
     private static GlowrootClient client(Running r) {
-        String key = r.glowrootUrl == null ? "" : r.glowrootUrl;
+        return client(r.glowrootUrl);
+    }
+
+    private static GlowrootClient client(String glowrootUrl) {
+        String key = glowrootUrl == null ? "" : glowrootUrl;
         GlowrootClient c = CLIENTS.get(key);
         if (c == null) {
             c = GlowrootClient.find(key);
@@ -411,6 +581,7 @@ final class TraceCollector {
         try {
             JSONObject e = new JSONObject()
                     .put("key", r.key)
+                    .put("capture", r.tag)
                     .put("node", NODE)
                     .put("ts", r.start)
                     .put("method", r.method)
@@ -437,17 +608,21 @@ final class TraceCollector {
         if (dir == null) {
             return; // the capture expired or the recording was deleted
         }
+        write(dir, r.captureId, r.recordingId, e);
+    }
+
+    private static void write(Path dir, String captureId, String recordingId, JSONObject e) {
         try {
             TraceStore.append(dir, NODE, e);
-            if (r.recordingId == null) {
-                moveIfUploaded(r.captureId, dir);
+            if (recordingId == null) {
+                moveIfUploaded(captureId, dir);
             }
-            String rec = r.recordingId != null ? r.recordingId : uploadedAs(r.captureId);
+            String rec = recordingId != null ? recordingId : uploadedAs(captureId);
             if (rec != null) {
                 ServerData.refreshTraces(BlackBoxPlugin.store(), rec); // the recordings list's counts
             }
         } catch (IOException ex) {
-            LogUtil.warn(TraceCollector.class.getName(), "Could not save a trace of capture " + r.captureId + ": " + ex.getMessage());
+            LogUtil.warn(TraceCollector.class.getName(), "Could not save a trace of capture " + captureId + ": " + ex.getMessage());
         }
     }
 
@@ -513,7 +688,9 @@ final class TraceCollector {
         final String url;
         final long start;
         final String key;
+        final String tag; // the capture id: GlowrootTag's value on this request's trace
         volatile long lastWritten;
+        volatile boolean untagged; // a trace matched path and time but carried another tag (or none)
         volatile boolean listed;
         int status;
         long ms = -1; // -1: the end was not seen
@@ -529,6 +706,7 @@ final class TraceCollector {
             this.url = url;
             this.start = start;
             this.key = NODE + "-" + start + "-" + SEQ.incrementAndGet();
+            this.tag = captureId;
         }
 
         /** A retry of a recorded trace entry: same key, so its new state replaces the failed one. */
@@ -540,6 +718,7 @@ final class TraceCollector {
             this.url = e.optString("url");
             this.start = e.optLong("ts");
             this.key = e.optString("key");
+            this.tag = e.optString("capture");
             this.listed = true;
             if (e.has("ms")) {
                 this.status = e.optInt("status");

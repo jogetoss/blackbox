@@ -48,7 +48,8 @@ function linkify(text) {
 
 // [checkbox, Quick key]: ticked = true
 const QUICK_BOXES = [['qApps', 'apps'], ['qSample', 'sample'], ['qMask', 'mask'], ['qAllServer', 'allServer'],
-  ['qGauges', 'gauges'], ['qTraces', 'traces'], ['qGlowroot', 'glowrootData'], ['qCreds', 'credentials']];
+  ['qGauges', 'gauges'], ['qTraces', 'traces'], ['qOtherTraces', 'otherTraces'], ['qGlowroot', 'glowrootData'],
+  ['qCreds', 'credentials']];
 let offer = null;
 
 async function initQuick() {
@@ -100,6 +101,8 @@ function showQuick(o) {
   $('qAllServerRow').hidden = !o?.allServer;
   $('qGaugesRow').hidden = !o?.gauges;
   $('qTracesRow').hidden = !o?.traces;
+  $('qOtherTracesRow').hidden = !o?.otherTraces; // admins, and others when the plugin allows it
+  $('qOtherTraces').disabled = !$('qTraces').checked;
   $('qGlowrootRow').hidden = !o?.glowrootData;
   $('qCredsRow').hidden = !o?.credentials; // unticked: the recorder masks credentials (mask.js)
   $('qServer').hidden = !(o?.apps || o?.allServer || o?.gauges || o?.traces || o?.glowrootData || o?.credentials);

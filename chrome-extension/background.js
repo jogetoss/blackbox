@@ -133,11 +133,12 @@ async function startServerCapture(tabId) {
   let maxSizeMb; // the upload size limit; the recorder stops at 90% of it (size-limit); missing: no size guard
   let maxRecordingMs; // the hard limit (maxRecordingMinutes), also in an error answer that has it; missing: the recorder's built-in 30 min
   try {
-    // Quick settings for this recording: All server log lines (opt-in); server load, Glowroot trace files and Glowroot
-    // data (each can turn its plugin setting off)
+    // Quick settings for this recording: All server log lines and other users' traces (opt-in); server load, Glowroot
+    // trace files and Glowroot data (each can turn its plugin setting off)
     const q = await Quick.get();
     const res = await postAction(uploadUrl, 'recording-start', id, { allServer: String(q.allServer),
-      gauges: String(q.gauges), traces: String(q.traces), glowrootData: String(q.glowrootData) });
+      gauges: String(q.gauges), traces: String(q.traces), otherTraces: String(q.traces && q.otherTraces),
+      glowrootData: String(q.glowrootData) });
     const body = await res.json().catch(() => null);
     slowMs = (body?.serverCapture || body?.systemLog)?.slowThresholdMs; // systemLog: plugin 8.2.1 and older
     ({ pingMs, lostMs, maxRecordingMs, maxSizeMb } = body?.serverCapture || {});
@@ -203,8 +204,23 @@ async function stop(reason) {
   return res;
 }
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg.target !== 'background') return;
+// Settings and recording state are for the extension's own pages only. theme.js also runs on the upload server's
+// BlackBox pages as a content script; if such a page were taken over (a browser exploit), it could otherwise read the
+// settings, or start, stop or feed a recording. It gets the Theme and Text size by the 'display' message instead.
+chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' })
+  .catch((e) => console.warn('Could not keep the settings from content scripts:', e));
+
+// The extension's own pages (popup, recorder window), not a content script: those report the web page's URL
+const fromExtension = (sender) => sender.id === chrome.runtime.id && (sender.url || '').startsWith(chrome.runtime.getURL(''));
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (msg.target !== 'background' || sender.id !== chrome.runtime.id) return;
+  if (msg.type === 'display') { // theme.js on the server's pages: the two display settings, nothing else
+    chrome.storage.local.get(['theme', 'textSize']).then(({ theme, textSize }) => sendResponse({ theme, textSize }),
+      () => sendResponse(null));
+    return true;
+  }
+  if (!fromExtension(sender)) return;
   const handlers = {
     'get-state': () => getState(),
     'start': () => start(msg.tabId, msg.mode, msg.streamId),

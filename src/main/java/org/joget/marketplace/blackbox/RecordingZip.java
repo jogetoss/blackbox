@@ -442,6 +442,7 @@ public class RecordingZip {
                 if (e == null || e.optString("key").isEmpty()) {
                     continue;
                 }
+                e.put("imported", true); // another server's: never looked up in this one's Glowroot (TraceCollector.retryable)
             String file = e.optString("file");
             if (!file.isEmpty()) {
                 ZipEntry f = TraceStore.isTraceFile(file) ? zip.getEntry(TraceStore.DIR + "/" + file) : null;

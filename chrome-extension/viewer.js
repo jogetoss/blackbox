@@ -38,13 +38,14 @@ const FILTERS = {
     ['bad', 'Failed (4xx, 5xx, errors)'],
     ['other', 'Other (scripts, images…)'],
   ],
-  traces: [
-    ['all', 'All traces'],
-    ['saved', 'Saved'],
-    ['pending', 'Still being collected'],
-    ['missing', 'No trace or failed'],
-  ],
 };
+const TRACE_FILTERS = [ // the recording's own traces; 'others' is added when there are other users' traces
+  ['all', 'All traces'],
+  ['saved', 'Saved'],
+  ['pending', 'Still being collected'],
+  ['missing', 'No trace or failed'],
+];
+FILTERS.traces = TRACE_FILTERS;
 
 const TRACE_STATES = { saved: '✓ saved', pending: '⏳ waiting', none: '– none', failed: '✕ failed' };
 
@@ -1066,6 +1067,7 @@ function consoleItems() {
 
 function matchesFilter(item, f) {
   if (tab === 'traces') {
+    if (f === 'others' || item.other) return f === 'others' && item.other;
     if (f === 'saved' || f === 'pending') return item.state === f;
     if (f === 'missing') return item.state === 'none' || item.state === 'failed';
     return true;
@@ -1113,7 +1115,7 @@ function renderList() {
 }
 
 function searchText(it) {
-  if (tab === 'traces') return `${it.method} ${it.url} ${it.status ?? ''} ${it.state} ${it.reason || ''}`.toLowerCase();
+  if (tab === 'traces') return `${it.method} ${it.url} ${it.status ?? ''} ${it.state} ${it.reason || ''} ${it.user || ''}`.toLowerCase();
   if (tab === 'server') return `${serverText(it)} ${it.logger || ''} ${it.req || ''} ${it.thrown || ''}`.toLowerCase();
   return tab === 'console'
     ? `${it.text} ${it.location || ''} ${it.source}`.toLowerCase()
@@ -1163,13 +1165,13 @@ function networkRow(n) {
 }
 
 function traceRow(e) {
-  const row = el('div', `row trace state-${e.state}`);
+  const row = el('div', `row trace state-${e.state}${e.other ? ' other' : ''}`);
   const s = e.summary || {};
   row.append(
-    el('span', 't', fmt(e.t)),
-    el('span', 'state', TRACE_STATES[e.state] || e.state),
-    el('span', null, e.status != null ? String(e.status) : '…'),
-    el('span', null, `${e.method} ${e.url}`),
+    el('span', 't', e.other && !e.ts ? '' : fmt(e.t)),
+    el('span', 'state', e.other && e.state === 'saved' ? (e.user || 'anonymous') : TRACE_STATES[e.state] || e.state),
+    el('span', null, e.other ? '' : e.status != null ? String(e.status) : '…'),
+    el('span', null, e.other && !e.url ? e.reason || '' : `${e.method || e.type || ''} ${e.url}`),
     el('span', 'muted right', s.sqlCount != null ? `${s.sqlCount} SQL` : ''),
     el('span', 'muted right', e.ms != null ? `${e.ms} ms` : ''),
   );
@@ -1187,11 +1189,16 @@ function prepareTraces(list, r) {
 }
 
 function updateTracesTab() {
+  // Other users' traces (capture option otherTraces): their own filter, never mixed into this recording's
+  const others = traceItems.filter((e) => e.other && e.state === 'saved').length;
+  FILTERS.traces = TRACE_FILTERS.concat(traceItems.some((e) => e.other) ? [['others', `Other users' traces (${others})`]] : []);
   if (!$('tracesTab')) return;
   $('tracesTab').hidden = !current.traces;
-  const pending = traceItems.filter((e) => e.state === 'pending').length;
-  $('tracesCount').textContent = traceItems.length + (pending ? ` ⏳${pending}` : '');
-  $('tracesTab').title = pending ? `${pending} still being collected` : 'Glowroot traces of slow and failed requests, and of requests that logged an error';
+  const own = traceItems.filter((e) => !e.other);
+  const pending = own.filter((e) => e.state === 'pending').length;
+  $('tracesCount').textContent = own.length + (pending ? ` ⏳${pending}` : '');
+  $('tracesTab').title = (pending ? `${pending} still being collected` : 'Glowroot traces of slow and failed requests, and of requests that logged an error')
+    + (own.length < traceItems.length ? '. Other users\' traces: pick them in the list\'s filter' : '');
 }
 
 // Above the Traces list: says when traces are still coming, or why there are none
@@ -1199,16 +1206,21 @@ const tabNote = el('div', 'tab-note');
 tabNote.hidden = true;
 $('list').before(tabNote);
 
+// Only this server's own entries can be looked up again (TraceCollector.retryable): not imported ones, nor ones
+// recorded before traces were matched by the capture's tag
+const canRetry = (e) => e.state === 'failed' && !e.imported && !e.other && !!e.capture;
+
 function renderTabNote() {
-  const pending = traceItems.filter((e) => e.state === 'pending').length;
-  const failed = traceItems.filter((e) => e.state === 'failed').length;
-  tabNote.hidden = tab !== 'traces' || (!pending && traceItems.length > 0 && !(failed && traceRetry));
+  const own = traceItems.filter((e) => !e.other);
+  const pending = own.filter((e) => e.state === 'pending').length;
+  const failed = own.filter(canRetry).length;
+  tabNote.hidden = tab !== 'traces' || $('filter').value === 'others' || (!pending && own.length > 0 && !(failed && traceRetry));
   if (pending) {
     tabNote.textContent = `${pending} ${pending === 1 ? 'trace is' : 'traces are'} still being collected (slow requests, a retry, or Glowroot has not stored them yet). This tab updates by itself.`;
   } else if (failed && traceRetry) {
     const b = el('button', null, `Retry failed (${failed})`);
     b.title = 'Ask the server that handled each request to look in its Glowroot again';
-    b.onclick = () => retryTraces(traceItems.filter((e) => e.state === 'failed').map((e) => e.key), b);
+    b.onclick = () => retryTraces(own.filter(canRetry).map((e) => e.key), b);
     tabNote.replaceChildren(`${failed} ${failed === 1 ? 'trace' : 'traces'} could not be collected. `, b);
   } else {
     tabNote.textContent = 'No traces: no recorded request was slower than Glowroot\'s threshold or failed.';
@@ -1233,7 +1245,7 @@ function traceFor(n) {
   const path = u.pathname + u.search;
   let best = null;
   for (const e of traceItems) {
-    if (e.method !== n.method || e.url !== path) continue;
+    if (e.other || e.method !== n.method || e.url !== path) continue;
     const d = Math.abs(e.t - n.t);
     if (d <= 2000 + (n.durationMs || 0) && (!best || d < Math.abs(best.t - n.t))) best = e;
   }
@@ -1248,7 +1260,8 @@ function traceSummaryText(e) {
 
 function traceDetail(item, body, actions) {
   const s = item.summary || {};
-  $('detailTitle').textContent = `Trace: ${item.method} ${item.status ?? '…'}  ${item.url}`;
+  $('detailTitle').textContent = item.other ? `Other user's trace: ${item.user || 'anonymous'}  ${item.method || item.type || ''} ${item.url}`
+    : `Trace: ${item.method} ${item.status ?? '…'}  ${item.url}`;
   const href = item.file && traceLink ? traceLink(item) : null;
   if (href) {
     const a = el('a', 'button', 'Open full trace');
@@ -1258,7 +1271,7 @@ function traceDetail(item, body, actions) {
     a.title = "Glowroot's page for this trace: every SQL statement, timers and thread profile";
     actions.append(a);
   }
-  if (item.state === 'failed' && traceRetry) {
+  if (canRetry(item) && traceRetry) {
     const b = el('button', null, 'Retry');
     b.title = `Ask ${item.node || 'the server'} to look in its Glowroot again`;
     b.onclick = () => retryTraces([item.key], b);
@@ -1274,7 +1287,9 @@ function traceDetail(item, body, actions) {
     Note: item.reason,
     'Full trace': item.file ? (href ? undefined : 'Not in this file: download the ZIP from the server to get it') : undefined,
     URL: item.url,
-    Method: item.method,
+    User: item.other ? item.user || 'anonymous' : undefined,
+    Type: item.other ? item.type : undefined,
+    Method: item.method || undefined,
     Status: item.status,
     Duration: item.ms != null ? `${item.ms} ms` : 'still running',
     'Started at': fmt(item.t),
@@ -1413,10 +1428,13 @@ function responseBody(n) {
   return box;
 }
 
+// Every value is single-quoted for the shell: session.json can be crafted, and this text gets pasted into a terminal
 function toCurl(n) {
   const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
-  const parts = [`curl ${q(n.url)}`];
-  if (n.method !== 'GET') parts.push(`-X ${n.method}`);
+  const url = String(n.url || '');
+  const parts = [`curl ${url.startsWith('-') ? '--url ' : ''}${q(url)}`]; // a URL can't pass as a curl option
+  const method = /^[A-Za-z]{1,20}$/.test(n.method || '') ? n.method.toUpperCase() : 'GET'; // HTTP methods are letters only
+  if (method !== 'GET') parts.push(`-X ${q(method)}`);
   for (const [k, v] of Object.entries(n.requestHeaders || {})) parts.push(`-H ${q(`${k}: ${v}`)}`);
   if (n.postData) parts.push(`--data-raw ${q(n.postData)}`);
   return parts.join(' \\\n  ');

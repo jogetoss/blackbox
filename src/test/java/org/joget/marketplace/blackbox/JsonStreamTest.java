@@ -64,6 +64,60 @@ public class JsonStreamTest {
         malformed(deep.toString());
     }
 
+    private static String name(int n) {
+        return "{\"" + new String(new char[n]).replace('\0', 'k') + "\":1}";
+    }
+
+    @Test
+    public void capsNames() throws Exception {
+        try (JsonStream js = new JsonStream(new StringReader(name(JsonStream.MAX_NAME)))) {
+            js.beginObject();
+            assertTrue(js.hasNext());
+            assertEquals(JsonStream.MAX_NAME, js.nextName().length());
+        }
+        try (JsonStream js = new JsonStream(new StringReader(name(JsonStream.MAX_NAME + 1)))) {
+            js.beginObject();
+            assertTrue(js.hasNext());
+            js.nextName();
+            fail("a name longer than MAX_NAME was accepted");
+        } catch (JsonStream.Malformed e) {
+            assertTrue(e.getMessage(), e.getMessage().contains("name is longer"));
+        }
+        // A 50 M character name: refused after reading a few KB, never built in full
+        long[] served = {0};
+        java.io.Reader huge = new java.io.Reader() {
+            private boolean opened;
+
+            @Override
+            public int read(char[] b, int off, int n) {
+                int start = 0;
+                if (!opened) {
+                    b[off] = '{';
+                    b[off + 1] = '"';
+                    opened = true;
+                    start = 2;
+                }
+                for (int i = start; i < n; i++) {
+                    b[off + i] = 'k';
+                }
+                served[0] += n;
+                return served[0] > 50_000_000 ? -1 : n;
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        try (JsonStream js = new JsonStream(huge)) {
+            js.beginObject();
+            assertTrue(js.hasNext());
+            js.nextName();
+            fail("accepted");
+        } catch (JsonStream.Malformed e) {
+            assertTrue("read " + served[0] + " characters", served[0] <= 128 * 1024);
+        }
+    }
+
     @Test
     public void capsAValueAndSkipsWithoutBuilding() throws Exception {
         try (JsonStream js = new JsonStream(new StringReader("[\"" + new String(new char[5000]).replace('\0', 'a') + "\",2]"))) {

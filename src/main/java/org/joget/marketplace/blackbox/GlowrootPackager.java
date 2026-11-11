@@ -231,7 +231,8 @@ final class GlowrootPackager {
             // Parent: the loader of java.sql (platform on Java 9+, bootstrap on 8), so the shaded H2 sees JDBC only
             try (URLClassLoader cl = new URLClassLoader(new URL[]{embedded.toUri().toURL()}, Driver.class.getClassLoader())) {
                 Driver h2 = (Driver) Class.forName(H2_DRIVER, true, cl).getDeclaredConstructor().newInstance();
-                r = GlowrootData.slice(h2, agent.resolve("data"), data, from, to, id);
+                JSONObject meta = ServerCapture.store().readMeta(id);
+                r = GlowrootData.slice(h2, agent.resolve("data"), data, from, to, id, meta != null && meta.optBoolean("otherTraces"));
             }
             String readme = GlowrootData.readme(id, NODE, version, from, to);
 

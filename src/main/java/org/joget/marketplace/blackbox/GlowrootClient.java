@@ -186,7 +186,12 @@ final class GlowrootClient {
      * both are read; a trace in both counts once.
      */
     List<Point> points(long from, long to) throws IOException {
-        String query = "?agent-rollup-id=&transaction-type=Web&from=" + from + "&to=" + to + "&duration-millis-low=0&limit=1000";
+        return points(from, to, "Web");
+    }
+
+    /** The same for one transaction type (Web, Background, ...). */
+    List<Point> points(long from, long to, String type) throws IOException {
+        String query = "?agent-rollup-id=&transaction-type=" + enc(type) + "&from=" + from + "&to=" + to + "&duration-millis-low=0&limit=1000";
         Map<String, Point> byId = new LinkedHashMap<>();
         addPoints(getJson("/backend/transaction/points" + query), byId);
         addPoints(getJson("/backend/error/points" + query), byId);

@@ -43,10 +43,13 @@ const Server = {
     return chrome.permissions.request({ origins: this.origins(endpoint) });
   },
 
-  // The server sends links as paths (e.g. /app/login); make them absolute
+  // The server sends links as paths (e.g. /app/login); make them absolute. Only http(s) links on the server itself
+  // (host and port; the scheme may differ behind a proxy): never javascript:, data: or another site.
   resolve(endpoint, path) {
     try {
-      return path ? new URL(path, endpoint).href : '';
+      if (!path) return '';
+      const u = new URL(path, endpoint);
+      return /^https?:$/.test(u.protocol) && u.host === new URL(endpoint).host ? u.href : '';
     } catch (e) {
       return ''; // a link the server sent that isn't a URL: show no link
     }
@@ -97,3 +100,5 @@ const Server = {
     return this.request(endpoint, 'GET', { action: 'me' });
   },
 };
+
+if (typeof module !== 'undefined') module.exports = Server; // node tests (e2e/tests/extension-trust.spec.js)

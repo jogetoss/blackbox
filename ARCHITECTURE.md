@@ -27,7 +27,8 @@ server can accept it in place of a CSRF token.
 | `POST ?action=video&id=<id>` | `recording.webm` (`video/webm`) | any JSON object |
 
 Errors: an HTTP error status with `{"error":{"message":"…"}}` (the plugin adds `"code"`, the status as a string);
-**401** means "not logged in". `url` may be a path; it is resolved against the Upload URL. The Recording page URL
+**401** means "not logged in". `url` may be a path; it is resolved against the Upload URL, and kept only when it is http(s) on the
+Upload URL's own host and port (`Server.resolve`; otherwise no link). The Recording page URL
 setting, when set, takes priority over `url`.
 
 The plugin serves this at `<context>/api/blackbox`. All its actions need a login (401 without one); an unknown action,
@@ -302,11 +303,23 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
   marked failed at once ("not running"), judged by a 2000 ms / 5xx / exception rule. Other errors (connection refused,
   needs a login) keep retrying and end as failed ("Could not read Glowroot: …") after 10 minutes. When Glowroot's
   settings can't be read, the same fallback rule decides (4xx never counts). Only anonymous access is supported.
+- **Matching:** a Glowroot trace is a request's only when its header's `attributes` hold `BlackBox recording` = the
+  capture id (`TraceStore.tagged`), besides the same method, path and start ±2 s. A trace that matches all but the tag
+  ends the lookup as "none" with that reason. Each entry keeps its `capture` id.
+- **Other users' traces** (`otherTraces`): `TraceCollector.watchOthers` on each node the capture opened on; 30 s
+  after `stoppedAt`, `collectOthers` reads the Web and Background points of [start, stop + 30 s], skips the
+  capture's own (tagged) and those started after the stop, and writes up to `MAX_OTHERS` (200) entries `other: true`
+  with `user`, `type`, the summary and the export, keyed `<node>-other-<traceId>`. Copied once: no retry. The viewer
+  lists them only under the filter "Other users' traces" and never matches them to a network request;
+  `ServerData.traces` counts them apart (`others`). `GlowrootData.slice(..., allTraces)` then keeps every trace
+  that overlapped the recording (`CAPTURE_TIME >= from` and `START_TIME <= to`).
 - **Retry:** only the node that served a request can read its trace, and the click may reach any node, so
   `trace-retry` marks the traces pending and writes `<wflow>/blackbox/retry/<recording>@<node>.json`; each node picks
   up its own every 20 seconds and tries again as above. A node that never answers (removed, or renamed) makes the trace
   failed again after 10 minutes. One retry per recording every 20 seconds on each node (an in-memory map; more often
-  gets 429). Glowroot keeps traces for 14 days by default, so older ones may be gone. The newest state wins across
+  gets 429). Only `TraceCollector.retryable` entries: not imported (`imported: true`, set by the ZIP import), not
+  other users' traces, and with a `capture` id. A lookup with no known end searches at most 10 minutes from the
+  request's start. Glowroot keeps traces for 14 days by default, so older ones may be gone. The newest state wins across
   nodes, so node clocks should be in sync.
 - **Viewing a trace:** `trace&file=…` serves Glowroot's page with `Content-Security-Policy: sandbox allow-scripts
   allow-popups` and `Referrer-Policy: no-referrer`, so its script runs without access to Joget's cookies or pages. It
@@ -480,9 +493,11 @@ secret-named `name=value` pairs) are masked inside any value. The license table 
 `serverCapture` (always true), `apps` (**Allow exporting the apps used…** + `Access.mayExportApps`: admin, an app admin
 of some app, or **Who can export apps they don't administer**), `sample` (Capture apps data: `apps` + **Allow capturing apps data**), `mask`
 (Mask data: `sample` + **Allow masking apps data**), `allServer` (`canCaptureServerData()`), `gauges` (`allowCaptureGauges`), `traces`
-(`allowCaptureTraces`) and `glowrootData` (`allowCaptureGlowrootData`); for these three and the app export, apps data and
+(`allowCaptureTraces`), `otherTraces` (`traces` + `allowCaptureOtherUsersTraces`) and `glowrootData`
+(`allowCaptureGlowrootData`); for these and the app export, apps data and
 mask settings `Access.allows`: admins always, others when the setting is ticked (the export at stop and at upload checks the same). None needs the upload right. `recording-start`
-takes `gauges=false`, `traces=false` and `glowrootData=false` (each turns its setting off) and `allServer=true` (opt-in;
+takes `gauges=false`, `traces=false` and `glowrootData=false` (each turns its setting off), `allServer=true` and
+`otherTraces=true` (opt-in;
 every box in `quick.js` starts unticked).
 
 The export (`exportApps`) runs `AppExport`: `hits` reads `session.json` (each request with its page:
@@ -591,7 +606,7 @@ for in Settings or on the first upload.
 | `zip.js` | Reads and writes recording ZIPs (no library: `CompressionStream` / `DecompressionStream`; top-level files only, no ZIP64) |
 | `idb.js` | IndexedDB (see below) |
 | `options.html/js` | Settings: Upload URL, Recording page URL, Theme, Text size, Open recordings on the server when you are logged in |
-| `theme.js`, `ui.css` | `theme.js`: Theme and Text size (as `zoom`) for every extension page, cached in `localStorage`; also the content script on the Upload URL server's `<context>/blackbox/*` pages, registered by `background.js` while BlackBox has access to that server. `ui.css`: styles of the popup, Settings and recorder (the other pages use `viewer.css`) |
+| `theme.js`, `ui.css` | `theme.js`: Theme and Text size (as `zoom`) for every extension page, cached in `localStorage`; also the content script on the Upload URL server's `<context>/blackbox/*` pages, registered by `background.js` while BlackBox has access to that server. There it can't read `chrome.storage` (`background.js` sets `storage.local` to `TRUSTED_CONTEXTS`) and asks the background with a `display` message, again when the page comes back into view; the background and the recorder ignore every other message that doesn't come from an extension page (`sender.url`). `ui.css`: styles of the popup, Settings and recorder (the other pages use `viewer.css`) |
 | `display.js` | Theme and Text size pickers in the header of the two pages without the extension (downloaded HTML, `dist/blackbox-viewer.html`), in place of `theme.js`: inlined in `<head>` so the saved choice applies before the page draws; the same values and `localStorage` keys (`bb-theme`, `bb-text-size`) as `theme.js`, shared by every file opened from disk. Copied into the plugin by the pom with `viewer.js`/`viewer.css` |
 | `build-standalone.py` | Builds `dist/blackbox-viewer.html`: `viewer.css`, `viewer.js`, `zip.js` and `display.js` inlined, without storage, server and upload code; re-run after viewer changes |
 

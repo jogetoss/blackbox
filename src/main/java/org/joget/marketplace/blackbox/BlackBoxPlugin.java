@@ -639,6 +639,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
     static final int DEFAULT_STARTS_PER_MINUTE = 10;
     static final int DEFAULT_MAX_OPEN_CAPTURES = 3;
+    /** "Allow capturing other users' traces": a recording may copy every trace on the nodes it reaches (opt-in per recording). */
+    static final String OTHER_TRACES = "allowCaptureOtherUsersTraces";
     static final long DEFAULT_USER_QUOTA_MB = 10240;
     static final StartLimiter STARTS = new StartLimiter();
 
@@ -758,8 +760,10 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         // Log lines not from this recording: the recorder's choice (allServer=true), only for users with
         // "Who can capture server data", since the lines hold other users' data
         boolean allServer = access.canCaptureServerData() && "true".equals(request.getParameter("allServer"));
+        // Other users' traces: opt-in per recording (otherTraces=true), with traces, when the admin allows it
+        boolean otherTraces = traces && access.mayCapture(OTHER_TRACES) && "true".equals(request.getParameter("otherTraces"));
         if (!ServerCapture.store().start(id, access.user.getUsername(), maxBytes, keepMs, traces, getPropertyString("glowrootUrl"), gauges,
-                glowrootData, allServer, maxRecordingMs)) {
+                glowrootData, allServer, maxRecordingMs, otherTraces)) {
             error(response, HttpServletResponse.SC_CONFLICT, "This server capture id is already in use.");
             return;
         }
@@ -768,7 +772,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 new Secrets(getPropertyString("secretNames"))); // System Info as it is now, secrets masked
         JSONObject started = new JSONObject().put("id", id).put("maxMb", maxBytes / (1024 * 1024))
                 .put("traces", traces).put("gauges", gauges).put("glowrootData", glowrootData).put("allServer", allServer)
-                .put("slowThresholdMs", slowMs());
+                .put("otherTraces", otherTraces).put("slowThresholdMs", slowMs());
         withLiveness(started, maxRecordingMs, maxSizeMb());
         // RecordingStore.LEGACY_CAPTURE: the extension of plugin 8.2.1 and older reads the slow threshold from there
         json(response, new JSONObject().put(RecordingStore.CAPTURE, started).put(RecordingStore.LEGACY_CAPTURE, started));
@@ -1188,6 +1192,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 .put("allServer", access.canCaptureServerData()) // opt-in per recording (allServer=true)
                 .put("gauges", access.mayCapture("allowCaptureGauges"))
                 .put("traces", access.mayCapture("allowCaptureTraces"))
+                .put("otherTraces", access.mayCapture("allowCaptureTraces") && access.mayCapture(OTHER_TRACES)) // opt-in
                 .put("glowrootData", access.mayCapture("allowCaptureGlowrootData"))
                 // Record passwords and tokens unmasked: admins always, others when allowed; the box starts unticked
                 .put("credentials", access.allows("allowUnmaskedCredentials", false));

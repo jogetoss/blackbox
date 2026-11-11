@@ -109,6 +109,16 @@
             "options" : [{"value" : "true", "label" : ""}]
         },
         {
+            "name" : "allowCaptureOtherUsersTraces",
+            "label" : "Allow capturing other users' traces",
+            "description" : "For non-admins; admins may always use it. Needs \"Allow capturing Glowroot traces\". About 30 seconds after a recording stops, each node it reached copies the traces Glowroot kept of every other request and background job that ran during the recording (up to 200 per node), listed apart in the Traces tab with the user. With \"Capture Glowroot data\" the cut then keeps every trace of that time too. They hold other users' data (SQL with values, URLs). Each recording gets them only when \"Include other users' traces\" is ticked in the extension's popup (unticked by default).",
+            "type" : "checkbox",
+            "value" : "",
+            "options" : [{"value" : "true", "label" : ""}],
+            "control_field" : "allowCaptureTraces",
+            "control_value" : "true"
+        },
+        {
             "name" : "allowCaptureGlowrootData",
             "label" : "Allow capturing Glowroot data",
             "description" : "For non-admins; admins may always use it. Needs Glowroot 0.14 on each node. 30 to 90 seconds after a recording stops, each node it reached cuts the recording out of its Glowroot data, in Glowroot's own format: the traces of the recorded requests, plus the aggregates and gauges of all traffic during the recording. Download it on the replay page and open it in a standalone Glowroot. Each build needs free disk space in Joget's temp folder of about the size of Glowroot's data.h2.db (it is skipped, with the reason, when there is not enough). Each recording gets it only when \"Capture Glowroot data\" is ticked in the extension's popup (unticked by default).",

@@ -56,8 +56,10 @@ let sizeLimitBytes = 0;       // 0: no size guard
 let sizeHit = false;
 function sizeLimitReached(bytes, limitBytes) { return limitBytes > 0 && bytes >= limitBytes * SIZE_GUARD; }
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg.target !== 'recorder') return;
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // Only the service worker: a content script (theme.js on the server's pages) must not feed or stop the recording
+  if (msg.target !== 'recorder' || sender.id !== chrome.runtime.id
+    || !(sender.url || '').startsWith(chrome.runtime.getURL(''))) return;
   if (msg.type === 'cdp') { if (meta) onCdp(msg); return; }
   if (msg.type === 'stop') {
     stopAndSave(msg.reason).then(sendResponse, (e) => sendResponse({ error: e.message || String(e) }));

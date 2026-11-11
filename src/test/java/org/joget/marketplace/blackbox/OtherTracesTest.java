@@ -1,0 +1,125 @@
+package org.joget.marketplace.blackbox;
+
+import static org.junit.Assert.*;
+
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+
+/**
+ * Other users' traces (capture option otherTraces): TraceCollector.collectOthers against a fake Glowroot 0.14. A
+ * recording ran from 10 s to 20 s; Glowroot kept traces of its own request, another user's, a background job and a
+ * request that started after the stop.
+ */
+public class OtherTracesTest {
+
+    private static final String CAPTURE = "cap1";
+    private static final long FROM = 10_000;
+    private static final long TO = 20_000;
+
+    private HttpServer server;
+    private final Map<String, JSONObject> headers = new HashMap<>();
+
+    @Before
+    public void start() throws Exception {
+        headers.put("own", header(12_000, 500, "cat").put("attributes",
+                new JSONObject().put(GlowrootTag.ATTRIBUTE, new JSONArray().put(CAPTURE))));
+        headers.put("bob", header(14_000, 3000, "bob"));
+        headers.put("job", header(15_000, 1000, "").put("transactionType", "Background").put("headline", "Email tool"));
+        headers.put("late", header(21_000, 1000, "bob"));
+        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", this::answer);
+        server.start();
+    }
+
+    @After
+    public void stop() {
+        server.stop(0);
+    }
+
+    private static JSONObject header(long start, long ms, String user) throws Exception {
+        return new JSONObject().put("startTime", start).put("durationNanos", ms * 1_000_000).put("user", user)
+                .put("transactionType", "Web").put("headline", "/jw/web/json/x")
+                .put("detail", new JSONObject().put("Request http method", "POST")).put("queriesExistence", "no");
+    }
+
+    private void answer(HttpExchange ex) throws IOException {
+        String path = ex.getRequestURI().getPath();
+        Map<String, String> q = new HashMap<>();
+        for (String kv : ex.getRequestURI().getRawQuery().split("&")) {
+            int eq = kv.indexOf('=');
+            q.put(kv.substring(0, eq), URLDecoder.decode(kv.substring(eq + 1), "UTF-8"));
+        }
+        byte[] body;
+        if (path.equals("/backend/transaction/points")) {
+            // [end, duration, ?, id]: the Background list has only the job
+            List<String> ids = "Background".equals(q.get("transaction-type")) ? java.util.Arrays.asList("job") : java.util.Arrays.asList("own", "bob", "late");
+            JSONArray pts = new JSONArray();
+            for (String id : ids) {
+                JSONObject h = headers.get(id);
+                long ms = h.getLong("durationNanos") / 1_000_000;
+                pts.put(new JSONArray().put(h.getLong("startTime") + ms).put(ms).put("").put(id));
+            }
+            body = new JSONObject().put("normalPoints", pts).toString().getBytes(StandardCharsets.UTF_8);
+        } else if (path.equals("/backend/error/points")) {
+            body = "{}".getBytes(StandardCharsets.UTF_8);
+        } else if (path.equals("/backend/trace/header")) {
+            body = headers.get(q.get("trace-id")).toString().getBytes(StandardCharsets.UTF_8);
+        } else if (path.equals("/export/trace")) {
+            ByteArrayOutputStream zip = new ByteArrayOutputStream();
+            try (ZipOutputStream z = new ZipOutputStream(zip)) {
+                z.putNextEntry(new ZipEntry("trace.html"));
+                z.write(("<html>" + q.get("trace-id") + "</html>").getBytes(StandardCharsets.UTF_8));
+            }
+            body = zip.toByteArray();
+        } else {
+            ex.sendResponseHeaders(404, -1);
+            ex.close();
+            return;
+        }
+        ex.sendResponseHeaders(200, body.length);
+        ex.getResponseBody().write(body);
+        ex.close();
+    }
+
+    @Test
+    public void copiesOtherUsersAndJobsButNotItsOwnOrLaterOnes() throws Exception {
+        GlowrootClient g = new GlowrootClient("http://127.0.0.1:" + server.getAddress().getPort());
+        Path dir = Files.createTempDirectory("bb-others");
+        List<JSONObject> out = new ArrayList<>();
+        TraceCollector.collectOthers(g, CAPTURE, FROM, TO, dir, out::add);
+
+        assertEquals("bob's request and the background job", 2, out.size());
+        JSONObject bob = out.get(0);
+        assertEquals("bob", bob.getString("user"));
+        assertTrue(bob.getBoolean("other"));
+        assertEquals("saved", bob.getString("state"));
+        assertEquals(14_000, bob.getLong("ts"));
+        assertEquals(3000, bob.getLong("ms"));
+        assertEquals("POST", bob.getString("method"));
+        assertEquals(CAPTURE, bob.getString("capture"));
+        assertFalse("copied once, never retried", TraceCollector.retryable(bob));
+        assertEquals("<html>bob</html>", new String(Files.readAllBytes(dir.resolve(TraceStore.DIR).resolve(bob.getString("file"))),
+                StandardCharsets.UTF_8));
+        JSONObject job = out.get(1);
+        assertEquals("Background", job.getString("type"));
+        assertEquals("Email tool", job.getString("url"));
+    }
+}

@@ -47,13 +47,21 @@ final class ServerData {
     static JSONObject traces(Path recDir, long slowMs) throws IOException, JSONException {
         JSONArray list = TraceStore.merge(recDir, System.currentTimeMillis());
         int slow = 0;
+        int own = 0;
+        int others = 0;
         for (int i = 0; i < list.length(); i++) {
             JSONObject e = list.optJSONObject(i);
+            if (e != null && e.optBoolean("other")) {
+                others += "saved".equals(e.optString("state")) ? 1 : 0; // other users' traces: counted apart
+                continue;
+            }
+            own++;
             if (e != null && e.optLong("ms", -1) >= slowMs) {
                 slow++;
             }
         }
-        return new JSONObject().put("total", list.length()).put("slow", slow).put("pending", TraceStore.pending(list));
+        JSONObject t = new JSONObject().put("total", own).put("slow", slow).put("pending", TraceStore.pending(list));
+        return others > 0 ? t.put("others", others) : t;
     }
 
     /** Peaks over all nodes and samples, or null without samples. */

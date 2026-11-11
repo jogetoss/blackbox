@@ -101,6 +101,12 @@ public class ServerCaptureStore {
     /** maxRecordingMs: the hard limit; the meta gets maxUntil = startedAt + maxRecordingMs (0: no limit). */
     public boolean start(String id, String owner, long maxBytes, long keepMs, boolean traces, String glowrootUrl, boolean gauges,
             boolean glowrootData, boolean allServer, long maxRecordingMs) throws IOException {
+        return start(id, owner, maxBytes, keepMs, traces, glowrootUrl, gauges, glowrootData, allServer, maxRecordingMs, false);
+    }
+
+    /** otherTraces: also copy the traces of every other request during the recording (TraceCollector.watchOthers). */
+    public boolean start(String id, String owner, long maxBytes, long keepMs, boolean traces, String glowrootUrl, boolean gauges,
+            boolean glowrootData, boolean allServer, long maxRecordingMs, boolean otherTraces) throws IOException {
         if (!isValidId(id)) {
             return false;
         }
@@ -121,7 +127,8 @@ public class ServerCaptureStore {
                     .put("glowrootUrl", glowrootUrl == null ? "" : glowrootUrl)
                     .put("gauges", gauges)
                     .put("glowrootData", glowrootData)
-                    .put("allServer", allServer);
+                    .put("allServer", allServer)
+                    .put("otherTraces", otherTraces);
             if (maxRecordingMs > 0) {
                 fresh.put("maxUntil", now + maxRecordingMs);
             }
