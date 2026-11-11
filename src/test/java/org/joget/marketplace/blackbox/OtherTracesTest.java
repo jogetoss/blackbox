@@ -106,7 +106,7 @@ public class OtherTracesTest {
         GlowrootClient g = new GlowrootClient("http://127.0.0.1:" + server.getAddress().getPort());
         Path dir = Files.createTempDirectory("bb-others");
         List<JSONObject> out = new ArrayList<>();
-        TraceCollector.collectOthers(g, CAPTURE, FROM, TO, () -> dir, out::add, Long.MAX_VALUE);
+        TraceCollector.collectOthers(g, CAPTURE, FROM, TO, () -> dir, out::add, Long.MAX_VALUE, () -> { });
 
         assertEquals("bob's request, the background job and the closing note", 3, out.size());
         assertEquals("none", out.get(2).getString("state"));
@@ -132,15 +132,22 @@ public class OtherTracesTest {
         GlowrootClient g = new GlowrootClient("http://127.0.0.1:" + server.getAddress().getPort());
         List<JSONObject> out = new ArrayList<>();
         Path dir = Files.createTempDirectory("bb-others");
-        TraceCollector.collectOthers(g, CAPTURE, FROM, TO, () -> dir, out::add, 0);
+        TraceCollector.collectOthers(g, CAPTURE, FROM, TO, () -> dir, out::add, 0, () -> { });
 
         assertEquals("only the note", 1, out.size());
         assertEquals("none", out.get(0).getString("state"));
         assertTrue(out.get(0).getString("reason"), out.get(0).getString("reason").contains("too slow")
-                && out.get(0).getString("reason").contains("0 copied, up to 3 more"));
-        for (String c : calls) {
-            assertTrue("no header or export call after the deadline: " + c, c.endsWith("/points"));
-        }
+                && out.get(0).getString("reason").contains("with 0 copied"));
+        assertEquals("no Glowroot call after the deadline", java.util.Collections.emptyList(), calls);
+    }
+
+    @Test
+    public void thePendingNotesAreKeptFreshBeforeEachTraceOfACopy() throws Exception {
+        GlowrootClient g = new GlowrootClient("http://127.0.0.1:" + server.getAddress().getPort());
+        Path dir = Files.createTempDirectory("bb-others");
+        java.util.concurrent.atomic.AtomicInteger runs = new java.util.concurrent.atomic.AtomicInteger();
+        TraceCollector.collectOthers(g, CAPTURE, FROM, TO, () -> dir, e -> { }, Long.MAX_VALUE, runs::incrementAndGet);
+        assertEquals("once per listed trace (3 Web, 1 Background)", 4, runs.get());
     }
 
     @Test

@@ -133,6 +133,15 @@ final class TraceCollector {
         }
     }
 
+    /** Rewrites the "pending" notes older than OTHERS_NOTE_EVERY_MS: between copies, and before each trace of a copy. */
+    private static void refreshNotes(long now) {
+        for (String id : OTHERS.keySet()) {
+            if (now - OTHERS_NOTED.getOrDefault(id, 0L) >= OTHERS_NOTE_EVERY_MS) {
+                noteOthers(id, now);
+            }
+        }
+    }
+
     /** This node's "pending" note: other users' traces are still to come. */
     private static void noteOthers(String id, long now) {
         OTHERS_NOTED.put(id, now);
@@ -181,15 +190,13 @@ final class TraceCollector {
                 markOthers(id, false);
                 writeOther(id, otherNote(id, "none", "The recording never stopped: other users' traces were not copied"));
             } else {
-                if (now - OTHERS_NOTED.getOrDefault(id, 0L) >= OTHERS_NOTE_EVERY_MS) {
-                    noteOthers(id, now);
-                }
                 if (due == null && meta.has("stoppedAt") && now >= meta.optLong("stoppedAt") + OTHERS_AFTER_MS) {
                     due = id;
                     dueMeta = meta;
                 }
             }
         }
+        refreshNotes(now);
         if (due == null) {
             return;
         }
@@ -221,7 +228,7 @@ final class TraceCollector {
         }
         // The folder is looked up per trace: the upload may move the capture to its recording during the copy
         collectOthers(g, id, meta.optLong("startedAt"), meta.optLong("stoppedAt"), () -> dir(id), e -> writeOther(id, e),
-                System.currentTimeMillis() + OTHERS_BUDGET_MS);
+                System.currentTimeMillis() + OTHERS_BUDGET_MS, () -> refreshNotes(System.currentTimeMillis()));
     }
 
     /**
@@ -229,16 +236,20 @@ final class TraceCollector {
      * copying at MAX_OTHERS or at deadline (epoch ms); what is left is only counted, with no further Glowroot call.
      */
     static void collectOthers(GlowrootClient g, String id, long from, long to, java.util.function.Supplier<Path> dir,
-            java.util.function.Consumer<JSONObject> out, long deadline) throws IOException {
+            java.util.function.Consumer<JSONObject> out, long deadline, Runnable beforeEach) throws IOException {
         int copied = 0;
         int left = 0; // not looked at: may include the recording's own
         boolean late = false;
         java.util.Set<String> seen = new java.util.HashSet<>();
         for (String type : OTHER_TYPES) { // requests, and scheduler / background jobs
+            if (late || (late = System.currentTimeMillis() > deadline)) {
+                break; // no more Glowroot calls; this type's traces are not counted
+            }
             for (GlowrootClient.Point p : g.points(from, to + OTHERS_AFTER_MS, type)) {
                 if (Thread.currentThread().isInterrupted()) {
                     return; // the plugin is stopping; copied again after the restart
                 }
+                beforeEach.run(); // keeps the pending notes fresh during a long copy
                 if (!seen.add(p.traceId) || p.endMs - p.durationMs > to) {
                     continue; // listed twice, or started after the stop
                 }
@@ -260,10 +271,11 @@ final class TraceCollector {
             }
         }
         // Always one note at the end: it replaces the "pending" one
-        out.accept(otherNote(id, "none", left == 0 ? copied + " other traces copied from " + NODE
-                : (late ? "Glowroot on " + NODE + " was too slow: copying stopped after " + OTHERS_BUDGET_MS / 60_000
-                + " minutes. " : "Only the first " + MAX_OTHERS + " other traces on " + NODE + " are kept. ")
-                + copied + " copied, up to " + left + " more were not"));
+        out.accept(otherNote(id, "none", late ? "Glowroot on " + NODE + " was too slow: copying stopped after "
+                + OTHERS_BUDGET_MS / 60_000 + " minutes with " + copied + " copied; others may be missing"
+                : left > 0 ? "Only the first " + MAX_OTHERS + " other traces on " + NODE + " are kept: " + copied
+                + " copied, up to " + left + " more were not"
+                : copied + " other traces copied from " + NODE));
     }
 
     private static JSONObject other(GlowrootClient g, String captureId, String traceId, JSONObject h, Path dir) throws IOException {

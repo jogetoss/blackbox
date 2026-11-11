@@ -312,11 +312,13 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
   with `user` (Glowroot's, empty unless its Servlet plugin's `sessionUserAttribute` is set, e.g.
   `SPRING_SECURITY_CONTEXT.authentication.name`), `type`, the summary and the export, keyed `<node>-other-<traceId>`. It runs on its own thread
   ("BlackBox other traces"), so it never delays the heartbeat, lookups or retries, and stops calling Glowroot after
-  `OTHERS_BUDGET_MS` (5 min); past either limit the rest are only counted. One note per node (`<node>-other-note`)
+  `OTHERS_BUDGET_MS` (5 min), apart from the trace already being copied; past either limit the rest of the list
+  are only counted, and once the time is up the Background list is not read. One note per node (`<node>-other-note`)
   says where it stands: "pending" from when the capture opens on the node (or is recovered) until the copy, rewritten
-  every 2 minutes so it never turns stale (the replay page keeps polling while it is pending), then "none" with how
-  many were copied and why any were left out, or "failed". Each 10 s tick copies at most one capture, so the other
-  notes stay fresh between copies. The folder is looked up for each trace, as the upload
+  when older than 2 minutes, on each tick and before each trace of a copy (the replay page keeps polling while it is
+  pending), then "none" with how many were copied and why any were left out, or "failed". Each 10 s tick copies at
+  most one capture. A note can still turn stale (`TraceStore.STALE_MS`, 10 min) only when a single Glowroot call
+  hangs that long: each read times out after 30 s, but a slow stream of a large export can take longer. The folder is looked up for each trace, as the upload
   may move the capture to its recording meanwhile. The capture's `meta.json` has `othersPending-<node>: true` from
   the watch until the copy ends, so after a restart `recoverOthers` watches it again. Copied once: no retry. The viewer
   lists them only under the filter "Other users' traces" and never matches them to a network request;
@@ -330,11 +332,11 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
   other users' traces, and with a `capture` id. A lookup with no known end searches at most 10 minutes from the
   request's start. Glowroot keeps traces for 14 days by default, so older ones may be gone. The newest state wins across
   nodes, so node clocks should be in sync.
-- **Virtual hosts (known limit):** the trace threads ("BlackBox traces", "BlackBox other traces", "BlackBox
-  Glowroot data") find capture and recording folders through `ServerCapture.store()`, `BlackBoxPlugin.store()` and
+- **Virtual hosts (known limit):** the trace and server load threads ("BlackBox traces", "BlackBox other traces",
+  "BlackBox Glowroot data", "BlackBox gauges") find capture and recording folders through `ServerCapture.store()`, `BlackBoxPlugin.store()` and
   `SetupManager.getBaseDirectory()`, which follow the profile the thread inherited when the plugin started. Unlike the
-  liveness check they don't go through `checkDirs`, so with virtual hosts on, traces, other users' traces and Glowroot
-  data are saved only for that one profile; other profiles' captures read as gone.
+  liveness check they don't go through `checkDirs`, so with virtual hosts on, traces, other users' traces, Glowroot
+  data and server load are saved only for that one profile; other profiles' captures read as gone.
 - **Viewing a trace:** `trace&file=…` serves Glowroot's page with `Content-Security-Policy: sandbox allow-scripts
   allow-popups` and `Referrer-Policy: no-referrer`, so its script runs without access to Joget's cookies or pages. It
   loads Google Fonts and Font Awesome from the internet.
