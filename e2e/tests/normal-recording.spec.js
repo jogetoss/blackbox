@@ -23,6 +23,9 @@ test('a screen recording in the normal window uploads as BB_USER, with its logs 
     const marker = 'bb-e2e-' + Date.now();
     await joget.evaluate((u) => { console.error(u.marker); return fetch(u.url).then((r) => r.status); },
       { marker, url: `${JOGET}/web/json/workflow/currentUsername?m=${marker}` });
+    // Credentials in a request: masked, the popup's "Record passwords and tokens unmasked" being unticked
+    await joget.evaluate((url) => fetch(url, { headers: { Authorization: 'Bearer e2esecret12345678' } }).then((r) => r.status),
+      `${JOGET}/web/json/workflow/currentUsername?m=${marker}-creds&token=e2esecret`);
     await new Promise((r) => setTimeout(r, 4000));
 
     const stopped = await sw.evaluate(`stop('user')`);
@@ -39,6 +42,11 @@ test('a screen recording in the normal window uploads as BB_USER, with its logs 
     const session = await api(joget, 'session', { id: serverId });
     expect(JSON.stringify(session.console)).toContain(marker);
     expect(session.network.some((n) => n.url.includes(marker)), 'the marked request in the network log').toBe(true);
+    expect(session.recording.credentialsMasked).toBe(true);
+    const creds = session.network.find((n) => n.url.includes(marker + '-creds'));
+    expect(creds.url).toContain('token=****');
+    expect(Object.entries(creds.requestHeaders).find(([k]) => k.toLowerCase() === 'authorization')?.[1]).toBe('****');
+    expect(JSON.stringify(session)).not.toContain('e2esecret');
     expect(session.recording.stopReason).toBe('user');
     expect(session.recording.capturedSurface).toBe('monitor');
     expect(meta.serverCapture.status).toBe('attached');

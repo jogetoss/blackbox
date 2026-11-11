@@ -50,6 +50,27 @@ public class ServerCaptureStore {
         return root;
     }
 
+    /** Captures of owner still open (not stopped, not attached to a recording), other than exceptId. */
+    public int openCount(String owner, String exceptId) throws IOException {
+        int n = 0;
+        if (!Files.isDirectory(root)) {
+            return 0;
+        }
+        try (java.nio.file.DirectoryStream<Path> dirs = Files.newDirectoryStream(root)) {
+            for (Path dir : dirs) {
+                String id = dir.getFileName().toString();
+                if (!isValidId(id) || id.equals(exceptId)) {
+                    continue;
+                }
+                JSONObject meta = readMeta(id);
+                if (meta != null && owner.equals(meta.optString("owner")) && !meta.has("stoppedAt") && !meta.has("recording")) {
+                    n++;
+                }
+            }
+        }
+        return n;
+    }
+
     public static boolean isValidId(String id) {
         return id != null && ID.matcher(id).matches();
     }

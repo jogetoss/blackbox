@@ -86,6 +86,33 @@ MAC addresses) and every `-D` system property, which may hold secrets. If that i
 | Who can upload | any logged-in user | Uploads from the browser only: upload, import a ZIP. Uploaders view and delete their own recordings; admins every recording |
 | Max file size (MB) | 500 | Video and session.json each |
 | Max recording length (minutes) | 30 | 5–120; see [Limits](#limits) |
+| Storage per user (MB) | 10240 | Non-admins. 0 = no limit; see [Limits](#limits) |
+| Max recordings in progress per user | 3 | Non-admins. 0 = no limit |
+| Max recordings started per user per minute | 10 | Non-admins, per node. 0 = no limit |
+| Max total size of a ZIP import (MB) | empty = 3 × Max file size | All files unpacked together. 0 = no limit |
+| Max files in a ZIP import | empty = 5000 | 0 = no limit |
+| Allow recording passwords and tokens unmasked | No | Off: every non-admin recording has credentials masked; see [Credentials in recordings](#credentials-in-recordings). Popup: **Record passwords and tokens unmasked** |
+| Allow uploads over HTTP | Yes | Off: uploads, ZIP imports and server captures need HTTPS (or `X-Forwarded-Proto: https` from a proxy); a server reached as `localhost` is always allowed. Reading recordings is not affected |
+| Allowed extension IDs | `anmfmkacddnmmgdcnkgkfjhagnilmkmp` | Extensions that may send recordings without a CSRF token. The BlackBox extension has this ID on every computer. Empty = any extension |
+| Allow unsandboxed trace pages in HTML exports | Yes | On: **Open full trace** in a downloaded `.html` opens the Glowroot page as it is (internal review). Off: inside a sandbox, so a crafted trace page can't reach the site the file is opened from. The recordings page always sandboxes them |
+
+#### Credentials in recordings
+
+The extension masks credentials as `****` before a recording is saved anywhere (browser storage, files, the upload),
+unless the user may record them unmasked (admins, or **Allow recording passwords and tokens unmasked**) and ticks
+**Record passwords and tokens unmasked** in the popup (unticked by default). Masked:
+
+- `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`, `api_key` headers, and any header whose
+  name has a secret word: `password`, `pwd`, `secret`, `token`, `api key`, `credential`, `csrf`, `session id`, `otp`… (so
+  `OWASP_CSRFTOKEN` too).
+- Values with a secret-word name in URLs (`?token=`), form posts (`j_password=`), JSON request and response bodies
+  (`"access_token": …`), and `user:password@` in URLs.
+- Secret-shaped values anywhere, also in console messages: `Bearer`/`Basic` tokens, JWTs, private keys, AWS, GitHub,
+  Slack and Google keys.
+
+Record ids and other values stay, so the app export still finds the records the recording used. `session.json`
+says `recording.credentialsMasked`. Masking runs in the browser: the data is the user's own, so it guards against
+leaking it by accident, not against a user who crafts a session.json.
 
 ### Server data
 
@@ -111,6 +138,7 @@ below add the other parts.
 | Allow exporting the apps used in the recording | No | | **Export the apps used** |
 | Max apps to export | 3 | 0 = no limit (0–9999; anything else means 3); apps not allowed don't count | |
 | Who can export apps they don't administer | nobody | Only apps Joget lets them access | |
+| Allow apps data from apps they don't administer | No | Off: such an app is exported without its rows and process data (the Apps tab says why) | |
 | Allow capturing apps data | No | Needs **Allow exporting the apps used…**; see [Apps data](#apps-data) | **Capture apps data** |
 | Allow masking apps data | No | Shown when apps data is allowed | **Mask data** |
 | Newest rows per table when the recording touched none | 20 | Shown when apps data is allowed. At most 500 | |
@@ -123,7 +151,7 @@ below add the other parts.
 | Upload, import a ZIP | **Who can upload** (others get **Upload selected** disabled in the extension) |
 | View and delete a recording, with its server data (system logs, traces, server load, Glowroot data, Info, exported apps) | Its uploader |
 | Capture all server log lines (popup), keep a ZIP's server data on import | **Who can capture other users' server data**: these can hold other users' data. The list page says when a ZIP's server data was left out |
-| Have an app exported (definition and data) | The app's own admins, or **Who can export apps they don't administer** for apps Joget lets them access (one of the app's userviews allows them). Other apps are listed as not exported |
+| Have an app exported (definition and data) | The app's own admins, or **Who can export apps they don't administer** for apps Joget lets them access (one of the app's userviews allows them). Other apps are listed as not exported. Data of an app the user doesn't administer only with **Allow apps data from apps they don't administer** |
 | Downloads (ZIP, HTML) | Anyone who can view the recording |
 
 ### Per-recording choices (popup)
@@ -141,6 +169,7 @@ automatic uploads use them too. The server checks every choice again.
 | **Capture server load** | Admins always; others when **Allow capturing server load** is on |
 | **Capture Glowroot trace files** | Admins always; others when **Allow capturing Glowroot traces of slow and failed requests** is on |
 | **Capture Glowroot data** | Admins always; others when **Allow capturing Glowroot data** is on |
+| **Record passwords and tokens unmasked** | Admins always; others when **Allow recording passwords and tokens unmasked** is on. Unticked: credentials are masked |
 
 - A ticked box asks for that part for this recording; the settings and the user's rights decide which boxes show.
 - Apps data is real unless **Mask data** is ticked; the popup warns while real data will be exported.
@@ -213,6 +242,14 @@ setting applies to recordings started after it.
   doesn't stop, the server ends the capture 2 minutes after the limit, at the limit, with reason `time-limit`.
 - **Size:** video is recorded at 1.5 Mbit/s (about 340 MB for 30 minutes). At 90% of **Max file size** the recorder
   stops and saves (reason `size-limit`), so the upload doesn't fail. No size guard when no server answered the start.
+- **Storage per user** (10 GB): an upload, video or ZIP import that would take a non-admin's recordings past it
+  (every file in their recording folders, server data and exported apps included) gets HTTP 413 and "Delete some
+  recordings first".
+- **Recordings in progress** (3) and **started per minute** (10): a non-admin's `recording-start` past either gets
+  HTTP 429; the recording still works, without server data. A closed browser's captures stop on their own.
+- **ZIP import:** besides **Max file size** per file, all files together may unpack to at most **Max total size of a
+  ZIP import** (3 × Max file size), and the ZIP may hold at most **Max files in a ZIP import** (5000). A ZIP past
+  either is refused and nothing is kept.
 
 ## App export
 

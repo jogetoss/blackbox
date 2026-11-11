@@ -29,7 +29,7 @@ window.blackboxPage = 'file'; // for the Features list
     const video = b64 ? await (await fetch('data:video/webm;base64,' + b64)).blob() : null;
     $('serverLegend').hidden = !systemLog;
     window.blackboxTimeInUrl = true; // blackbox-….html?t=… opens at that moment
-    const pages = await tracePages();
+    const pages = await tracePages(meta.tracesSandboxed === true);
     window.blackboxOpen(video, report, {
       systemLog, traces, gauges, serverInfo, apps, title: meta.title, info: uploadInfo(meta),
       traceUrl: (t) => pages.get(t.file) || null, // Open full trace: the page from this file, in a new tab
@@ -42,17 +42,29 @@ window.blackboxPage = 'file'; // for the Features list
 
   // The full trace pages (bb-trace-N blocks, gzipped Glowroot export pages as base64) as blob: URLs by file name.
   // A browser without DecompressionStream, or a damaged block, gets no link: the Traces tab then says so.
-  async function tracePages() {
+  // sandboxed ("Allow unsandboxed trace pages in HTML exports" off): each page runs inside a sandboxed iframe, in an
+  // origin of its own, so a crafted trace can't reach whatever site hosts this file.
+  async function tracePages(sandboxed) {
     const pages = new Map();
     if (typeof DecompressionStream !== 'function') return pages;
     for (const block of document.querySelectorAll('script[type="application/gzip"][id^="bb-trace-"]')) {
       try {
         const gz = await (await fetch('data:application/gzip;base64,' + block.textContent.trim())).blob();
         const html = await new Response(gz.stream().pipeThrough(new DecompressionStream('gzip'))).blob();
-        pages.set(block.dataset.file, URL.createObjectURL(new Blob([html], { type: 'text/html' })));
+        const page = sandboxed ? await sandbox(await html.text()) : html;
+        pages.set(block.dataset.file, URL.createObjectURL(new Blob([page], { type: 'text/html' })));
       } catch (e) { /* skip this one */ }
     }
     return pages;
+  }
+
+  // A page that shows html in a full-size iframe with the same sandbox the server's trace endpoint uses
+  function sandbox(html) {
+    const attr = html.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+    // "<\/": this file is inlined in a <script> block, where a closing tag would end it
+    return '<!doctype html><meta charset="utf-8"><title>Trace<\/title>'
+      + '<style>html,body,iframe{margin:0;border:0;width:100%;height:100%;display:block}<\/style>'
+      + '<iframe sandbox="allow-scripts allow-popups" srcdoc="' + attr + '"><\/iframe>';
   }
 
   // "Uploaded by" rows for the Info tab; the same as BB.uploadInfo on the server (common.js is not in this file)

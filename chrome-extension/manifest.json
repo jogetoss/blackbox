@@ -1,5 +1,6 @@
 {
   "manifest_version": 3,
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzKHhlC6HP4lYKTGDXWv2pCs5bTuTwjijgtlK7PTRW6E7qP4AOu2vc/zjEdZozB1UykYCYiknQ2R8PRqiQ98bQyq1EOIKxUxcxEqSEFQR4wxj9k1nPvpI8u6wr4fxPviPRcolcz3C3B/tyFENdqIEkEWFM8GytZDPtTl+Li2MbGbyLbKSJDTTKOJj3U9xc7ZgOnDiwPKEwYVXyI+YkvcNz88L738rinGPBLecacJl1mXcaNteh/hu6pZWk8Gz/NyNjJ9ozpINhrC07yUEnig0iEba4BfTaQtE/CFBtVJlI0rNu3PkTxYS9qtI0ZyEsZhx4rwTkM1m1Bx+wPNnmo0BOwIDAQAB",
   "name": "BlackBox",
   "version": "1.2.0",
   "description": "Records a window, screen or tab as video, plus the tab's console logs and network activity, and uploads it to a server.",

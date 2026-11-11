@@ -94,4 +94,10 @@ public class RecordingHtmlTest {
     public void refusesCodeThatWouldCloseItsTag() throws Exception {
         new RecordingHtml(VIEW, "body{}", "x='</script>'", "", "");
     }
+
+    /** The real viewer files can be inlined: a closing style or script tag in any of them breaks every HTML download. */
+    @Test
+    public void theShippedViewerFilesCanBeInlined() throws Exception {
+        assertNotNull(RecordingHtml.fromResources());
+    }
 }

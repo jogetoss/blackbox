@@ -286,6 +286,26 @@ public class RecordingStore {
         }
     }
 
+    /** Bytes on disk of all of owner's recordings (every file in their folders). */
+    public long usedBytes(String owner) throws IOException {
+        long total = 0;
+        for (JSONObject meta : list()) {
+            Path dir = owner.equals(meta.optString("owner")) ? dir(meta.optString("id")) : null;
+            if (dir != null && Files.isDirectory(dir)) {
+                try (java.util.stream.Stream<Path> files = Files.walk(dir)) {
+                    total += files.filter(Files::isRegularFile).mapToLong(f -> {
+                        try {
+                            return Files.size(f);
+                        } catch (IOException e) {
+                            return 0;
+                        }
+                    }).sum();
+                }
+            }
+        }
+        return total;
+    }
+
     /** All recordings, newest first. Folders without a readable meta.json are skipped. */
     public List<JSONObject> list() throws IOException {
         List<JSONObject> result = new ArrayList<>();

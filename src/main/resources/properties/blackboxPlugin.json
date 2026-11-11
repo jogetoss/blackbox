@@ -40,6 +40,41 @@
             "validation_message" : "Enter a whole number of minutes from 5 to 120."
         },
         {
+            "name" : "userQuotaMb",
+            "label" : "Storage per user (MB)",
+            "description" : "For non-admins: what all their recordings may use on the server, counting server data and exported apps. An upload that would go past it is refused; they delete recordings to make room. 0 = no limit.",
+            "type" : "textfield",
+            "value" : "10240"
+        },
+        {
+            "name" : "maxOpenCaptures",
+            "label" : "Max recordings in progress per user",
+            "description" : "For non-admins: recordings started and not yet stopped (each holds a server capture and a System Info snapshot). A closed browser's recordings stop on their own a few minutes later. 0 = no limit.",
+            "type" : "textfield",
+            "value" : "3"
+        },
+        {
+            "name" : "captureStartsPerMinute",
+            "label" : "Max recordings started per user per minute",
+            "description" : "For non-admins, counted on each node. 0 = no limit.",
+            "type" : "textfield",
+            "value" : "10"
+        },
+        {
+            "name" : "importMaxTotalMb",
+            "label" : "Max total size of a ZIP import (MB)",
+            "description" : "All files of an imported ZIP together, unpacked. Each file also has Max file size. Empty = 3 x Max file size; 0 = no limit (a small ZIP can then unpack to many GB).",
+            "type" : "textfield",
+            "value" : ""
+        },
+        {
+            "name" : "importMaxEntries",
+            "label" : "Max files in a ZIP import",
+            "description" : "Empty = 5000; 0 = no limit.",
+            "type" : "textfield",
+            "value" : ""
+        },
+        {
             "name" : "systemLogMaxMb",
             "label" : "Max size of system logs per node per recording (MB)",
             "description" : "Each server node keeps up to this much of a recording's log lines (with the other server log lines when ticked in the popup); later lines are dropped and the viewer says the log was cut off.",
@@ -96,6 +131,37 @@
             "value" : ""
         },
         {
+            "name" : "allowUnmaskedCredentials",
+            "label" : "Allow recording passwords and tokens unmasked",
+            "description" : "For non-admins; admins may always use it. Off: the extension masks credentials in every recording before saving it: Authorization, Cookie, Set-Cookie and CSRF or API key headers, and values whose name has a secret word (password, token, secret, api key...) in URLs, form and JSON bodies and response bodies. On: the popup offers \"Record passwords and tokens unmasked\" (unticked by default) for recordings that need them.",
+            "type" : "checkbox",
+            "value" : "",
+            "options" : [{"value" : "true", "label" : ""}]
+        },
+        {
+            "name" : "allowHttpUpload",
+            "label" : "Allow uploads over HTTP",
+            "description" : "Off: uploads, imports and server captures must use HTTPS (or a proxy that sends X-Forwarded-Proto: https); a server reached as localhost is always allowed. Recordings can hold passwords and personal data, which plain HTTP sends readable by anyone on the network.",
+            "type" : "checkbox",
+            "value" : "true",
+            "options" : [{"value" : "true", "label" : ""}]
+        },
+        {
+            "name" : "allowUnsandboxedTraces",
+            "label" : "Allow unsandboxed trace pages in HTML exports",
+            "description" : "On: Open full trace in a downloaded .html file opens the Glowroot page as it is, like opening the trace file itself (for internal review). Off: it opens inside a sandbox, so a crafted trace page can't reach the site the file is opened from. The recordings page always sandboxes trace pages.",
+            "type" : "checkbox",
+            "value" : "true",
+            "options" : [{"value" : "true", "label" : ""}]
+        },
+        {
+            "name" : "allowedExtensionIds",
+            "label" : "Allowed extension IDs",
+            "description" : "Comma-separated. Only these extensions may send recordings without a CSRF token; any other extension is refused. The BlackBox extension's own ID is anmfmkacddnmmgdcnkgkfjhagnilmkmp (the same on every computer). Empty = any extension.",
+            "type" : "textfield",
+            "value" : "anmfmkacddnmmgdcnkgkfjhagnilmkmp"
+        },
+        {
             "label" : "Support data: the apps the recording used, their data, and the recent changes in the Info tab.",
             "type" : "header"
         },
@@ -128,6 +194,17 @@
             "type" : "elementselect",
             "options_ajax" : "[CONTEXT_PATH]/web/property/json/getElements?classname=org.joget.apps.form.model.FormPermission",
             "url" : "[CONTEXT_PATH]/web/property/json[APP_PATH]/getPropertyOptions"
+        },
+        {
+            "name" : "allowOtherAppsData",
+            "label" : "Allow apps data from apps they don't administer",
+            "description" : "For non-admins exporting an app they are not an admin of (see Who can export apps they don't administer). Off: that app's definition is exported without its rows and process data. Record ids come from the uploaded recording, so with this on a user can pick which rows of the app get exported.",
+            "control_field" : "allowAppExport",
+            "control_value" : "true",
+            "control_use_regex" : "false",
+            "type" : "checkbox",
+            "value" : "",
+            "options" : [{"value" : "true", "label" : ""}]
         },
         {
             "name" : "allowCaptureAppsData",

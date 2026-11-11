@@ -85,6 +85,8 @@ README "Who sees what".
 | Server data of a recording (`canViewServerData(meta)`) | **Who can capture other users' server data**, or the uploader, so every viewer |
 | Server data in general (`canCaptureServerData()`, no uploader rule) | **Who can capture other users' server data**: keeping a ZIP's server data on import, capturing all other server log lines |
 | Have an app exported (`canExportApp`) | The app's own admins, or **Who can export apps they don't administer** for apps Joget lets them access (see "App export") |
+| Apps data of an exported app (`isAppAdmin` or `allowOtherAppsData`) | The app's own admins; others only with **Allow apps data from apps they don't administer**. Otherwise the `.jwa` has no rows or process data and `apps[].sample.skipped` says why |
+| Record credentials unmasked (`me.options.credentials`) | Admins, or **Allow recording passwords and tokens unmasked**; enforced in the extension only (`mask.js`) |
 
 - Server data in `meta.json` (`serverCapture`, `serverData`, `apps`) is removed by `hideServerData` for users without
   `canViewServerData(meta)`, in `list`, `meta` and `download&format=html` (whose page carries the meta as JSON). The ZIP keeps only a
@@ -94,6 +96,19 @@ README "Who sees what".
   of opening the copy.
 - The popup and upload form offer only what `me.options` allows (`quickSettings`, see "App export"); the server
   checks every choice again.
+
+**Extension POSTs** skip the CSRF token only when `fromAllowedExtension`: the `Origin` is `chrome-extension://<id>`
+with the id in `allowedExtensionIds` (never saved: `OFFICIAL_EXTENSION_ID`, fixed by the manifest's `key`; empty: any).
+
+**Limits** (non-admins; 0 = no limit): `overQuota` (`userQuotaMb`, `RecordingStore.usedBytes` + the upload's
+Content-Length, 413) on create, video and import; `recording-start` checks `StartLimiter` (`captureStartsPerMinute`,
+in memory per node, 429) and `ServerCaptureStore.openCount` (`maxOpenCaptures`, 429). `RecordingZip.importZip` reads
+through `BudgetZip`, whose entry streams share one budget of uncompressed bytes (`importMaxTotalMb`, empty = 3 ×
+`maxSizeMb`), and refuses more than `importMaxEntries` entries (empty = 5000).
+
+**HTTPS-only uploads** (`allowHttpUpload` off): `handle()` refuses the POST actions in `UPLOAD_ACTIONS` (create,
+video, import, recording-start/stop/ping) with 403 unless `secureOrLocal`: `isSecure()`, `X-Forwarded-Proto: https`,
+or a server name of `localhost`/`127.0.0.1`/`::1`. The extension shows the message (capture off, upload problem).
 
 ## Storage
 
@@ -532,7 +547,7 @@ in its rows (activity ids resolved with `getActivityById`), kept when the proces
 | `SessionFile` | Copies `session.json` / `system-log.json` to disk, checks them and reads them as streams |
 | `JsonStream` | The small pull parser `SessionFile` uses |
 | `RecordingZip` | `download&format=zip` and `import`: the recording as one ZIP and back |
-| `RecordingHtml` | `download&format=html`: view.html with viewer.css/js inlined and display.js in `<head>`, the recording in `<script>` data blocks, `export.js` to open it. The full trace pages go in too, one `application/gzip` block each (base64, ~105 KB instead of ~450 KB); `export.js` unzips them with `DecompressionStream` into `blob:` URLs for **Open full trace** (no link in a browser without it) |
+| `RecordingHtml` | `download&format=html`: view.html with viewer.css/js inlined and display.js in `<head>`, the recording in `<script>` data blocks, `export.js` to open it. The full trace pages go in too, one `application/gzip` block each (base64, ~105 KB instead of ~450 KB); `export.js` unzips them with `DecompressionStream` into `blob:` URLs for **Open full trace** (no link in a browser without it). With `allowUnsandboxedTraces` off, `meta.tracesSandboxed` makes each page a wrapper with a `sandbox="allow-scripts allow-popups"` iframe (`srcdoc`), the same sandbox as the `trace` endpoint's CSP |
 | `ServerCaptureFilter` | Marks requests that carry `X-BlackBox-Id` (all URLs, before Spring Security) |
 | `ServerCapture` | Root-logger appender, per-thread marking, pending files, flush/idle/cleanup timer |
 | `ServerCaptureStore` | Pending capture folders: start, stop, the stop's copy of the lines (`writeLines`), state such as `appExport` (`put`), attach (merge nodes, sort by time, move traces, gauges, Glowroot data, `server-info.json` and `app/`), clean up |
@@ -569,7 +584,8 @@ for in Settings or on the first upload.
 | `actions.js` | Upload (with its form; `uploadNow` without it, `uploadMany` for a batch), Move to folder, Download ZIP and Delete of one recording; links in messages |
 | `replay.js` | Replay page (`viewer.html?id=` or `?disk=`): loads the recording, its status bar, ⚠ Upload and the fix box, Move to folder / Download ZIP / Delete, Older / Newer; with `upload=server` it uploads and opens the server's copy |
 | `report.js` | Builds `session.json`; turns a recording interrupted by a crash or a closed recorder into a normal one (`recovered`, stop reason "interrupted") and stops its server capture at the last save |
-| `quick.js` | Quick settings (`chrome.storage.local` `quick`): `apps`, `sample`, `mask` are the per-recording app export choices (`recording.options`, the export parameters); `allServer`, `gauges`, `traces` and `glowrootData` go to `recording-start` |
+| `quick.js` | Quick settings (`chrome.storage.local` `quick`): `apps`, `sample`, `mask` are the per-recording app export choices (`recording.options`, the export parameters); `allServer`, `gauges`, `traces` and `glowrootData` go to `recording-start`; `credentials` (with `me.options.credentials`) turns masking off |
+| `mask.js` | Credential masking in the recorder (`Mask.entry` on every network entry as it is created and completed, `Mask.text` on console text, `Mask.url` on navigations); on unless `Mask.on(quickOffer, quick)`. Secret words from `Secrets.java`, plus `csrf`, `xsrf`, `session id`, `otp` |
 | `store.js` | Row list (kept, on disk: newest 50, upload history), badges, loading a recording, the linked folder |
 | `server.js` | Calls the Upload endpoint with the browser's cookies; Upload URL and Recording page URL, host access, 15 s timeout on GETs |
 | `zip.js` | Reads and writes recording ZIPs (no library: `CompressionStream` / `DecompressionStream`; top-level files only, no ZIP64) |

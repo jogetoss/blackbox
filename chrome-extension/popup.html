@@ -60,6 +60,7 @@
       <label id="qGaugesRow" hidden title="CPU, heap, busy request threads, database connections and GC time of each server node, every second (the Server load strip)"><input type="checkbox" id="qGauges"> Capture server load</label>
       <label id="qTracesRow" hidden title="Glowroot's trace of each slow or failed recorded request, or one that logged an error, shown in the replay page's Traces tab"><input type="checkbox" id="qTraces"> Capture Glowroot trace files</label>
       <label id="qGlowrootRow" hidden title="The recording cut out of each node's Glowroot data (traces, aggregates, gauges), to download and open in a standalone Glowroot; built 30 to 90 seconds after it stops"><input type="checkbox" id="qGlowroot"> Capture Glowroot data</label>
+      <label id="qCredsRow" hidden title="Off: passwords, tokens, cookies and Authorization headers are masked (****) in the recording before it is saved"><input type="checkbox" id="qCreds"> Record passwords and tokens unmasked</label>
     </div>
     <div id="qNote" hidden></div>
   </fieldset>

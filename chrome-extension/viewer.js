@@ -1630,7 +1630,7 @@ function appBlock(a) {
     'Last modified': utc(a.modified),
     'Size': a.bytes != null ? `${Math.max(1, Math.round(a.bytes / 1024))} KB` : undefined,
     'Not exported': a.state !== 'saved' ? a.reason || a.state : undefined,
-    'Apps data': sample?.error ? `could not be added: ${sample.error}`
+    'Apps data': sample?.skipped ? sample.skipped : sample?.error ? `could not be added: ${sample.error}`
       : sample ? (sample.tables?.length ? (sample.mode === 'real' ? 'real values, original ids' : 'masked, new record ids') : 'none: the app has no form rows') : undefined,
   }));
   // The captured tables and their rows (in the .jwa: importing it imports them)
