@@ -183,7 +183,9 @@ final class GlowrootPackager {
             ProfileDir.Watch watch = e.getValue();
             if (!ProfileDir.safely(GlowrootPackager.class, "check the Glowroot data of capture " + id, watch.dir,
                     () -> tick(id, watch.since, now))) { // in the capture's profile (virtual hosts)
-                WATCHED.remove(id); // its folder fails: stop watching it
+                WATCHED.remove(id); // its folder fails: stop watching it, and say so if the folder still takes it
+                ProfileDir.safely(GlowrootPackager.class, "save the Glowroot data status of capture " + id, watch.dir,
+                        () -> status(id, "failed", "Could not read the capture's folder on " + NODE, null));
             }
         }
     }

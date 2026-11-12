@@ -418,7 +418,23 @@ final class GlowrootData {
     }
 
     /** Every node's status, sorted by node, or an empty list. */
+    /**
+     * A "waiting" status with no news for this long reads as failed: the capture never stopped within the packager's 3
+     * hours, plus its build window, or its node stopped watching it (the folder failed, or the node is gone).
+     */
+    static final long WAITING_STALE_MS = 3 * 3600 * 1000L + 15 * 60_000L;
+    /** A "building" status with no news for this long reads as failed: the build died without saving its end. */
+    static final long BUILDING_STALE_MS = 2 * 3600 * 1000L;
+
+    /**
+     * Each node's status, sorted by node. A "waiting" or "building" one that had no news for too long (WAITING_STALE_MS,
+     * BUILDING_STALE_MS) is read as failed, so the recording doesn't show "building" for good; a later status still wins.
+     */
     static JSONArray statuses(Path outer) throws IOException {
+        return statuses(outer, System.currentTimeMillis());
+    }
+
+    static JSONArray statuses(Path outer, long now) throws IOException {
         Path dir = outer == null ? null : outer.resolve(DIR);
         JSONArray list = new JSONArray();
         if (dir == null || !Files.isDirectory(dir)) {
@@ -436,6 +452,17 @@ final class GlowrootData {
         }
         all.sort(java.util.Comparator.comparing((JSONObject s) -> s.optString("node")));
         for (JSONObject s : all) {
+            String state = s.optString("state");
+            long updated = s.optLong("updated", now);
+            if ("waiting".equals(state) && now - updated > WAITING_STALE_MS
+                    || "building".equals(state) && now - updated > BUILDING_STALE_MS) {
+                try {
+                    s.put("state", "failed").put("reason", "No news from " + s.optString("node") + " since it was "
+                            + state + ": Joget there restarted or stopped, or couldn't reach the recording's folder");
+                } catch (JSONException e) {
+                    throw new IllegalStateException(e);
+                }
+            }
             list.put(s);
         }
         return list;

@@ -348,7 +348,7 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
   after one) ends "failed" or with a note instead. Each profile, capture and running request is handled on its own
   (`ProfileDir.safely`): one unreadable folder or refused file access is logged (the same message at most every 10
   minutes) and stops neither the others nor the scheduled job; a capture or request whose work fails is no longer
-  watched. Cloud installs (`MultiTenantSecurityManager`) may refuse a background thread's access to another
+  watched (its Glowroot data status is set to failed when the folder still takes it). Cloud installs (`MultiTenantSecurityManager`) may refuse a background thread's access to another
   profile's folder; this, like the liveness check, is untested there. The server load sample is the JVM's and the server's, the same for every profile: Community and Enterprise
   have one database pool; cloud installs keep one per profile, which the strip doesn't show.
 - **Viewing a trace:** `trace&file=…` serves Glowroot's page with `Content-Security-Policy: sandbox allow-scripts
@@ -378,7 +378,9 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
   marked failed. Otherwise the recording would count as building for good (Download ZIP 409, **Glowroot ⏳**). A build
   cut off by a stop or shutdown is not marked failed: the copy is opened with `DB_CLOSE_ON_EXIT=FALSE` (else H2's own
   shutdown hook closes it under the build), and an error while the plugin or JVM stops leaves `building`, so it is
-  built again after the restart.
+  built again after the restart. Readers (`GlowrootData.statuses`) also show a status with no news for too long as
+  failed: `waiting` after 3 h 15 min, `building` after 2 h, so a node that stopped watching (its folder failed, or it
+  is gone) doesn't leave the recording building for good; a later status still replaces it.
 - **How:** `GlowrootData` copies `data.h2.db` (Glowroot keeps it locked; the copy is not), deletes every row outside
   the recording with Glowroot's own shaded H2 driver (`lib/glowroot-embedded-collector.jar`, H2 1.3), reads only the
   blocks the kept rows point to straight from the live `*.capped.db` ring files, writes them into new capped files of

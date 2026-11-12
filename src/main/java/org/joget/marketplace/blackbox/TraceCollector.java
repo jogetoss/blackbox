@@ -215,8 +215,11 @@ final class TraceCollector {
         }
         refreshNotes(now);
         if (due[0] != null) {
-            ProfileDir.safely(TraceCollector.class, "copy the other users' traces of capture " + due[0], dueDir[0],
-                    () -> copyDue(due[0], dueMeta[0]));
+            if (!ProfileDir.safely(TraceCollector.class, "copy the other users' traces of capture " + due[0], dueDir[0],
+                    () -> copyDue(due[0], dueMeta[0]))) {
+                OTHERS.remove(due[0]); // its folder fails: not copied again every tick
+                OTHERS_NOTED.remove(due[0]);
+            }
         }
     }
 
@@ -611,7 +614,8 @@ final class TraceCollector {
         ScheduledExecutorService ex = jobs;
         if (ex != null && byNode.containsKey(NODE)) {
             Path profile = ProfileDir.current(); // the request's: the scan runs on the traces thread
-            ex.execute(() -> ProfileDir.in(profile, TraceCollector::retryScan)); // this node's own: no need to wait
+            ex.execute(() -> ProfileDir.safely(TraceCollector.class, "read the trace retry requests", profile,
+                    TraceCollector::retryScan)); // this node's own: no need to wait
         }
         int n = 0;
         for (Set<String> k : byNode.values()) {
@@ -621,7 +625,7 @@ final class TraceCollector {
     }
 
     /** Picks up the retry requests addressed to this node. */
-    private static void retryScan() {
+    private static void retryScan() throws IOException {
         Path dir = retryDir();
         if (!Files.isDirectory(dir)) {
             return;
@@ -646,9 +650,7 @@ final class TraceCollector {
                 }
                 retry(recId, recDir, req);
             }
-        } catch (IOException | RuntimeException e) {
-            LogUtil.warn(TraceCollector.class.getName(), "Could not read the trace retry requests: " + e.getMessage());
-        }
+        } // a failure goes to ProfileDir.safely, which logs it (at most every 10 minutes)
     }
 
     private static void retry(String recId, Path recDir, JSONObject req) throws IOException {

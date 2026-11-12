@@ -126,6 +126,20 @@ public class VirtualHostsTest {
     }
 
     @Test
+    public void aGlowrootStatusWithNoNewsForTooLongReadsAsFailed() throws Exception {
+        Path rec = Files.createDirectories(a.resolve("rec"));
+        long now = 10 * 3600_000L;
+        GlowrootData.writeStatus(rec, "n1", new org.json.JSONObject().put("node", "n1").put("state", "waiting").put("updated", 0));
+        GlowrootData.writeStatus(rec, "n2", new org.json.JSONObject().put("node", "n2").put("state", "building")
+                .put("updated", now - 60_000));
+        JSONArray s = GlowrootData.statuses(rec, now);
+        assertEquals("failed", s.getJSONObject(0).getString("state"));
+        assertTrue(s.getJSONObject(0).getString("reason").contains("No news from n1"));
+        assertEquals("a running build", "building", s.getJSONObject(1).getString("state"));
+        assertEquals("failed", GlowrootData.statuses(rec, now + GlowrootData.BUILDING_STALE_MS).getJSONObject(1).getString("state"));
+    }
+
+    @Test
     public void inPutsThePreviousFolderBack() throws Exception {
         Path outside = ProfileDir.current();
         ProfileDir.in(a, () -> {
