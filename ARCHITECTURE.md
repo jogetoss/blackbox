@@ -317,9 +317,10 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
   says where it stands: "pending" from when the capture opens on the node (or is recovered) until the copy, rewritten
   when older than 2 minutes, on each tick and before each trace of a copy (the replay page keeps polling while it is
   pending), then "none" with how many were copied and why any were left out, or "failed". Each 10 s tick copies at
-  most one capture. A note can still turn stale (`TraceStore.STALE_MS`, 10 min) only when one trace's Glowroot
-  calls take about 8 minutes together (the note may already be 2 minutes old when they start): each read times out
-  after 30 s, but a slow stream of a large export can take longer. The folder is looked up for each trace, as the upload
+  most one capture. A note can still turn stale (`TraceStore.STALE_MS`, 10 min) only when the Glowroot calls
+  between two refreshes take about 8 minutes together, one trace's header and export or one type's list read (the note
+  may already be 2 minutes old when they start): each read times out after 30 s, but a slow stream of a large export or
+  list can take longer. The folder is looked up for each trace, as the upload
   may move the capture to its recording meanwhile. The capture's `meta.json` has `othersPending-<node>: true` from
   the watch until the copy ends, so after a restart `recoverOthers` watches it again. Copied once: no retry. The viewer
   lists them only under the filter "Other users' traces" and never matches them to a network request;
