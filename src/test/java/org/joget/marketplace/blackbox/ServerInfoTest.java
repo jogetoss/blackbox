@@ -51,7 +51,7 @@ public class ServerInfoTest {
 
     @Test
     public void databaseShowsTheFileWithoutThePassword() throws Exception {
-        JSONObject db = ServerInfo.database("default", datasourceFile());
+        JSONObject db = ServerInfo.database("default", datasourceFile(), new Secrets(null));
         assertEquals("default", db.getString("Profile"));
         assertEquals("com.mysql.cj.jdbc.Driver", db.getString("JDBC driver"));
         assertEquals("jdbc:mysql://db:3306/jwdb?user=root&password=****&useSSL=false", db.getString("JDBC URL"));
@@ -79,7 +79,7 @@ public class ServerInfoTest {
 
     @Test
     public void poolShowsSettingsInUseAndFlagsTheFile() throws Exception {
-        JSONObject p = ServerInfo.pool(new FakePool(), datasourceFile());
+        JSONObject p = ServerInfo.pool(new FakePool(), datasourceFile(), new Secrets(null));
         assertEquals("500 (file says 200)", p.getString("maxActive"));
         assertEquals("booleans compare ignoring case", "true", p.getString("testOnBorrow"));
         assertEquals("connectTimeout=5000;password=****", p.getString("connectionProperties"));
@@ -91,7 +91,7 @@ public class ServerInfoTest {
 
     @Test
     public void poolWithoutAFileHasNoFlags() throws Exception {
-        JSONObject p = ServerInfo.pool(new FakePool(), null);
+        JSONObject p = ServerInfo.pool(new FakePool(), null, new Secrets(null));
         assertEquals("500", p.getString("maxActive"));
         assertFalse(p.has("Ignored file keys"));
     }

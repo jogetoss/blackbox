@@ -78,6 +78,24 @@ public class TraceStoreTest {
     }
 
     @Test
+    public void onlyTracesTaggedWithTheCaptureAreItsOwn() throws Exception {
+        // Glowroot's header: "attributes": {"BlackBox recording": ["<capture id>"]}
+        JSONObject mine = new JSONObject().put("attributes", new JSONObject().put(GlowrootTag.ATTRIBUTE, new JSONArray().put("cap1")));
+        assertTrue(TraceStore.tagged(mine, "cap1"));
+        assertFalse("another user's recording", TraceStore.tagged(mine, "cap2"));
+        assertFalse("an untagged request (not recorded)", TraceStore.tagged(new JSONObject(), "cap1"));
+        assertFalse(TraceStore.tagged(new JSONObject().put("attributes", new JSONObject().put("other", new JSONArray().put("cap1"))), "cap1"));
+        assertFalse("no capture id never matches", TraceStore.tagged(mine, ""));
+    }
+
+    @Test
+    public void onlyOwnTaggedEntriesCanBeRetried() throws Exception {
+        assertTrue(TraceCollector.retryable(new JSONObject().put("capture", "cap1")));
+        assertFalse("from a ZIP import", TraceCollector.retryable(new JSONObject().put("capture", "cap1").put("imported", true)));
+        assertFalse("recorded before tag matching", TraceCollector.retryable(new JSONObject()));
+    }
+
+    @Test
     public void summaryAddsUpSqlAndSelfTimes() throws Exception {
         JSONObject header = new JSONObject()
                 .put("durationNanos", 7_000_000_000L)

@@ -20,6 +20,7 @@ function buildReport(meta, consoleEntries, navigations, network, stoppedAt, reas
       userAgent: meta.userAgent || navigator.userAgent,
       serverCapture: capture ? { status: capture.status, id: capture.id, server: capture.server, message: capture.message } : undefined,
       options: meta.options, // { apps, sampleData: none | masked | real }: the popup's app export choices
+      credentialsMasked: meta.credentialsMasked, // mask.js ran on the network and console data (absent: made before masking)
     },
     summary: {
       console: consoleEntries.length,

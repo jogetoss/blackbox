@@ -1,13 +1,15 @@
 // Quick settings in the popup: the choices for the next recording, kept in chrome.storage.local as 'quick'.
 // Keys (popup checkbox): apps (Export the apps used), sample (Capture apps data), mask (Mask data), allServer (All
-// server log lines), gauges (Capture server load), traces (Capture Glowroot trace files), glowrootData (Capture
-// Glowroot data). Every box starts unticked and asks for its part; the server offers only what the plugin settings
-// and the user's rights allow (me.options) and checks every choice again.
+// server log lines), gauges (Capture server load), traces (Capture Glowroot trace files), otherTraces (Include other
+// users' traces), glowrootData (Capture Glowroot data), credentials (Record passwords and tokens unmasked). Every box starts unticked and asks for its part;
+// the server offers only what the plugin settings and the user's rights allow (me.options) and checks every choice
+// again (credentials: the recorder masks unless the server offers it and the box is ticked, see mask.js).
 // Used by the popup, the service worker (recording-start), the recorder (saved with the recording) and the upload form.
 
 const Quick = {
   // Never touched: every box unticked, so nothing optional is captured or exported (apps data, if ticked, is real)
-  DEFAULTS: { apps: false, sample: false, mask: false, allServer: false, gauges: false, traces: false, glowrootData: false },
+  DEFAULTS: { apps: false, sample: false, mask: false, allServer: false, gauges: false, traces: false, otherTraces: false,
+    glowrootData: false, credentials: false },
 
   async get() {
     const { quick } = await chrome.storage.local.get('quick');

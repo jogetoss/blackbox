@@ -62,6 +62,8 @@ public class RecordingZipTest {
         assertEquals(1, traces.length());
         assertEquals(file, traces.getJSONObject(0).getString("file"));
         assertEquals("<html>trace</html>", new String(Files.readAllBytes(to.traceFile(newId, file)), StandardCharsets.UTF_8));
+        assertTrue("imported entries are marked", traces.getJSONObject(0).getBoolean("imported"));
+        assertFalse("and never looked up in this server's Glowroot", TraceCollector.retryable(traces.getJSONObject(0)));
 
         String noLogId = RecordingZip.importZip(to, zip, 1 << 20, false, "carol", "Carol").getString("id");
         assertEquals("no system log access, no traces", 0, TraceStore.merge(to.dir(noLogId), 2).length());

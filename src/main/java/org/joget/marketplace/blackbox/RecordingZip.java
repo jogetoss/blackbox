@@ -130,11 +130,30 @@ public class RecordingZip {
      */
     public static JSONObject importZip(RecordingStore store, Path zipFile, long maxBytes, boolean keepServerData,
             String owner, String ownerName) throws IOException, RecordingStore.InvalidUpload {
-        ZipFile zip;
+        return importZip(store, zipFile, maxBytes, keepServerData, owner, ownerName, DEFAULT_TOTAL_FACTOR * maxBytes, DEFAULT_MAX_ENTRIES);
+    }
+
+    /** Import limits when the settings are empty: total uncompressed size = 3 × the file limit; 5000 entries. */
+    static final int DEFAULT_TOTAL_FACTOR = 3;
+    static final int DEFAULT_MAX_ENTRIES = 5000;
+
+    /**
+     * As above, with the whole ZIP limited: maxTotalBytes uncompressed bytes read from all its entries together and
+     * maxEntries entries (0: no limit for either). Each file still has maxBytes: a ZIP of many files just under it, or
+     * of entries sharing one compressed block, would otherwise write far more than it holds.
+     */
+    public static JSONObject importZip(RecordingStore store, Path zipFile, long maxBytes, boolean keepServerData,
+            String owner, String ownerName, long maxTotalBytes, int maxEntries) throws IOException, RecordingStore.InvalidUpload {
+        BudgetZip zip;
         try {
-            zip = new ZipFile(zipFile.toFile());
+            zip = new BudgetZip(zipFile.toFile(), maxTotalBytes);
         } catch (IOException e) {
             throw new RecordingStore.InvalidUpload("This is not a ZIP file.");
+        }
+        int entries = zip.size();
+        if (maxEntries > 0 && entries > maxEntries) {
+            zip.close();
+            throw new RecordingStore.InvalidUpload("The ZIP has " + entries + " files; the limit is " + maxEntries + ".");
         }
         try {
             ZipEntry sessionEntry = zip.getEntry(RecordingStore.SESSION);
@@ -193,8 +212,71 @@ public class RecordingZip {
                 store.delete(id);
                 throw e;
             }
+        } catch (BudgetExceeded e) {
+            throw new RecordingStore.InvalidUpload(e.getMessage());
         } finally {
             zip.close();
+        }
+    }
+
+    /** Thrown while reading past the ZIP's total budget; importZip turns it into InvalidUpload. */
+    static final class BudgetExceeded extends IOException {
+        BudgetExceeded(long limit) {
+            super("The ZIP unpacks to more than " + (limit / (1024 * 1024)) + " MB, the import limit.");
+        }
+    }
+
+    /** A ZipFile whose entry streams all draw on one budget of uncompressed bytes (0: no limit). */
+    static final class BudgetZip extends ZipFile {
+        private final long limit;
+        private long used;
+
+        BudgetZip(java.io.File file, long limit) throws IOException {
+            super(file);
+            this.limit = limit;
+        }
+
+        @Override
+        public InputStream getInputStream(ZipEntry entry) throws IOException {
+            InputStream in = super.getInputStream(entry);
+            if (in == null || limit <= 0) {
+                return in;
+            }
+            return new java.io.FilterInputStream(in) {
+                @Override
+                public int read() throws IOException {
+                    int b = super.read();
+                    if (b != -1) {
+                        count(1);
+                    }
+                    return b;
+                }
+
+                @Override
+                public int read(byte[] buf, int off, int len) throws IOException {
+                    int n = super.read(buf, off, len);
+                    if (n > 0) {
+                        count(n);
+                    }
+                    return n;
+                }
+
+                @Override
+                public long skip(long n) throws IOException {
+                    long k = super.skip(n);
+                    if (k > 0) {
+                        count(k);
+                    }
+                    return k;
+                }
+            };
+        }
+
+        private void count(long n) throws BudgetExceeded {
+            used += n;
+            if (used > limit) {
+                throw new BudgetExceeded(limit);
+            }
         }
     }
 
@@ -360,6 +442,7 @@ public class RecordingZip {
                 if (e == null || e.optString("key").isEmpty()) {
                     continue;
                 }
+                e.put("imported", true); // another server's: never looked up in this one's Glowroot (TraceCollector.retryable)
             String file = e.optString("file");
             if (!file.isEmpty()) {
                 ZipEntry f = TraceStore.isTraceFile(file) ? zip.getEntry(TraceStore.DIR + "/" + file) : null;

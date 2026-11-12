@@ -30,12 +30,21 @@ test('popup shows the server options and keeps the choices', async ({ context, e
     }
   }
   await expect(page.locator('#qAllServerRow')).toBeVisible({ visible: !!me.options.allServer });
-  for (const box of ['#qAllServer', '#qGauges', '#qTraces', '#qGlowroot']) {
+  for (const box of ['#qAllServer', '#qGauges', '#qTraces', '#qGlowroot', '#qCreds']) {
     if (await page.locator(box).isVisible()) await expect(page.locator(box)).not.toBeChecked();
   }
   await expect(page.locator('#qGaugesRow')).toBeVisible({ visible: !!me.options.gauges });
   await expect(page.locator('#qTracesRow')).toBeVisible({ visible: !!me.options.traces });
+  await expect(page.locator('#qOtherTracesRow')).toBeVisible({ visible: !!me.options.otherTraces });
+  if (me.options.otherTraces) { // other users' traces: only with traces, unticked
+    await expect(page.locator('#qOtherTraces')).not.toBeChecked();
+    await expect(page.locator('#qOtherTraces')).toBeDisabled();
+    await page.check('#qTraces');
+    await expect(page.locator('#qOtherTraces')).toBeEnabled();
+    await page.uncheck('#qTraces');
+  }
   await expect(page.locator('#qGlowrootRow')).toBeVisible({ visible: !!me.options.glowrootData });
+  await expect(page.locator('#qCredsRow')).toBeVisible({ visible: !!me.options.credentials });
 
   await page.uncheck('#qApps');
   await expect(page.locator('#qSample')).toBeDisabled();

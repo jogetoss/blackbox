@@ -1,6 +1,8 @@
 // Applies the Theme (System / Light / Dark) and Text size settings to this page: every extension page, and the upload
 // server's BlackBox pages as a content script (registered by background.js). Those pages have no pickers of their own.
-// localStorage gives the last choice instantly (no flash); chrome.storage is the real setting.
+// localStorage gives the last choice instantly (no flash); chrome.storage is the real setting. Content scripts can't
+// read chrome.storage (background.js keeps it to the extension's pages): on the server's pages the background
+// answers a 'display' message with the two values, asked again whenever the page comes back into view.
 (function () {
   const root = document.documentElement;
   const zoom = (v) => {
@@ -9,14 +11,22 @@
     try { localStorage.setItem('bb-text-size', v); } catch (e) { /* storage blocked */ }
   };
   try { zoom(localStorage.getItem('bb-text-size')); } catch (e) { /* storage blocked */ }
-  chrome.storage.local.get('textSize').then(({ textSize }) => zoom(textSize));
-  chrome.storage.onChanged.addListener((c) => { if (c.textSize) zoom(c.textSize.newValue); });
   const apply = (t) => {
     if (t === 'light' || t === 'dark') root.dataset.theme = t;
     else delete root.dataset.theme; // System: CSS follows prefers-color-scheme
     try { localStorage.setItem('bb-theme', t || ''); } catch (e) { /* storage blocked */ }
   };
   try { apply(localStorage.getItem('bb-theme')); } catch (e) { /* storage blocked */ }
-  chrome.storage.local.get('theme').then(({ theme }) => apply(theme));
-  chrome.storage.onChanged.addListener((c) => { if (c.theme) apply(c.theme.newValue); });
+  const set = (v) => { if (v) { zoom(v.textSize); apply(v.theme); } };
+  if (location.protocol === 'chrome-extension:') {
+    chrome.storage.local.get(['theme', 'textSize']).then(set);
+    chrome.storage.onChanged.addListener((c) => {
+      if (c.textSize) zoom(c.textSize.newValue);
+      if (c.theme) apply(c.theme.newValue);
+    });
+  } else {
+    const ask = () => chrome.runtime.sendMessage({ target: 'background', type: 'display' }).then(set, () => {});
+    ask();
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) ask(); });
+  }
 })();

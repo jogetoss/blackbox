@@ -219,6 +219,52 @@ public class GlowrootDataTest {
         }
     }
 
+    @Test
+    public void otherUsersTracesKeepEveryTraceOfTheRecordingsTime() throws Exception {
+        Path src = Files.createDirectories(dir.resolve("src-all"));
+        new GlowrootRing(src.resolve(GlowrootData.TRACE_CAPPED), 64).f.close();
+        for (int i = 0; i < 4; i++) {
+            new GlowrootRing(src.resolve(GlowrootData.rollupCapped(i)), 64).f.close();
+        }
+        try (Connection c = DriverManager.getConnection("jdbc:h2:" + src.resolve("data") + ";MV_STORE=FALSE", "sa", "");
+                Statement s = c.createStatement()) {
+            s.execute("CREATE TABLE TRACE (ID VARCHAR, START_TIME BIGINT, CAPTURE_TIME BIGINT, ENTRIES_CAPPED_ID BIGINT,"
+                    + " QUERIES_CAPPED_ID BIGINT, SHARED_QUERY_TEXTS_CAPPED_ID BIGINT, MAIN_THREAD_PROFILE_CAPPED_ID BIGINT,"
+                    + " AUX_THREAD_PROFILE_CAPPED_ID BIGINT)");
+            s.execute("CREATE TABLE TRACE_ATTRIBUTE (TRACE_ID VARCHAR, NAME VARCHAR, VALUE VARCHAR, CAPTURE_TIME BIGINT)");
+            for (int i = 0; i < 4; i++) {
+                for (String k : new String[]{"TT", "TN"}) {
+                    s.execute("CREATE TABLE AGGREGATE_" + k + "_ROLLUP_" + i + " (CAPTURE_TIME BIGINT, QUERIES_CAPPED_ID BIGINT,"
+                            + " SERVICE_CALLS_CAPPED_ID BIGINT, MAIN_THREAD_PROFILE_CAPPED_ID BIGINT, AUX_THREAD_PROFILE_CAPPED_ID BIGINT)");
+                }
+            }
+            for (int i = 0; i < 5; i++) {
+                s.execute("CREATE TABLE GAUGE_VALUE_ROLLUP_" + i + " (GAUGE_ID BIGINT, CAPTURE_TIME BIGINT, VALUE DOUBLE, WEIGHT BIGINT)");
+            }
+            s.execute("CREATE TABLE INCIDENT (OPEN_TIME BIGINT)");
+            String[][] traces = { // id, start, end (capture time)
+                {"mine", String.valueOf(FROM + 1000), String.valueOf(FROM + 2000)},
+                {"otherUser", String.valueOf(FROM + 3000), String.valueOf(FROM + 4000)},
+                {"overlapsStart", String.valueOf(FROM - 5000), String.valueOf(FROM + 500)},
+                {"endedBefore", String.valueOf(FROM - 5000), String.valueOf(FROM - 1000)},
+                {"startedAfter", String.valueOf(TO + 1000), String.valueOf(TO + 2000)},
+            };
+            for (String[] t : traces) {
+                s.execute("INSERT INTO TRACE VALUES ('" + t[0] + "', " + t[1] + ", " + t[2] + ", NULL, NULL, NULL, NULL, NULL)");
+            }
+            s.execute("INSERT INTO TRACE_ATTRIBUTE VALUES ('mine', 'BlackBox recording', '" + REC + "', 0)");
+            s.execute("INSERT INTO TRACE_ATTRIBUTE VALUES ('startedAfter', 'BlackBox recording', '" + REC + "', 0)");
+        }
+        Path out = dir.resolve("out-all");
+        GlowrootData.Result r = GlowrootData.slice(new org.h2.Driver(), src, out, FROM, TO, REC, true);
+        assertEquals(3, r.traces);
+        try (Connection c = DriverManager.getConnection("jdbc:h2:" + out.resolve("data"), "sa", "");
+                Statement s = c.createStatement()) {
+            assertEquals("mine,otherUser,overlapsStart", one(s, "SELECT GROUP_CONCAT(ID ORDER BY ID) FROM TRACE"));
+            assertEquals("attributes of dropped traces go too", "mine", one(s, "SELECT GROUP_CONCAT(TRACE_ID) FROM TRACE_ATTRIBUTE"));
+        }
+    }
+
     private static String one(Statement s, String sql) throws Exception {
         try (ResultSet rs = s.executeQuery(sql)) {
             assertTrue(rs.next());

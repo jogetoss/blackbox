@@ -104,6 +104,12 @@ final class GlowrootData {
      * Glowroot data folder) into outData. h2 opens H2 1.3 files: Glowroot's own shaded driver.
      */
     static Result slice(Driver h2, Path srcData, Path outData, long from, long to, String recId) throws IOException, SQLException {
+        return slice(h2, srcData, outData, from, to, recId, false);
+    }
+
+    /** allTraces: keep every trace that ran during the recording (other users' too), not only the tagged ones. */
+    static Result slice(Driver h2, Path srcData, Path outData, long from, long to, String recId, boolean allTraces)
+            throws IOException, SQLException {
         Files.createDirectories(outData);
         // H2 first, then the capped files: every capped id in the copy then exists in the capped files
         Files.copy(srcData.resolve("data.h2.db"), outData.resolve("data.h2.db"), StandardCopyOption.REPLACE_EXISTING);
@@ -121,9 +127,14 @@ final class GlowrootData {
             }
             c.setAutoCommit(false);
             try (Statement s = c.createStatement()) {
-                deleteInBatches(c, s, "DELETE FROM TRACE_ATTRIBUTE WHERE TRACE_ID NOT IN (SELECT TRACE_ID FROM TRACE_ATTRIBUTE"
-                        + " WHERE NAME = " + quote(TAG) + " AND VALUE = " + quote(recId) + ")");
-                deleteInBatches(c, s, "DELETE FROM TRACE WHERE ID NOT IN (SELECT TRACE_ID FROM TRACE_ATTRIBUTE)");
+                if (allTraces) { // the traces that overlap the recording: ended after its start, started before its stop
+                    deleteInBatches(c, s, "DELETE FROM TRACE WHERE CAPTURE_TIME < " + from + " OR START_TIME > " + to);
+                    deleteInBatches(c, s, "DELETE FROM TRACE_ATTRIBUTE WHERE TRACE_ID NOT IN (SELECT ID FROM TRACE)");
+                } else {
+                    deleteInBatches(c, s, "DELETE FROM TRACE_ATTRIBUTE WHERE TRACE_ID NOT IN (SELECT TRACE_ID FROM TRACE_ATTRIBUTE"
+                            + " WHERE NAME = " + quote(TAG) + " AND VALUE = " + quote(recId) + ")");
+                    deleteInBatches(c, s, "DELETE FROM TRACE WHERE ID NOT IN (SELECT TRACE_ID FROM TRACE_ATTRIBUTE)");
+                }
                 for (int i = 0; i < AGGREGATE_MS.length; i++) {
                     for (String kind : new String[]{"TT", "TN"}) {
                         deleteInBatches(c, s, "DELETE FROM AGGREGATE_" + kind + "_ROLLUP_" + i + outside(from, to, AGGREGATE_MS[i]));

@@ -30,6 +30,8 @@ final class JsonStream implements Closeable {
     }
 
     static final int MAX_DEPTH = 256;
+    /** Longest name nextName() accepts (real names are a few dozen characters). */
+    static final int MAX_NAME = 4096;
 
     private final Reader in;
     private final char[] buf = new char[64 * 1024]; // own buffer: Reader.read() per character is slow (synchronized)
@@ -88,7 +90,17 @@ final class JsonStream implements Closeable {
         if (peekNonSpace() != '"') {
             throw new Malformed("Expected a name at character " + read);
         }
-        String name = string(true);
+        // A name is always built, so cap it: one huge key would otherwise grow a StringBuilder to the file's size
+        long saved = limit;
+        limit = Math.min(limit, read + MAX_NAME + 1); // the opening quote is already read; + the closing one
+        String name;
+        try {
+            name = string(true);
+        } catch (TooLarge e) {
+            throw new Malformed("A name is longer than " + MAX_NAME + " characters");
+        } finally {
+            limit = saved;
+        }
         expect(':');
         return name;
     }

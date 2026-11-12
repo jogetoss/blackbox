@@ -17,6 +17,7 @@ let consoleEntries = [];
 let navigations = [];
 let network = [];             // finished and in-flight entries, in start order
 const inFlight = new Map();   // requestId -> entry
+let maskOn = true;            // mask credentials (mask.js): unless the server allows it and the popup asks (start())
 let timer = null;
 
 // Crash safety: every SAVE_EVERY ms the new video chunks and log entries go to IndexedDB (idb.js "partial").
@@ -55,8 +56,10 @@ let sizeLimitBytes = 0;       // 0: no size guard
 let sizeHit = false;
 function sizeLimitReached(bytes, limitBytes) { return limitBytes > 0 && bytes >= limitBytes * SIZE_GUARD; }
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg.target !== 'recorder') return;
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // Only the service worker: a content script (theme.js on the server's pages) must not feed or stop the recording
+  if (msg.target !== 'recorder' || sender.id !== chrome.runtime.id
+    || !(sender.url || '').startsWith(chrome.runtime.getURL(''))) return;
   if (msg.type === 'cdp') { if (meta) onCdp(msg); return; }
   if (msg.type === 'stop') {
     stopAndSave(msg.reason).then(sendResponse, (e) => sendResponse({ error: e.message || String(e) }));
@@ -164,6 +167,8 @@ async function pickAndStart() {
   meta.tab = { url: res.url, title: res.title };
   meta.serverCapture = res.serverCapture; // { status, id?, server?, message? }: the plugin attaches its data by id on upload
   meta.options = Quick.options(await Quick.get()); // the popup's app export choices, used at stop and at upload
+  maskOn = Mask.on((await chrome.storage.local.get('quickOffer')).quickOffer, await Quick.get());
+  meta.credentialsMasked = maskOn; // the viewer's Info tab says so
   meta.userAgent = navigator.userAgent;
   recId = recordingId(startedAt);
   lastSavedAt = startedAt;
@@ -394,7 +399,7 @@ function onCdp({ method, params, t, body }) {
         t,
         source: 'console',
         level: params.type === 'warning' ? 'warn' : params.type,
-        text: params.args.map(argToText).join(' '),
+        text: masked(params.args.map(argToText).join(' ')),
         location: frame ? `${frame.url}:${frame.lineNumber + 1}:${frame.columnNumber + 1}` : undefined,
       });
       break;
@@ -405,7 +410,7 @@ function onCdp({ method, params, t, body }) {
         t,
         source: 'exception',
         level: 'error',
-        text: d.exception?.description || d.text,
+        text: masked(d.exception?.description || d.text),
         location: d.url ? `${d.url}:${d.lineNumber + 1}:${d.columnNumber + 1}` : undefined,
       });
       break;
@@ -413,18 +418,18 @@ function onCdp({ method, params, t, body }) {
     case 'Log.entryAdded': {
       // Browser-side messages: failed resource loads, CSP violations, deprecations...
       const e = params.entry;
-      consoleEntries.push({ t, source: `browser:${e.source}`, level: e.level === 'warning' ? 'warn' : e.level, text: e.text, location: e.url });
+      consoleEntries.push({ t, source: `browser:${e.source}`, level: e.level === 'warning' ? 'warn' : e.level, text: masked(e.text), location: maskOn ? Mask.url(e.url) : e.url });
       break;
     }
     case 'Page.frameNavigated':
-      if (!params.frame.parentId) navigations.push({ t, url: params.frame.url });
+      if (!params.frame.parentId) navigations.push({ t, url: maskOn ? Mask.url(params.frame.url) : params.frame.url });
       break;
     case 'Network.requestWillBeSent':
       onRequest(params, t);
       break;
     case 'Network.responseReceived': {
       const entry = inFlight.get(params.requestId);
-      if (entry) Object.assign(entry, responseFields(params.response), { type: params.type });
+      if (entry) maskEntry(Object.assign(entry, responseFields(params.response), { type: params.type }));
       break;
     }
     case 'Network.loadingFinished': {
@@ -433,6 +438,7 @@ function onCdp({ method, params, t, body }) {
       entry.durationMs = Math.round((params.timestamp - entry._ts) * 1000);
       entry.encodedDataLength = params.encodedDataLength;
       if (body) entry.responseBody = body;
+      maskEntry(entry);
       finish(params.requestId);
       break;
     }
@@ -453,9 +459,9 @@ function onRequest(p, t) {
   // A redirect reuses the same requestId: close the previous hop first.
   const prev = inFlight.get(p.requestId);
   if (prev && p.redirectResponse) {
-    Object.assign(prev, responseFields(p.redirectResponse));
+    maskEntry(Object.assign(prev, responseFields(p.redirectResponse)));
     prev.durationMs = Math.round((p.timestamp - prev._ts) * 1000);
-    prev.redirectedTo = p.request.url;
+    prev.redirectedTo = maskOn ? Mask.url(p.request.url) : p.request.url;
     finish(p.requestId);
   }
   const entry = {
@@ -471,8 +477,11 @@ function onRequest(p, t) {
     _ts: p.timestamp,
   };
   inFlight.set(p.requestId, entry);
-  network.push(entry);
+  network.push(maskEntry(entry));
 }
+
+const masked = (text) => (maskOn ? Mask.text(text) : text);
+const maskEntry = (entry) => (maskOn ? Mask.entry(entry) : entry);
 
 function responseFields(r) {
   return {

@@ -28,9 +28,11 @@ server data**.
 | `BB_USER` | `admin` | |
 | `BB_PASSWORD` | the user name | Local test servers use the user name as password |
 | `BB_INCOGNITO_USER` | `cat` | The user `incognito.spec.js` logs in as in the incognito window (password = user name) |
-| `BB_EXTENSION` | `../chrome-extension` | The extension to load |
+| `BB_EXTENSION` | `../chrome-extension` | The extension to load. It must have this repo's manifest `key` (ID `anmfmkacddnmmgdcnkgkfjhagnilmkmp`): any other ID, like the released 1.2.0's unpacked, is refused unless **Allowed extension IDs** is emptied |
 | `BB_CONTAINER`, `BB_WFLOW` | `j8213`, `/opt/wflow` | Where `legacy-names.spec.js` edits a `meta.json` (`docker exec`) |
-| `BB_DB_CONTAINER`, `BB_DB` | `mariadb`, `jw8` | Where `export-import.spec.js` and `glowroot-standalone.spec.js` read and lock iService's tables (`docker exec`) |
+| `BB_DB_CONTAINER`, `BB_DB` | `mariadb`, `jw8` | Where `export-import.spec.js`, `glowroot-standalone.spec.js` and `other-traces.spec.js` read and lock iService's tables (`docker exec`) |
+| `BB_OTHER_USER`, `BB_OTHER_PASSWORD` | `BB_USER`, the user name | The second session in `other-traces.spec.js` (must be able to read iService's list: not `cat`) |
+| `BB_GLOWROOT_UI` | `http://j8213.local:4001` | j8213's Glowroot, whose Servlet plugin setting `other-traces.spec.js` sets and puts back |
 | `BB_GLOWROOT_DISTS` | `~/Joget/glowroot-0.14.2-dist.zip,~/Joget/glowroot-0.14.4-dist.zip` | The standalone Glowroot dists `glowroot-standalone.spec.js` opens the data in |
 | `BB_GLOWROOT_PORT`, `BB_JAVA_IMAGE` | `14000`, `eclipse-temurin:17-jdk` | The standalone Glowroot's host port (localhost only) and its throwaway container's image |
 
@@ -84,10 +86,23 @@ server data**.
   `browser-lost` at the last ping and kept through recovery and upload, a restart before `lostMs` whose recovery stop
   sets the last save (it keeps the Joget login with Chrome's "Continue where you left off"; without it the restarted
   browser is logged out and the server's lost-browser check closes the capture instead), the time limit with upload,
-  a server stop, the 8.2.1 extension (no pings: stopped only 2 minutes past its limit; `git archive 8.2.1`, or
-  `BB_OLD_TAG`), and the all-server log stopping after a crash (skipped for a user not in **Who can capture other users' server data**, like `cat`). The spec writes its own test override
+  a server stop, and the all-server log stopping after a crash (skipped for a user not in **Who can capture other users' server data**, like `cat`). The spec writes its own test override
   (`{"pingMs":5000,"lostMs":20000,"checkMs":5000,"minLimitMs":60000}`, with `docker exec` as your user) and puts back
-  the file that was there after; about 7 minutes. Uploads are deleted.
+  the file that was there after; about 4 minutes. Uploads are deleted.
+- `tests/mask.spec.js`: the recorder's credential masking (`mask.js`) in node, no browser or server: URLs, headers,
+  form and JSON bodies, free text, look-alike names left alone, the server's offer and the box, and long inputs.
+- `tests/curl.spec.js`: **Copy as cURL** (`toCurl` from `viewer.js`) in node: the command runs through a real bash with
+  `curl` replaced by a function that prints its arguments, so a crafted method, URL, header or body stays one plain
+  argument and runs nothing; real methods are kept.
+- `tests/extension-trust.spec.js`: `Server.resolve` gives links only for http(s) on the upload server's own host and
+  port; in the `theme.js` content script's world (reached over the DevTools protocol) `chrome.storage` is blocked and
+  `get-state` gets no answer, while `display` still returns the theme.
+- `tests/other-traces.spec.js`: against j8213's Glowroot, the recorded tab and a second session in its own browser
+  (`BB_OTHER_USER`, default the same user) make the same slow request at the same moment (table lock, 4 s). The
+  recording keeps only its own trace (Glowroot tag), and with **Include other users' traces** the second session's
+  arrives about 30 s after the stop as `other`, with its user. It sets Glowroot's Servlet plugin **Session user
+  attribute** through Glowroot's UI API (`BB_GLOWROOT_UI`, default `http://j8213.local:4001`) and puts the old
+  config back after. About 1 minute.
 - `tests/upload-form.spec.js`: the apps data and Mask data choices on the upload form, the `sampleData` parameter it sends, and the
   App data the server builds.
 

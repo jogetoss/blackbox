@@ -175,6 +175,7 @@ final class ServerCapture {
         updateAllServer();
         GaugeSampler.watch(opened);
         GlowrootPackager.watch(opened);
+        TraceCollector.watchOthers(opened);
         return opened;
     }
 
@@ -371,6 +372,7 @@ final class ServerCapture {
         final boolean gauges;      // sample this node's load while the capture is open (GaugeSampler)
         final boolean glowrootData; // cut the recording out of this node's Glowroot data after the stop (GlowrootPackager)
         final boolean allServer;   // keep every thread's log lines too, marked "other"
+        final boolean otherTraces; // after the stop, copy the traces of every other request too (TraceCollector.watchOthers)
         private final Path file;
         private final long maxBytes;
         private Writer out;
@@ -386,6 +388,7 @@ final class ServerCapture {
             this.gauges = meta.optBoolean("gauges");
             this.glowrootData = meta.optBoolean("glowrootData");
             this.allServer = meta.optBoolean("allServer");
+            this.otherTraces = meta.optBoolean("otherTraces");
             this.file = file;
             this.maxBytes = meta.optLong("maxBytes");
             try {

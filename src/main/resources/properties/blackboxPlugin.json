@@ -40,6 +40,41 @@
             "validation_message" : "Enter a whole number of minutes from 5 to 120."
         },
         {
+            "name" : "userQuotaMb",
+            "label" : "Storage per user (MB)",
+            "description" : "For non-admins: what all their recordings may use on the server, counting server data and exported apps. An upload that would go past it is refused; they delete recordings to make room. 0 = no limit.",
+            "type" : "textfield",
+            "value" : "10240"
+        },
+        {
+            "name" : "maxOpenCaptures",
+            "label" : "Max recordings in progress per user",
+            "description" : "For non-admins: recordings started and not yet stopped (each holds a server capture and a System Info snapshot). A closed browser's recordings stop on their own a few minutes later. 0 = no limit.",
+            "type" : "textfield",
+            "value" : "3"
+        },
+        {
+            "name" : "captureStartsPerMinute",
+            "label" : "Max recordings started per user per minute",
+            "description" : "For non-admins, counted on each node. 0 = no limit.",
+            "type" : "textfield",
+            "value" : "10"
+        },
+        {
+            "name" : "importMaxTotalMb",
+            "label" : "Max total size of a ZIP import (MB)",
+            "description" : "All files of an imported ZIP together, unpacked. Each file also has Max file size. Empty = 3 x Max file size; 0 = no limit (a small ZIP can then unpack to many GB).",
+            "type" : "textfield",
+            "value" : ""
+        },
+        {
+            "name" : "importMaxEntries",
+            "label" : "Max files in a ZIP import",
+            "description" : "Empty = 5000; 0 = no limit.",
+            "type" : "textfield",
+            "value" : ""
+        },
+        {
             "name" : "systemLogMaxMb",
             "label" : "Max size of system logs per node per recording (MB)",
             "description" : "Each server node keeps up to this much of a recording's log lines (with the other server log lines when ticked in the popup); later lines are dropped and the viewer says the log was cut off.",
@@ -74,6 +109,16 @@
             "options" : [{"value" : "true", "label" : ""}]
         },
         {
+            "name" : "allowCaptureOtherUsersTraces",
+            "label" : "Allow capturing other users' traces",
+            "description" : "For non-admins; admins may always use it. Needs \"Allow capturing Glowroot traces\". About 30 seconds after a recording stops, each node it reached copies the traces Glowroot kept of every other request and background job that ran during the recording (up to 200 per node), listed apart in the Traces tab with the user. With \"Capture Glowroot data\" the cut then keeps every trace of that time too. They hold other users' data (SQL with values, URLs). Each recording gets them only when \"Include other users' traces\" is ticked in the extension's popup (unticked by default).",
+            "type" : "checkbox",
+            "value" : "",
+            "options" : [{"value" : "true", "label" : ""}],
+            "control_field" : "allowCaptureTraces",
+            "control_value" : "true"
+        },
+        {
             "name" : "allowCaptureGlowrootData",
             "label" : "Allow capturing Glowroot data",
             "description" : "For non-admins; admins may always use it. Needs Glowroot 0.14 on each node. 30 to 90 seconds after a recording stops, each node it reached cuts the recording out of its Glowroot data, in Glowroot's own format: the traces of the recorded requests, plus the aggregates and gauges of all traffic during the recording. Download it on the replay page and open it in a standalone Glowroot. Each build needs free disk space in Joget's temp folder of about the size of Glowroot's data.h2.db (it is skipped, with the reason, when there is not enough). Each recording gets it only when \"Capture Glowroot data\" is ticked in the extension's popup (unticked by default).",
@@ -87,6 +132,44 @@
             "description" : "Used for traces and Glowroot data. Empty = each node's own Glowroot agent (found from its admin.json, usually http://localhost:4000); set = every node uses this address. Read as Glowroot's anonymous user.",
             "type" : "textfield",
             "value" : ""
+        },
+        {
+            "name" : "secretNames",
+            "label" : "More secret names to mask in System Info",
+            "description" : "Comma-separated words; * matches anything; case doesn't matter. A JVM argument (-Dname=value), system property, datasource key or pool setting whose name contains one is masked. These are added to the built-in ones, which are always masked: password, passwd, passphrase, pwd, secret, token, api key, access key, private key, client secret, auth key, credential, signing key, encryption key, salt, cert, and names that start or end with pass or key. Values shaped like secrets are masked whatever their name: user:password@ in URLs, Bearer and Basic tokens, JWTs, private keys, Joget-encrypted passwords, AWS, GitHub, Slack, Google and OpenAI-style keys. Applies to recordings started after saving.",
+            "type" : "textfield",
+            "value" : ""
+        },
+        {
+            "name" : "allowUnmaskedCredentials",
+            "label" : "Allow recording passwords and tokens unmasked",
+            "description" : "For non-admins; admins may always use it. Off: the extension masks credentials in every recording before saving it: Authorization, Cookie, Set-Cookie and CSRF or API key headers, and values whose name has a secret word (password, token, secret, api key...) in URLs, form and JSON bodies and response bodies. On: the popup offers \"Record passwords and tokens unmasked\" (unticked by default) for recordings that need them.",
+            "type" : "checkbox",
+            "value" : "",
+            "options" : [{"value" : "true", "label" : ""}]
+        },
+        {
+            "name" : "allowHttpUpload",
+            "label" : "Allow uploads over HTTP",
+            "description" : "Off: uploads, imports and server captures must use HTTPS (or a proxy that sends X-Forwarded-Proto: https); a server reached as localhost is always allowed. Recordings can hold passwords and personal data, which plain HTTP sends readable by anyone on the network.",
+            "type" : "checkbox",
+            "value" : "true",
+            "options" : [{"value" : "true", "label" : ""}]
+        },
+        {
+            "name" : "allowUnsandboxedTraces",
+            "label" : "Allow unsandboxed trace pages in HTML exports",
+            "description" : "On: Open full trace in a downloaded .html file opens the Glowroot page as it is, like opening the trace file itself (for internal review). Off: it opens inside a sandbox, so a crafted trace page can't reach the site the file is opened from. The recordings page always sandboxes trace pages.",
+            "type" : "checkbox",
+            "value" : "true",
+            "options" : [{"value" : "true", "label" : ""}]
+        },
+        {
+            "name" : "allowedExtensionIds",
+            "label" : "Allowed extension IDs",
+            "description" : "Comma-separated. Only these extensions may send recordings without a CSRF token; any other extension is refused. The BlackBox extension's own ID is anmfmkacddnmmgdcnkgkfjhagnilmkmp (the same on every computer). Empty = any extension.",
+            "type" : "textfield",
+            "value" : "anmfmkacddnmmgdcnkgkfjhagnilmkmp"
         },
         {
             "label" : "Support data: the apps the recording used, their data, and the recent changes in the Info tab.",
@@ -121,6 +204,17 @@
             "type" : "elementselect",
             "options_ajax" : "[CONTEXT_PATH]/web/property/json/getElements?classname=org.joget.apps.form.model.FormPermission",
             "url" : "[CONTEXT_PATH]/web/property/json[APP_PATH]/getPropertyOptions"
+        },
+        {
+            "name" : "allowOtherAppsData",
+            "label" : "Allow apps data from apps they don't administer",
+            "description" : "For non-admins exporting an app they are not an admin of (see Who can export apps they don't administer). Off: that app's definition is exported without its rows and process data. Record ids come from the uploaded recording, so with this on a user can pick which rows of the app get exported.",
+            "control_field" : "allowAppExport",
+            "control_value" : "true",
+            "control_use_regex" : "false",
+            "type" : "checkbox",
+            "value" : "",
+            "options" : [{"value" : "true", "label" : ""}]
         },
         {
             "name" : "allowCaptureAppsData",
