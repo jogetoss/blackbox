@@ -233,7 +233,8 @@ final class TraceCollector {
 
     /**
      * copyOthers without the capture store: each other trace (and the limit note) goes to out; files to dir.get(). Stops
-     * copying at MAX_OTHERS or at deadline (epoch ms); what is left is only counted, with no further Glowroot call.
+     * copying at MAX_OTHERS or at deadline (epoch ms): the rest of a list already read is only counted (no header or
+     * export call), and after the deadline no further list is read.
      */
     static void collectOthers(GlowrootClient g, String id, long from, long to, java.util.function.Supplier<Path> dir,
             java.util.function.Consumer<JSONObject> out, long deadline, Runnable beforeEach) throws IOException {
@@ -271,7 +272,10 @@ final class TraceCollector {
             }
         }
         // Always one note at the end: it replaces the "pending" one
-        out.accept(otherNote(id, "none", late ? "Glowroot on " + NODE + " was too slow: copying stopped after "
+        out.accept(otherNote(id, "none", late && copied >= MAX_OTHERS ? "Only the first " + MAX_OTHERS
+                + " other traces on " + NODE + " are kept; Glowroot was too slow to count the rest after "
+                + OTHERS_BUDGET_MS / 60_000 + " minutes"
+                : late ? "Glowroot on " + NODE + " was too slow: copying stopped after "
                 + OTHERS_BUDGET_MS / 60_000 + " minutes with " + copied + " copied; others may be missing"
                 : left > 0 ? "Only the first " + MAX_OTHERS + " other traces on " + NODE + " are kept: " + copied
                 + " copied, up to " + left + " more were not"
