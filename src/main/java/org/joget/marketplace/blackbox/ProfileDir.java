@@ -43,15 +43,33 @@ final class ProfileDir {
         return dir != null ? dir : Paths.get(SetupManager.getBaseDirectory(), "blackbox");
     }
 
+    /** The same failure is logged at most once in this long (a refused folder fails on every tick). */
+    static final long WARN_EVERY_MS = 10 * 60_000L;
+    private static final java.util.Map<String, Long> WARNED = new java.util.concurrent.ConcurrentHashMap<>();
+
     /**
      * {@link #in}, logging what fails instead of throwing: one capture or profile (an unreadable folder, a file access
-     * a cloud install refuses) must not end a scheduled job, which would then never run again.
+     * a cloud install refuses) must not end a scheduled job, which would then never run again. False when it failed:
+     * the caller stops watching that capture.
      */
-    static void safely(Class<?> who, String what, Path dir, Work<? extends Exception> work) {
+    static boolean safely(Class<?> who, String what, Path dir, Work<? extends Exception> work) {
         try {
             in(dir, work);
+            return true;
         } catch (Exception | LinkageError e) {
-            LogUtil.warn(who.getName(), "Could not " + what + (dir != null ? " in " + dir : "") + ": " + e);
+            warn(who, "Could not " + what + (dir != null ? " in " + dir : "") + ": " + e);
+            return false;
+        }
+    }
+
+    /** Logs message unless the same one was logged less than WARN_EVERY_MS ago. */
+    private static void warn(Class<?> who, String message) {
+        long now = System.currentTimeMillis();
+        Long last = WARNED.get(message);
+        if (last == null || now - last >= WARN_EVERY_MS) {
+            WARNED.put(message, now);
+            WARNED.entrySet().removeIf(w -> now - w.getValue() >= WARN_EVERY_MS && !w.getKey().equals(message));
+            LogUtil.warn(who.getName(), message);
         }
     }
 
@@ -60,7 +78,7 @@ final class ProfileDir {
         try {
             return ServerCapture.checkDirs.get();
         } catch (RuntimeException e) {
-            LogUtil.warn(who.getName(), "Could not list the profiles' blackbox folders: " + e);
+            warn(who, "Could not list the profiles' blackbox folders: " + e);
             return java.util.Collections.emptyList();
         }
     }

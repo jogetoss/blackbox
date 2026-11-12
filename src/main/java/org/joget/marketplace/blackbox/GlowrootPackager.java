@@ -181,8 +181,10 @@ final class GlowrootPackager {
         for (Map.Entry<String, ProfileDir.Watch> e : WATCHED.entrySet()) {
             String id = e.getKey();
             ProfileDir.Watch watch = e.getValue();
-            ProfileDir.safely(GlowrootPackager.class, "check the Glowroot data of capture " + id, watch.dir,
-                    () -> tick(id, watch.since, now)); // in the capture's profile (virtual hosts)
+            if (!ProfileDir.safely(GlowrootPackager.class, "check the Glowroot data of capture " + id, watch.dir,
+                    () -> tick(id, watch.since, now))) { // in the capture's profile (virtual hosts)
+                WATCHED.remove(id); // its folder fails: stop watching it
+            }
         }
     }
 

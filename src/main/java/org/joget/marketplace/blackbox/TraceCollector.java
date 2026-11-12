@@ -140,8 +140,11 @@ final class TraceCollector {
         for (Map.Entry<String, ProfileDir.Watch> w : OTHERS.entrySet()) {
             String id = w.getKey();
             if (now - OTHERS_NOTED.getOrDefault(id, 0L) >= OTHERS_NOTE_EVERY_MS) {
-                ProfileDir.safely(TraceCollector.class, "keep the other traces' note of capture " + id + " fresh", w.getValue().dir,
-                        () -> noteOthers(id, now));
+                if (!ProfileDir.safely(TraceCollector.class, "keep the other traces' note of capture " + id + " fresh",
+                        w.getValue().dir, () -> noteOthers(id, now))) {
+                    OTHERS.remove(id); // its folder fails: stop watching it
+                    OTHERS_NOTED.remove(id);
+                }
             }
         }
     }
@@ -189,7 +192,7 @@ final class TraceCollector {
         for (Map.Entry<String, ProfileDir.Watch> w : OTHERS.entrySet()) {
             String id = w.getKey();
             ProfileDir.Watch watch = w.getValue();
-            ProfileDir.safely(TraceCollector.class, "check capture " + id + " for other users' traces", watch.dir, () -> {
+            boolean ok = ProfileDir.safely(TraceCollector.class, "check capture " + id + " for other users' traces", watch.dir, () -> {
                 JSONObject meta = ServerCapture.store().readMeta(id); // in the capture's profile (virtual hosts)
                 if (meta == null) {
                     OTHERS.remove(id); // expired or deleted
@@ -205,6 +208,10 @@ final class TraceCollector {
                     dueDir[0] = watch.dir;
                 }
             });
+            if (!ok) {
+                OTHERS.remove(id); // its folder fails: stop watching it
+                OTHERS_NOTED.remove(id);
+            }
         }
         refreshNotes(now);
         if (due[0] != null) {
@@ -410,10 +417,10 @@ final class TraceCollector {
     private static void heartbeat() {
         long now = System.currentTimeMillis();
         for (Running r : RUNNING.keySet()) {
-            if (now - r.lastWritten < HEARTBEAT_MS || now - r.start < threshold(r)) {
-                continue;
-            }
-            ProfileDir.safely(TraceCollector.class, "list a running request", r.base, () -> { // the request's profile
+            boolean ok = ProfileDir.safely(TraceCollector.class, "list a running request", r.base, () -> { // its profile
+                if (now - r.lastWritten < HEARTBEAT_MS || now - r.start < threshold(r)) {
+                    return;
+                }
                 if (r.lastWritten == 0 && !reserve(r)) {
                     RUNNING.remove(r);
                     return;
@@ -421,6 +428,9 @@ final class TraceCollector {
                 r.lastWritten = now;
                 write(r, entry(r, "pending", "Request still running (" + (now - r.start) / 1000 + " s so far)"));
             });
+            if (!ok) {
+                RUNNING.remove(r); // its Glowroot or folder fails: not listed again every 2 s
+            }
         }
     }
 

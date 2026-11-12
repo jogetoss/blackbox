@@ -97,6 +97,35 @@ public class VirtualHostsTest {
     }
 
     @Test
+    public void aFailingCaptureIsDroppedAndTheJobGoesOn() throws Exception {
+        assertFalse(ProfileDir.safely(getClass(), "test", a, () -> {
+            throw new SecurityException("not within profile base directory");
+        }));
+        assertTrue(ProfileDir.safely(getClass(), "test", a, () -> { }));
+        // A watched capture whose folder fails is no longer watched; the tick itself doesn't throw
+        String id = "00000000-0000-4000-8000-0000000000dd";
+        TraceCollector.start();
+        ProfileDir.in(b, () -> {
+            ServerCaptureStore store = ServerCapture.store();
+            assertTrue(store.start(id, "admin", 1 << 20, 60_000, true, "", false, false, false, 0, true));
+            TraceCollector.watchOthers(new ServerCapture.Capture(id, store.nodeFile(id, ServerCapture.nodeName()), store.readMeta(id)));
+        });
+        java.util.function.Supplier<ServerCaptureStore> working = ServerCapture.stores;
+        ServerCapture.stores = () -> {
+            throw new SecurityException("not within profile base directory");
+        };
+        try {
+            java.lang.reflect.Method tick = TraceCollector.class.getDeclaredMethod("othersTick");
+            tick.setAccessible(true);
+            tick.invoke(null);
+        } finally {
+            ServerCapture.stores = working;
+        }
+        assertEquals("dropped: recovering watches it again", 1,
+                TraceCollector.recoverOthers(new ServerCaptureStore(b.resolve("pending")), b, 1).size());
+    }
+
+    @Test
     public void inPutsThePreviousFolderBack() throws Exception {
         Path outside = ProfileDir.current();
         ProfileDir.in(a, () -> {

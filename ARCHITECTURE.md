@@ -346,8 +346,9 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
   the server sets `-Dblackbox.sharedGlowroot=true` (`BlackBoxPlugin.glowrootShared`), never on a tenant admin's setting.
   The build and the copy check it again, so a capture started before a restart without the opt-in (or watched again
   after one) ends "failed" or with a note instead. Each profile, capture and running request is handled on its own
-  (`ProfileDir.safely`): one unreadable folder or refused file access is logged and stops neither the others nor the
-  scheduled job. Cloud installs (`MultiTenantSecurityManager`) may refuse a background thread's access to another
+  (`ProfileDir.safely`): one unreadable folder or refused file access is logged (the same message at most every 10
+  minutes) and stops neither the others nor the scheduled job; a capture or request whose work fails is no longer
+  watched. Cloud installs (`MultiTenantSecurityManager`) may refuse a background thread's access to another
   profile's folder; this, like the liveness check, is untested there. The server load sample is the JVM's and the server's, the same for every profile: Community and Enterprise
   have one database pool; cloud installs keep one per profile, which the strip doesn't show.
 - **Viewing a trace:** `trace&file=…` serves Glowroot's page with `Content-Security-Policy: sandbox allow-scripts

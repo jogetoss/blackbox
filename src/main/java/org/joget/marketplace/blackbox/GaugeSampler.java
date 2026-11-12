@@ -80,8 +80,10 @@ final class GaugeSampler {
             return;
         }
         for (Map.Entry<String, Sampled> e : CAPTURES.entrySet()) {
-            ProfileDir.safely(GaugeSampler.class, "save the server load of capture " + e.getKey(), e.getValue().dir,
-                    () -> append(e.getKey(), e.getValue(), now, sample)); // in the capture's profile (virtual hosts)
+            if (!ProfileDir.safely(GaugeSampler.class, "save the server load of capture " + e.getKey(), e.getValue().dir,
+                    () -> append(e.getKey(), e.getValue(), now, sample))) { // in the capture's profile (virtual hosts)
+                CAPTURES.remove(e.getKey()); // its folder fails: stop sampling for it
+            }
         }
     }
 
