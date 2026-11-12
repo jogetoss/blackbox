@@ -127,8 +127,10 @@ final class ServerData {
             Path dir = store.dir(meta.optString("id"));
             String state = dir == null ? null : GlowrootData.overall(GlowrootData.statuses(dir));
             if (state != null && !"building".equals(state)) {
-                d.put("glowroot", state);
-                refreshGlowroot(store, meta.optString("id"));
+                state = refreshGlowroot(store, meta.optString("id")); // read again under the meta lock
+                if (state != null) {
+                    d.put("glowroot", state);
+                }
             }
         } catch (IOException | JSONException e) {
             // listed as it was
@@ -136,15 +138,21 @@ final class ServerData {
         return meta;
     }
 
-    /** The Glowroot data state (GlowrootData.overall) changed: the recordings list shows it. */
-    static void refreshGlowroot(RecordingStore store, String recId) {
+    /**
+     * The Glowroot data state (GlowrootData.overall) changed: the recordings list shows it. The statuses are read under
+     * the meta lock, so a status written meanwhile is either seen here or saved by its own (later) refresh: a stale read
+     * can't land on top of a newer state. Returns the state saved, or null when nothing was saved.
+     */
+    static String refreshGlowroot(RecordingStore store, String recId) {
         try {
             Path dir = store.dir(recId);
             if (dir == null) {
-                return;
+                return null;
             }
-            String state = GlowrootData.overall(GlowrootData.statuses(dir));
+            String[] saved = {null};
             store.modifyMeta(recId, meta -> {
+                String state = GlowrootData.overall(GlowrootData.statuses(dir));
+                saved[0] = state;
                 JSONObject d = meta.optJSONObject("serverData");
                 if (d == null) {
                     d = new JSONObject().put("slowMs", DEFAULT_SLOW_MS);
@@ -156,8 +164,9 @@ final class ServerData {
                 }
                 meta.put("serverData", d);
             });
+            return saved[0];
         } catch (IOException | JSONException | RecordingStore.InvalidUpload e) {
-            // the list shows the old state until the next change
+            return null; // the list shows the old state until the next change
         }
     }
 
