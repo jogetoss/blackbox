@@ -368,4 +368,25 @@ public class GlowrootDataTest {
         assertEquals("failed", recordings.readMeta(gone).getJSONObject("serverData").getString("glowroot"));
         assertEquals("saved", GlowrootData.statuses(recordings.dir(saved)).getJSONObject(0).getString("state"));
     }
+
+    @Test
+    public void theListTurnsAStaleBuildingIntoFailed() throws Exception {
+        RecordingStore recordings = new RecordingStore(dir.resolve("recordings"));
+        String session = "{\"recording\":{\"tab\":{\"title\":\"T\"}},\"console\":[],\"network\":[]}";
+        String id = recordings.create(new java.io.ByteArrayInputStream(session.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                1 << 20, "admin", "Admin", "t", "").getString("id");
+        // A node wrote "waiting" long ago, then stopped watching: nobody writes again
+        GlowrootData.writeStatus(recordings.dir(id), "n1", new JSONObject().put("node", "n1").put("state", "waiting").put("updated", 1));
+        recordings.modifyMeta(id, m -> m.put("serverData", new JSONObject().put("glowroot", "building")));
+
+        JSONObject row = ServerData.listedGlowroot(recordings, recordings.readMeta(id));
+        assertEquals("failed", row.getJSONObject("serverData").getString("glowroot"));
+        assertEquals("saved too", "failed", recordings.readMeta(id).getJSONObject("serverData").getString("glowroot"));
+
+        // A fresh one stays building
+        GlowrootData.writeStatus(recordings.dir(id), "n1", new JSONObject().put("node", "n1").put("state", "building")
+                .put("updated", System.currentTimeMillis()));
+        recordings.modifyMeta(id, m -> m.put("serverData", new JSONObject().put("glowroot", "building")));
+        assertEquals("building", ServerData.listedGlowroot(recordings, recordings.readMeta(id)).getJSONObject("serverData").getString("glowroot"));
+    }
 }

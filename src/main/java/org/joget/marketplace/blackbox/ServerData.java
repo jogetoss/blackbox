@@ -113,6 +113,29 @@ final class ServerData {
         }
     }
 
+    /**
+     * A listed recording still "building": read its statuses again, as a node that stopped watching it (folder failed,
+     * node gone) never writes one, and GlowrootData.statuses turns a status with no news for too long into failed. Saves
+     * and returns the row with the new state when it changed.
+     */
+    static JSONObject listedGlowroot(RecordingStore store, JSONObject meta) {
+        JSONObject d = meta.optJSONObject("serverData");
+        if (d == null || !"building".equals(d.optString("glowroot"))) {
+            return meta;
+        }
+        try {
+            Path dir = store.dir(meta.optString("id"));
+            String state = dir == null ? null : GlowrootData.overall(GlowrootData.statuses(dir));
+            if (state != null && !"building".equals(state)) {
+                d.put("glowroot", state);
+                refreshGlowroot(store, meta.optString("id"));
+            }
+        } catch (IOException | JSONException e) {
+            // listed as it was
+        }
+        return meta;
+    }
+
     /** The Glowroot data state (GlowrootData.overall) changed: the recordings list shows it. */
     static void refreshGlowroot(RecordingStore store, String recId) {
         try {

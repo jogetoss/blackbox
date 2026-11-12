@@ -380,7 +380,8 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
   shutdown hook closes it under the build), and an error while the plugin or JVM stops leaves `building`, so it is
   built again after the restart. Readers (`GlowrootData.statuses`) also show a status with no news for too long as
   failed: `waiting` after 3 h 15 min, `building` after 2 h, so a node that stopped watching (its folder failed, or it
-  is gone) doesn't leave the recording building for good; a later status still replaces it.
+  is gone) doesn't leave the recording building for good; a later status still replaces it. The recordings list reads
+  a row's statuses again while its saved state is `building` (`ServerData.listedGlowroot`) and saves the new one.
 - **How:** `GlowrootData` copies `data.h2.db` (Glowroot keeps it locked; the copy is not), deletes every row outside
   the recording with Glowroot's own shaded H2 driver (`lib/glowroot-embedded-collector.jar`, H2 1.3), reads only the
   blocks the kept rows point to straight from the live `*.capped.db` ring files, writes them into new capped files of

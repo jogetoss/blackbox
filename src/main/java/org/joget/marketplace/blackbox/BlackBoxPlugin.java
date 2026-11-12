@@ -261,6 +261,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         JSONArray rows = new JSONArray();
         for (JSONObject meta : store.list()) {
             if (access.canView(meta)) {
+                ServerData.listedGlowroot(store, meta); // a stale "building" turns failed
                 meta.put("canDelete", access.canDelete(meta));
                 boolean server = access.canViewServerData(meta);
                 meta.put("canViewServerData", server);
