@@ -67,6 +67,48 @@ public class VirtualHostsTest {
     }
 
     @Test
+    public void onlyTheServersStartCommandTurnsTheOptInOn() {
+        List<String> args = Arrays.asList("-Xmx2g", "-Dwflow.virtualhost=true", "-Dblackbox.sharedGlowroot=false",
+                "-Dblackbox.sharedGlowroot=true");
+        assertEquals("the last one wins, as in the JVM", "true", BlackBoxPlugin.startArg(args, BlackBoxPlugin.SHARED_GLOWROOT));
+        assertTrue(BlackBoxPlugin.glowrootShared(true, BlackBoxPlugin.startArg(args, BlackBoxPlugin.SHARED_GLOWROOT)));
+        assertNull(BlackBoxPlugin.startArg(Arrays.asList("-Dblackbox.sharedGlowrootX=true"), BlackBoxPlugin.SHARED_GLOWROOT));
+        // Virtual hosts on, and a tenant's script sets the property at run time: still off (not in the start command)
+        String vh = System.setProperty("wflow.virtualhost", "true");
+        String shared = System.setProperty(BlackBoxPlugin.SHARED_GLOWROOT, "true");
+        try {
+            assertTrue(BlackBoxPlugin.virtualHosts());
+            assertFalse("the live property is ignored", BlackBoxPlugin.glowrootShared.getAsBoolean());
+        } finally {
+            restore("wflow.virtualhost", vh);
+            restore(BlackBoxPlugin.SHARED_GLOWROOT, shared);
+        }
+    }
+
+    private static void restore(String key, String value) {
+        if (value == null) {
+            System.clearProperty(key);
+        } else {
+            System.setProperty(key, value);
+        }
+    }
+
+    @Test
+    public void allServerLogLinesKeepOnlyTheCapturesOwnProfile() throws Exception {
+        assertTrue(ServerCapture.sameProfile("tenant1", "tenant1"));
+        assertFalse("another tenant's thread", ServerCapture.sameProfile("tenant1", "tenant2"));
+        assertFalse("a thread with no profile yet", ServerCapture.sameProfile("tenant1", null));
+        assertFalse("a capture started by plugin 8.2.2: no profile recorded", ServerCapture.sameProfile(null, null));
+        String id = "00000000-0000-4000-8000-0000000000ee";
+        ProfileDir.in(a, () -> {
+            ServerCaptureStore store = ServerCapture.store();
+            assertTrue(store.start(id, "admin", 1 << 20, 60_000, true, "", false, false, true, 0, false));
+            store.put(id, ServerCapture.PROFILE, "tenant1");
+            assertEquals("tenant1", new ServerCapture.Capture(id, store.nodeFile(id, "n"), store.readMeta(id)).profile);
+        });
+    }
+
+    @Test
     public void withoutTheOptInACaptureStartedBeforeGetsNoGlowrootDataNorOtherTraces() throws Exception {
         String id = "00000000-0000-4000-8000-0000000000cc";
         java.util.function.BooleanSupplier real = BlackBoxPlugin.glowrootShared;

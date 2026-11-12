@@ -273,7 +273,10 @@ for the default 30 minutes), adds up the chunk sizes in `ondataavailable`, and w
 capture's meta): log lines not from the recording. While such a
 capture is open on a node, the appender also writes every other thread's events
 to it with `"other": true` (no `req`), including tagged requests of other recordings. Nodes write it once the capture
-is open there (the starting node, and any node that served one of its requests). `summary` counts those lines as
+is open there (the starting node, and any node that served one of its requests). With virtual hosts, only lines of
+threads in the capture's own profile: `recording-start` saves the request's profile in the meta (`profile`), and the
+appender compares it with the logging thread's `HostManager.getCurrentProfile()` (a plain thread-local read). A thread
+whose profile isn't set, or a capture without `profile` (started by 8.2.2), gets no other lines. `summary` counts those lines as
 `otherEntries`, not as entries or errors.
 
 Log4j 2 is not visible to plugin bundles (OSGi exports neither `org.apache.logging.log4j` nor `org.apache.log4j`),
@@ -343,7 +346,10 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
   requests. Like the liveness check, it doesn't switch the thread's Joget profile (`HostManager.setCurrentProfile` is
   guarded in cloud installs). Glowroot is one agent per JVM, so other users' traces and Glowroot data hold every
   profile's requests: with virtual hosts the plugin offers them (`me`) and starts them (`recording-start`) only when
-  the server sets `-Dblackbox.sharedGlowroot=true` (`BlackBoxPlugin.glowrootShared`), never on a tenant admin's setting.
+  the server is started with `-Dblackbox.sharedGlowroot=true` (`BlackBoxPlugin.glowrootShared`), never on a tenant
+  admin's setting. It reads the JVM's start options (`RuntimeMXBean.getInputArguments`), not the live system property,
+  which a tenant's script could set; virtual hosts count as on when either the live `wflow.virtualhost` or the start
+  option says so. When the start options can't be read (a security manager refusing it), the opt-in is off.
   The build and the copy check it again, so a capture started before a restart without the opt-in (or watched again
   after one) ends "failed" or with a note instead. Each profile, capture and running request is handled on its own
   (`ProfileDir.safely`): one unreadable folder or refused file access is logged (the same message at most every 10

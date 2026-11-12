@@ -43,12 +43,15 @@ import org.json.JSONObject;
  *
  * Not captured: work a request hands to other threads, and log levels below the root logger's level (info). A capture
  * started with allServer also keeps every other thread's lines (marked "other": scheduler, email, other users) on the
- * nodes where it is open: the node that started it and those that served one of its requests.
+ * nodes where it is open: the node that started it and those that served one of its requests. With virtual hosts, only
+ * the lines of threads in the capture's own profile ({@link #PROFILE}): the others are other tenants'.
  */
 final class ServerCapture {
 
     static final String HEADER = "X-BlackBox-Id";
     static final String TIME_HEADER = "X-BlackBox-Time";
+    /** meta.json: the Joget profile of the request that started the capture. */
+    static final String PROFILE = "profile";
 
     private static final long FLUSH_MS = 2000;
     private static final long IDLE_MS = 30 * 60 * 1000L; // close a capture's file after this long without events
@@ -364,6 +367,14 @@ final class ServerCapture {
         }
     }
 
+    /**
+     * With virtual hosts, whether a line of a thread in profile here may go into a capture of profile capture: only the
+     * same, known profile (a thread whose profile isn't set yet may serve any tenant).
+     */
+    static boolean sameProfile(String capture, String here) {
+        return capture != null && !capture.isEmpty() && capture.equals(here);
+    }
+
     /** One capture's file on this node. Lines are JSON objects; the file is closed when idle, stopped or attached. */
     static final class Capture {
         final String id;
@@ -373,6 +384,7 @@ final class ServerCapture {
         final boolean glowrootData; // cut the recording out of this node's Glowroot data after the stop (GlowrootPackager)
         final boolean allServer;   // keep every thread's log lines too, marked "other"
         final boolean otherTraces; // after the stop, copy the traces of every other request too (TraceCollector.watchOthers)
+        final String profile;      // the profile that started it (null: unknown, e.g. started by plugin 8.2.2)
         private final Path file;
         private final long maxBytes;
         private Writer out;
@@ -389,6 +401,7 @@ final class ServerCapture {
             this.glowrootData = meta.optBoolean("glowrootData");
             this.allServer = meta.optBoolean("allServer");
             this.otherTraces = meta.optBoolean("otherTraces");
+            this.profile = meta.optString(PROFILE, null);
             this.file = file;
             this.maxBytes = meta.optLong("maxBytes");
             try {
@@ -610,8 +623,10 @@ final class ServerCapture {
                         GlowrootTag.keep(); // its trace shows what led to the error, though the request "succeeded"
                     }
                 }
+                boolean virtualHosts = all.length > 0 && BlackBoxPlugin.virtualHosts();
+                String here = virtualHosts ? HostManager.getCurrentProfile() : null; // a plain read, no lookup
                 for (Capture c : all) {
-                    if (r == null || c != r.capture) {
+                    if ((r == null || c != r.capture) && (!virtualHosts || sameProfile(c.profile, here))) {
                         c.write(new JSONObject(e.toString()).put("other", true)); // not this recording's tab
                     }
                 }

@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.regex.Matcher;
@@ -23,6 +24,7 @@ import org.joget.apps.userview.model.UserviewSetting;
 import org.joget.apps.userview.service.UserviewService;
 import org.joget.directory.model.Group;
 import org.joget.directory.model.service.DirectoryManager;
+import org.joget.commons.util.DynamicDataSourceManager;
 import org.joget.commons.util.HostManager;
 import org.joget.commons.util.LogUtil;
 import org.joget.commons.util.SecurityUtil;
@@ -644,16 +646,55 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     /** "Allow capturing other users' traces": a recording may copy every trace on the nodes it reaches (opt-in per recording). */
     static final String OTHER_TRACES = "allowCaptureOtherUsersTraces";
     /**
-     * JVM system property: with virtual hosts, lets every profile use other users' traces and Glowroot data. Glowroot is
-     * one agent per JVM, so both hold every profile's requests; only whoever runs the server can allow that.
+     * JVM option: with virtual hosts, lets every profile use other users' traces and Glowroot data. Glowroot is one agent
+     * per JVM, so both hold every profile's requests; only whoever runs the server can allow that. Only the server's
+     * start command counts (-Dblackbox.sharedGlowroot=true): a tenant's script may call System.setProperty, so the live
+     * property is ignored.
      */
     static final String SHARED_GLOWROOT = "blackbox.sharedGlowroot";
-    /** Whether Glowroot's data may go into a recording: no virtual hosts, or the server allows it (SHARED_GLOWROOT). */
-    static java.util.function.BooleanSupplier glowrootShared = () -> glowrootShared(HostManager.isVirtualHostEnabled(),
-            System.getProperty(SHARED_GLOWROOT));
+    /** The -D options the JVM was started with (can't change after); empty when they can't be read. */
+    private static final List<String> START_ARGS = startArgs();
 
-    static boolean glowrootShared(boolean virtualHosts, String property) {
-        return !virtualHosts || "true".equalsIgnoreCase(property == null ? "" : property.trim());
+    private static List<String> startArgs() {
+        try {
+            return java.lang.management.ManagementFactory.getRuntimeMXBean().getInputArguments();
+        } catch (RuntimeException | LinkageError e) { // e.g. a security manager refusing ManagementPermission("monitor")
+            LogUtil.warn(BlackBoxPlugin.class.getName(), "Could not read the server's start options: " + e);
+            return Collections.emptyList();
+        }
+    }
+
+    /** The value of -Dkey=... in args (the last one wins, as in the JVM), else null. */
+    static String startArg(List<String> args, String key) {
+        String value = null;
+        for (String a : args) {
+            if (a.startsWith("-D" + key + "=")) {
+                value = a.substring(key.length() + 3);
+            } else if (a.equals("-D" + key)) {
+                value = "";
+            }
+        }
+        return value;
+    }
+
+    private static boolean isTrue(String value) {
+        return value != null && "true".equalsIgnoreCase(value.trim());
+    }
+
+    /**
+     * Virtual hosts on (wflow.virtualhost): Joget's live property, or the start command's, so a tenant can't turn the
+     * profile checks off by clearing the property.
+     */
+    static boolean virtualHosts() {
+        return HostManager.isVirtualHostEnabled() || isTrue(startArg(START_ARGS, HostManager.SYSTEM_PROPERTY_VIRTUALHOST));
+    }
+
+    /** Whether Glowroot's data may go into a recording: no virtual hosts, or the server allows it (SHARED_GLOWROOT). */
+    static java.util.function.BooleanSupplier glowrootShared = () -> glowrootShared(virtualHosts(),
+            startArg(START_ARGS, SHARED_GLOWROOT));
+
+    static boolean glowrootShared(boolean virtualHosts, String startValue) {
+        return !virtualHosts || isTrue(startValue);
     }
     static final long DEFAULT_USER_QUOTA_MB = 10240;
     static final StartLimiter STARTS = new StartLimiter();
@@ -783,6 +824,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             error(response, HttpServletResponse.SC_CONFLICT, "This server capture id is already in use.");
             return;
         }
+        // The capture's profile: with virtual hosts, All server log lines keeps only this profile's threads
+        ServerCapture.store().put(id, ServerCapture.PROFILE, DynamicDataSourceManager.getCurrentProfile());
         ServerCapture.find(id); // this node samples the server load from now (GaugeSampler)
         ServerInfo.save(ServerCapture.store().dir(id), request, (int) Math.min(positive("recentChangesDays", 7), 365),
                 new Secrets(getPropertyString("secretNames"))); // System Info as it is now, secrets masked
