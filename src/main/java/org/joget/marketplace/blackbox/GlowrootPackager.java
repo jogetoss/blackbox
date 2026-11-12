@@ -41,7 +41,7 @@ final class GlowrootPackager {
     private static final String EMBEDDED_JAR = "glowroot-embedded-collector.jar";
     private static final String H2_DRIVER = "org.glowroot.agent.embedded.shaded.org.h2.Driver";
 
-    private static final Map<String, Long> WATCHED = new ConcurrentHashMap<>(); // capture id -> since
+    private static final Map<String, ProfileDir.Watch> WATCHED = new ConcurrentHashMap<>(); // capture id -> since, folder
     private static ScheduledExecutorService jobs;
 
     private GlowrootPackager() {
@@ -59,7 +59,10 @@ final class GlowrootPackager {
         });
         jobs.schedule(() -> {
             try {
-                recover(ServerCapture.store(), BlackBoxPlugin.store(), NODE, System.currentTimeMillis());
+                long now = System.currentTimeMillis();
+                for (Path d : ServerCapture.checkDirs.get()) { // every profile's (virtual hosts)
+                    ProfileDir.in(d, () -> recover(ServerCapture.store(), BlackBoxPlugin.store(), d, NODE, now));
+                }
             } catch (IOException | RuntimeException e) { // JSONException is a RuntimeException
                 LogUtil.warn(GlowrootPackager.class.getName(), "Could not check for unfinished Glowroot data packages: " + e);
             }
@@ -77,8 +80,9 @@ final class GlowrootPackager {
      * After a restart: this node's packages left waiting or building are watched again while their capture exists (the
      * build runs as usual; blocks Glowroot overwrote meanwhile are counted as lost). Those in a recording whose capture
      * is gone are marked failed, so the recording doesn't stay "building" for good. Returns the capture ids watched.
+     * profileDir: the profile's blackbox folder their builds run in (null: the thread's own).
      */
-    static List<String> recover(ServerCaptureStore logs, RecordingStore recordings, String node, long now)
+    static List<String> recover(ServerCaptureStore logs, RecordingStore recordings, Path profileDir, String node, long now)
             throws IOException, JSONException {
         List<String> watched = new ArrayList<>();
         java.util.Set<String> covered = new java.util.HashSet<>();
@@ -92,7 +96,7 @@ final class GlowrootPackager {
             if (!GlowrootData.unfinished(dir, node)) {
                 continue;
             }
-            WATCHED.putIfAbsent(id, now);
+            WATCHED.putIfAbsent(id, new ProfileDir.Watch(now, profileDir));
             watched.add(id);
             if (!rec.isEmpty()) {
                 covered.add(rec);
@@ -143,7 +147,7 @@ final class GlowrootPackager {
     /** A capture is open on this node: build its package after it stops. */
     static void watch(ServerCapture.Capture capture) {
         if (jobs == null || !capture.glowrootData || failedOnThisNode(capture.id)
-                || WATCHED.putIfAbsent(capture.id, System.currentTimeMillis()) != null) {
+                || WATCHED.putIfAbsent(capture.id, new ProfileDir.Watch(System.currentTimeMillis(), ProfileDir.current())) != null) {
             return;
         }
         status(capture.id, "waiting", "Built about a minute after the recording stops", null);
@@ -177,24 +181,29 @@ final class GlowrootPackager {
 
     private static void tick() {
         long now = System.currentTimeMillis();
-        for (Map.Entry<String, Long> e : WATCHED.entrySet()) {
+        for (Map.Entry<String, ProfileDir.Watch> e : WATCHED.entrySet()) {
             String id = e.getKey();
-            JSONObject meta = ServerCapture.store().readMeta(id);
-            if (meta == null) {
-                WATCHED.remove(id); // expired or deleted
-                continue;
-            }
-            if (!meta.has("stoppedAt")) {
-                if (now - e.getValue() > MAX_WAIT_MS) {
-                    WATCHED.remove(id);
-                    status(id, "failed", "The recording did not stop within " + MAX_WAIT_MS / 3600_000L + " hours", null);
-                }
-                continue;
-            }
-            if (now >= readyAt(meta.optLong("stoppedAt"))) {
+            ProfileDir.Watch watch = e.getValue();
+            ProfileDir.in(watch.dir, () -> tick(id, watch.since, now)); // the capture's profile (virtual hosts)
+        }
+    }
+
+    private static void tick(String id, long since, long now) {
+        JSONObject meta = ServerCapture.store().readMeta(id);
+        if (meta == null) {
+            WATCHED.remove(id); // expired or deleted
+            return;
+        }
+        if (!meta.has("stoppedAt")) {
+            if (now - since > MAX_WAIT_MS) {
                 WATCHED.remove(id);
-                build(id, meta.optLong("startedAt"), meta.optLong("stoppedAt"));
+                status(id, "failed", "The recording did not stop within " + MAX_WAIT_MS / 3600_000L + " hours", null);
             }
+            return;
+        }
+        if (now >= readyAt(meta.optLong("stoppedAt"))) {
+            WATCHED.remove(id);
+            build(id, meta.optLong("startedAt"), meta.optLong("stoppedAt"));
         }
     }
 

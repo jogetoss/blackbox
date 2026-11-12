@@ -3,10 +3,8 @@ package org.joget.marketplace.blackbox;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.function.Supplier;
 import org.joget.commons.util.LogUtil;
-import org.joget.commons.util.SetupManager;
 import org.json.JSONObject;
 
 /**
@@ -27,7 +25,7 @@ final class LivenessKnobs {
     private static final long WARN_EVERY_MS = 60_000L;
 
     /** Where the override file is; tests (no Joget running) swap it. */
-    static Supplier<Path> fileSupplier = () -> Paths.get(SetupManager.getBaseDirectory(), "blackbox", FILE);
+    static Supplier<Path> fileSupplier = () -> ProfileDir.current().resolve(FILE);
 
     private static volatile long lastWarn;
 

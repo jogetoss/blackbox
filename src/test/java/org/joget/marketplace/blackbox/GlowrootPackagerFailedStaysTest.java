@@ -58,7 +58,7 @@ public class GlowrootPackagerFailedStaysTest {
         assertEquals("waiting", state(store, node).getString("state"));
 
         // Never stopped, 3 h pass: failed and no longer watched
-        watched().put(ID, System.currentTimeMillis() - 3 * 3600_000L - 1);
+        watched().put(ID, new ProfileDir.Watch(System.currentTimeMillis() - 3 * 3600_000L - 1, null));
         tick();
         JSONObject failed = state(store, node);
         assertEquals("failed", failed.getString("state"));
@@ -94,8 +94,8 @@ public class GlowrootPackagerFailedStaysTest {
     }
 
     @SuppressWarnings("unchecked")
-    private static Map<String, Long> watched() throws Exception {
-        return (Map<String, Long>) field("WATCHED").get(null);
+    private static Map<String, ProfileDir.Watch> watched() throws Exception {
+        return (Map<String, ProfileDir.Watch>) field("WATCHED").get(null);
     }
 
     private static void tick() throws Exception {

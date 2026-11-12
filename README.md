@@ -197,8 +197,7 @@ Shown on the replay page and in the ZIP and HTML downloads, to everyone who can 
   by Glowroot's own settings), and of each one that logged an ERROR, even when it was fast and returned 200 (BlackBox
   asks Glowroot to keep those). Only traces Glowroot tagged with this recording are used, so another user's request
   on the same page at the same moment is never shown as yours. Failed lookups have **Retry** (not for imported
-  recordings, nor for ones recorded with plugin 8.2.2 or older). Glowroot must allow anonymous access. With virtual
-  hosts, traces, other users' traces, Glowroot data and server load are saved for one profile only (see ARCHITECTURE).
+  recordings, nor for ones recorded with plugin 8.2.2 or older). Glowroot must allow anonymous access.
 - **Other users' traces** (popup's **Include other users' traces**): about 30 s after the stop, each node the
   recording reached adds the traces Glowroot kept of every other request and background job during the recording
   (up to 200 per node, and what a slow Glowroot gives within 5 minutes), with the user when Glowroot records it: set

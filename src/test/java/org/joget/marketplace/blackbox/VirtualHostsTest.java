@@ -1,0 +1,108 @@
+package org.joget.marketplace.blackbox;
+
+import static org.junit.Assert.*;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Arrays;
+import java.util.List;
+import java.util.function.Supplier;
+import org.json.JSONArray;
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+
+/**
+ * Virtual hosts: two profiles, each with its own blackbox folder. The background threads have no request (and so no
+ * profile of their own); their work for a capture must run in the folder of the profile that opened it.
+ */
+public class VirtualHostsTest {
+
+    private Path a;
+    private Path b;
+    private Supplier<ServerCaptureStore> realStores;
+    private Supplier<List<Path>> realDirs;
+
+    @Before
+    public void setUp() throws Exception {
+        a = Files.createTempDirectory("bb-profile-a").resolve("blackbox");
+        b = Files.createTempDirectory("bb-profile-b").resolve("blackbox");
+        Files.createDirectories(a);
+        Files.createDirectories(b);
+        realStores = ServerCapture.stores;
+        realDirs = ServerCapture.checkDirs;
+        ServerCapture.stores = () -> new ServerCaptureStore(ProfileDir.current().resolve("pending")); // the real one
+        ServerCapture.checkDirs = () -> Arrays.asList(a, b);
+        TraceCollector.stop();
+    }
+
+    @After
+    public void tearDown() throws Exception {
+        TraceCollector.stop();
+        ServerCapture.stores = realStores;
+        ServerCapture.checkDirs = realDirs;
+        RecordingStore.deleteTree(a.getParent());
+        RecordingStore.deleteTree(b.getParent());
+    }
+
+    private static String owed(Path profile, String id) throws Exception {
+        ProfileDir.in(profile, () -> {
+            ServerCaptureStore store = ServerCapture.store();
+            assertTrue(store.start(id, "admin", 1 << 20, 60_000, true, "", false, false, false, 0, true));
+            store.put(id, TraceCollector.OTHERS_PENDING, true);
+        });
+        return id;
+    }
+
+    private static JSONArray traces(Path profile, String id) throws Exception {
+        return TraceStore.merge(profile.resolve("pending").resolve(id), System.currentTimeMillis());
+    }
+
+    @Test
+    public void inPutsThePreviousFolderBack() throws Exception {
+        Path outside = ProfileDir.current();
+        ProfileDir.in(a, () -> {
+            assertEquals(a, ProfileDir.current());
+            ProfileDir.in(b, () -> assertEquals(b, ProfileDir.current()));
+            assertEquals(a, ProfileDir.current());
+            ProfileDir.in(null, () -> assertEquals("null keeps the folder", a, ProfileDir.current()));
+        });
+        assertEquals(outside, ProfileDir.current());
+    }
+
+    @Test
+    public void aRestartWatchesTheCapturesOfEveryProfile() throws Exception {
+        String inA = owed(a, "00000000-0000-4000-8000-00000000000a");
+        String inB = owed(b, "00000000-0000-4000-8000-00000000000b");
+        TraceCollector.start(); // recovers after 1 s, from every profile's folder
+        long until = System.currentTimeMillis() + 10_000;
+        while ((traces(a, inA).length() == 0 || traces(b, inB).length() == 0) && System.currentTimeMillis() < until) {
+            Thread.sleep(200);
+        }
+        assertEquals("pending", traces(a, inA).getJSONObject(0).getString("state"));
+        assertEquals("pending", traces(b, inB).getJSONObject(0).getString("state"));
+        assertFalse("nothing written in the other profile", Files.exists(b.resolve("pending").resolve(inA)));
+    }
+
+    @Test
+    public void theTickWorksInTheFolderOfTheProfileThatOpenedTheCapture() throws Exception {
+        String id = "00000000-0000-4000-8000-0000000000bb";
+        TraceCollector.start();
+        ProfileDir.in(b, () -> {
+            ServerCaptureStore store = ServerCapture.store();
+            assertTrue(store.start(id, "admin", 1 << 20, 60_000, true, "", false, false, false, 0, true));
+            // a request of profile B opens it on this node
+            TraceCollector.watchOthers(new ServerCapture.Capture(id, store.nodeFile(id, ServerCapture.nodeName()), store.readMeta(id)));
+        });
+        // The tick runs on a thread with another profile's folder: it must still find the capture in B, not drop it
+        ProfileDir.in(a, () -> {
+            java.lang.reflect.Method tick = TraceCollector.class.getDeclaredMethod("othersTick");
+            tick.setAccessible(true);
+            tick.invoke(null);
+        });
+        assertEquals("still watched: recovering adds nothing", 0,
+                TraceCollector.recoverOthers(new ServerCaptureStore(b.resolve("pending")), b, 1).size());
+        assertEquals("pending", traces(b, id).getJSONObject(0).getString("state"));
+        assertFalse("nothing written in profile A", Files.exists(a.resolve("pending").resolve(id)));
+    }
+}

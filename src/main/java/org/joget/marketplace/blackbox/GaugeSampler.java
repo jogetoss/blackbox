@@ -63,7 +63,7 @@ final class GaugeSampler {
     /** A capture is open on this node: sample for it until it stops. */
     static void watch(ServerCapture.Capture capture) {
         if (timer != null && capture.gauges) {
-            CAPTURES.putIfAbsent(capture.id, new Sampled());
+            CAPTURES.putIfAbsent(capture.id, new Sampled(ProfileDir.current()));
         }
     }
 
@@ -80,23 +80,26 @@ final class GaugeSampler {
             return;
         }
         for (Map.Entry<String, Sampled> e : CAPTURES.entrySet()) {
-            Sampled s = e.getValue();
-            if (now - s.metaCheckedAt >= META_CHECK_MS) {
-                s.metaCheckedAt = now;
-                JSONObject meta = ServerCapture.store().readMeta(e.getKey());
-                if (meta == null || meta.has("stoppedAt") && now > meta.optLong("stoppedAt") + 1000 || now - s.since > MAX_MS) {
-                    CAPTURES.remove(e.getKey());
-                    continue;
-                }
+            ProfileDir.in(e.getValue().dir, () -> append(e.getKey(), e.getValue(), now, sample)); // the capture's profile
+        }
+    }
+
+    private static void append(String id, Sampled s, long now, JSONObject sample) {
+        if (now - s.metaCheckedAt >= META_CHECK_MS) {
+            s.metaCheckedAt = now;
+            JSONObject meta = ServerCapture.store().readMeta(id);
+            if (meta == null || meta.has("stoppedAt") && now > meta.optLong("stoppedAt") + 1000 || now - s.since > MAX_MS) {
+                CAPTURES.remove(id);
+                return;
             }
-            try {
-                java.nio.file.Path dir = TraceCollector.captureDir(e.getKey());
-                if (dir != null) {
-                    GaugeStore.append(dir, NODE, sample);
-                }
-            } catch (IOException ex) {
-                CAPTURES.remove(e.getKey());
+        }
+        try {
+            java.nio.file.Path dir = TraceCollector.captureDir(id);
+            if (dir != null) {
+                GaugeStore.append(dir, NODE, sample);
             }
+        } catch (IOException ex) {
+            CAPTURES.remove(id);
         }
     }
 
@@ -163,6 +166,11 @@ final class GaugeSampler {
 
     private static final class Sampled {
         final long since = System.currentTimeMillis();
+        final java.nio.file.Path dir; // the capture's profile folder (virtual hosts)
         long metaCheckedAt;
+
+        Sampled(java.nio.file.Path dir) {
+            this.dir = dir;
+        }
     }
 }

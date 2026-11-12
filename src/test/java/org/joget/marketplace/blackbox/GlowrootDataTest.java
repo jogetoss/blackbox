@@ -357,7 +357,7 @@ public class GlowrootDataTest {
         GlowrootData.writeStatus(recordings.dir(saved), "n1", new JSONObject().put("node", "n1").put("state", "saved"));
 
         try {
-            assertEquals(Arrays.asList(open), GlowrootPackager.recover(logs, recordings, "n1", now));
+            assertEquals(Arrays.asList(open), GlowrootPackager.recover(logs, recordings, null, "n1", now));
         } finally {
             GlowrootPackager.stop(); // clears the watch list
         }

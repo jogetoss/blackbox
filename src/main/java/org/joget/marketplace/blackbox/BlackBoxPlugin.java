@@ -87,7 +87,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     }
 
     /** Makes the store; tests (no Joget running) swap it. */
-    static java.util.function.Supplier<RecordingStore> stores = () -> new RecordingStore(Paths.get(SetupManager.getBaseDirectory(), "blackbox"));
+    static java.util.function.Supplier<RecordingStore> stores = () -> new RecordingStore(ProfileDir.current());
 
     static RecordingStore store() {
         return stores.get();

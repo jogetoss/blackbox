@@ -166,8 +166,8 @@ public class OtherTracesTest {
         java.util.function.Supplier<ServerCaptureStore> real = ServerCapture.stores;
         ServerCapture.stores = () -> store;
         try {
-            assertEquals(java.util.Arrays.asList(owed), TraceCollector.recoverOthers(store, 1));
-            assertTrue("already watched: not added twice", TraceCollector.recoverOthers(store, 2).isEmpty());
+            assertEquals(java.util.Arrays.asList(owed), TraceCollector.recoverOthers(store, null, 1));
+            assertTrue("already watched: not added twice", TraceCollector.recoverOthers(store, null, 2).isEmpty());
             // its "pending" note keeps the replay page polling until the copy
             JSONArray notes = TraceStore.merge(store.dir(owed), 3);
             assertEquals(1, notes.length());

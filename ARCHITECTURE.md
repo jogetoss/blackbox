@@ -333,11 +333,16 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
   other users' traces, and with a `capture` id. A lookup with no known end searches at most 10 minutes from the
   request's start. Glowroot keeps traces for 14 days by default, so older ones may be gone. The newest state wins across
   nodes, so node clocks should be in sync.
-- **Virtual hosts (known limit):** the trace and server load threads ("BlackBox traces", "BlackBox other traces",
-  "BlackBox Glowroot data", "BlackBox gauges") find capture and recording folders through `ServerCapture.store()`, `BlackBoxPlugin.store()` and
-  `SetupManager.getBaseDirectory()`, which follow the profile the thread inherited when the plugin started. Unlike the
-  liveness check they don't go through `checkDirs`, so with virtual hosts on, traces, other users' traces, Glowroot
-  data and server load are saved only for that one profile; other profiles' captures read as gone.
+- **Virtual hosts:** the trace and server load threads ("BlackBox traces", "BlackBox other traces", "BlackBox Glowroot
+  data", "BlackBox gauges") only have the profile they inherited when the plugin started, and Joget picks the base
+  folder from the thread's profile. So each watched capture (and each request whose trace is looked up) keeps the
+  blackbox folder of the request that opened it (`ProfileDir.current()`, on the request's thread), and its background
+  work runs in that folder (`ProfileDir.in`, a BlackBox thread-local): `ServerCapture.store()`, `BlackBoxPlugin.store()`
+  and the retry folder resolve through it. Work that belongs to no request goes through every profile's folder by path
+  (`ServerCapture.checkDirs`): restart recovery of other users' traces and Glowroot data, and the trace retry
+  requests. Like the liveness check, it doesn't switch the thread's Joget profile (`HostManager.setCurrentProfile` is
+  guarded in cloud installs). The server load sample is the JVM's and the server's (one database pool on Community and
+  Enterprise), the same for every profile.
 - **Viewing a trace:** `trace&file=…` serves Glowroot's page with `Content-Security-Policy: sandbox allow-scripts
   allow-popups` and `Referrer-Policy: no-referrer`, so its script runs without access to Joget's cookies or pages. It
   loads Google Fonts and Font Awesome from the internet.

@@ -6,7 +6,6 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -22,7 +21,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.joget.commons.util.LogUtil;
-import org.joget.commons.util.SetupManager;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -61,7 +59,7 @@ final class TraceCollector {
     static final long OTHERS_BUDGET_MS = 5 * 60_000L; // per recording and node: a slow Glowroot can't hold the copy up
     private static final long OTHERS_MAX_WAIT_MS = 3 * 3600 * 1000L; // a capture never stopped
     private static final String[] OTHER_TYPES = {"Web", "Background"};
-    private static final Map<String, Long> OTHERS = new ConcurrentHashMap<>(); // capture id -> watched since
+    private static final Map<String, ProfileDir.Watch> OTHERS = new ConcurrentHashMap<>(); // capture id -> since, folder
     // capture id -> when this node last wrote its "pending" note; rewritten well within TraceStore.STALE_MS
     private static final Map<String, Long> OTHERS_NOTED = new ConcurrentHashMap<>();
     static final long OTHERS_NOTE_EVERY_MS = 2 * 60_000L;
@@ -91,7 +89,11 @@ final class TraceCollector {
         });
         jobs.scheduleWithFixedDelay(TraceCollector::heartbeat, 2, 2, TimeUnit.SECONDS);
         jobs.scheduleWithFixedDelay(() -> COUNTS.clear(), 1, 1, TimeUnit.DAYS);
-        jobs.scheduleWithFixedDelay(TraceCollector::retryScan, RETRY_SCAN_S, RETRY_SCAN_S, TimeUnit.SECONDS);
+        jobs.scheduleWithFixedDelay(() -> {
+            for (Path d : ServerCapture.checkDirs.get()) { // every profile's retry requests (virtual hosts)
+                ProfileDir.in(d, TraceCollector::retryScan);
+            }
+        }, RETRY_SCAN_S, RETRY_SCAN_S, TimeUnit.SECONDS);
         othersJobs = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "BlackBox other traces");
             t.setDaemon(true);
@@ -99,7 +101,10 @@ final class TraceCollector {
         });
         othersJobs.schedule(() -> {
             try {
-                recoverOthers(ServerCapture.store(), System.currentTimeMillis());
+                long now = System.currentTimeMillis();
+                for (Path d : ServerCapture.checkDirs.get()) { // every profile's (virtual hosts)
+                    ProfileDir.in(d, () -> recoverOthers(ServerCapture.store(), d, now));
+                }
             } catch (IOException | RuntimeException e) {
                 LogUtil.warn(TraceCollector.class.getName(), "Could not check for other users' traces still to copy: " + e);
             }
@@ -127,7 +132,7 @@ final class TraceCollector {
     /** The capture is open on this node: if it asked for other users' traces, copy them after the stop. */
     static void watchOthers(ServerCapture.Capture capture) {
         if (othersJobs != null && capture.traces && capture.otherTraces
-                && OTHERS.putIfAbsent(capture.id, System.currentTimeMillis()) == null) {
+                && OTHERS.putIfAbsent(capture.id, new ProfileDir.Watch(System.currentTimeMillis(), ProfileDir.current())) == null) {
             markOthers(capture.id, true);
             noteOthers(capture.id, System.currentTimeMillis()); // from the start: the replay page polls while it is pending
         }
@@ -135,9 +140,10 @@ final class TraceCollector {
 
     /** Rewrites the "pending" notes older than OTHERS_NOTE_EVERY_MS: between copies, and before each trace of a copy. */
     private static void refreshNotes(long now) {
-        for (String id : OTHERS.keySet()) {
+        for (Map.Entry<String, ProfileDir.Watch> w : OTHERS.entrySet()) {
+            String id = w.getKey();
             if (now - OTHERS_NOTED.getOrDefault(id, 0L) >= OTHERS_NOTE_EVERY_MS) {
-                noteOthers(id, now);
+                ProfileDir.in(w.getValue().dir, () -> noteOthers(id, now));
             }
         }
     }
@@ -149,12 +155,15 @@ final class TraceCollector {
                 + OTHERS_AFTER_MS / 1000 + " s after the stop"));
     }
 
-    /** After a restart: captures whose meta says this node still owes their other traces are watched again. */
-    static List<String> recoverOthers(ServerCaptureStore store, long now) throws IOException {
+    /**
+     * After a restart: captures whose meta says this node still owes their other traces are watched again. dir: the
+     * profile's blackbox folder their work runs in (null: the thread's own).
+     */
+    static List<String> recoverOthers(ServerCaptureStore store, Path dir, long now) throws IOException {
         List<String> watched = new ArrayList<>();
         for (String id : store.ids()) {
             JSONObject meta = store.readMeta(id);
-            if (meta != null && meta.optBoolean(OTHERS_PENDING) && OTHERS.putIfAbsent(id, now) == null) {
+            if (meta != null && meta.optBoolean(OTHERS_PENDING) && OTHERS.putIfAbsent(id, new ProfileDir.Watch(now, dir)) == null) {
                 watched.add(id);
                 noteOthers(id, now);
             }
@@ -176,32 +185,38 @@ final class TraceCollector {
      */
     private static void othersTick() {
         long now = System.currentTimeMillis();
-        String due = null;
-        JSONObject dueMeta = null;
-        for (Map.Entry<String, Long> w : OTHERS.entrySet()) {
+        String[] due = {null};
+        JSONObject[] dueMeta = {null};
+        Path[] dueDir = {null};
+        for (Map.Entry<String, ProfileDir.Watch> w : OTHERS.entrySet()) {
             String id = w.getKey();
-            JSONObject meta = ServerCapture.store().readMeta(id);
-            if (meta == null) {
-                OTHERS.remove(id); // expired or deleted
-                OTHERS_NOTED.remove(id);
-            } else if (!meta.has("stoppedAt") && now - w.getValue() > OTHERS_MAX_WAIT_MS) {
-                OTHERS.remove(id); // never stopped
-                OTHERS_NOTED.remove(id);
-                markOthers(id, false);
-                writeOther(id, otherNote(id, "none", "The recording never stopped: other users' traces were not copied"));
-            } else {
-                if (due == null && meta.has("stoppedAt") && now >= meta.optLong("stoppedAt") + OTHERS_AFTER_MS) {
-                    due = id;
-                    dueMeta = meta;
+            ProfileDir.Watch watch = w.getValue();
+            ProfileDir.in(watch.dir, () -> { // the capture's profile (virtual hosts)
+                JSONObject meta = ServerCapture.store().readMeta(id);
+                if (meta == null) {
+                    OTHERS.remove(id); // expired or deleted
+                    OTHERS_NOTED.remove(id);
+                } else if (!meta.has("stoppedAt") && now - watch.since > OTHERS_MAX_WAIT_MS) {
+                    OTHERS.remove(id); // never stopped
+                    OTHERS_NOTED.remove(id);
+                    markOthers(id, false);
+                    writeOther(id, otherNote(id, "none", "The recording never stopped: other users' traces were not copied"));
+                } else if (due[0] == null && meta.has("stoppedAt") && now >= meta.optLong("stoppedAt") + OTHERS_AFTER_MS) {
+                    due[0] = id;
+                    dueMeta[0] = meta;
+                    dueDir[0] = watch.dir;
                 }
-            }
+            });
         }
         refreshNotes(now);
-        if (due == null) {
-            return;
+        if (due[0] != null) {
+            ProfileDir.in(dueDir[0], () -> copyDue(due[0], dueMeta[0]));
         }
+    }
+
+    private static void copyDue(String due, JSONObject meta) {
         try {
-            copyOthers(due, dueMeta);
+            copyOthers(due, meta);
         } catch (IOException | RuntimeException e) {
             if (!Thread.currentThread().isInterrupted()) {
                 writeOther(due, otherNote(due, "failed", "Could not read other users' traces from Glowroot: " + e.getMessage()));
@@ -382,7 +397,7 @@ final class TraceCollector {
         r.failed = failure != null;
         r.loggedError = loggedError;
         r.ended = System.currentTimeMillis();
-        ex.execute(() -> ended(r));
+        ex.execute(() -> ProfileDir.in(r.base, () -> ended(r)));
     }
 
     // ---------- jobs (one thread) ----------
@@ -394,12 +409,14 @@ final class TraceCollector {
             if (now - r.lastWritten < HEARTBEAT_MS || now - r.start < threshold(r)) {
                 continue;
             }
-            if (r.lastWritten == 0 && !reserve(r)) {
-                RUNNING.remove(r);
-                continue;
-            }
-            r.lastWritten = now;
-            write(r, entry(r, "pending", "Request still running (" + (now - r.start) / 1000 + " s so far)"));
+            ProfileDir.in(r.base, () -> { // the request's profile (virtual hosts)
+                if (r.lastWritten == 0 && !reserve(r)) {
+                    RUNNING.remove(r);
+                    return;
+                }
+                r.lastWritten = now;
+                write(r, entry(r, "pending", "Request still running (" + (now - r.start) / 1000 + " s so far)"));
+            });
         }
     }
 
@@ -444,7 +461,7 @@ final class TraceCollector {
                     : entry(r, "none", "Glowroot kept no trace for this request"));
             return;
         }
-        ex.schedule(() -> {
+        ex.schedule(() -> ProfileDir.in(r.base, () -> {
             try {
                 if (!find(r)) {
                     attempt(r, n + 1, null);
@@ -452,7 +469,7 @@ final class TraceCollector {
             } catch (IOException | RuntimeException e) {
                 attempt(r, n + 1, e.getMessage());
             }
-        }, delay, TimeUnit.MILLISECONDS);
+        }), delay, TimeUnit.MILLISECONDS);
     }
 
     /** Looks the request's trace up and saves it. False when Glowroot has none (yet). */
@@ -648,7 +665,7 @@ final class TraceCollector {
     }
 
     private static Path retryDir() {
-        return Paths.get(SetupManager.getBaseDirectory(), "blackbox", "retry");
+        return ProfileDir.current().resolve("retry");
     }
 
     private static JSONObject readJson(Path f) {
@@ -798,7 +815,7 @@ final class TraceCollector {
         if (!RecordingStore.isValidId(recId)) {
             return null;
         }
-        return Paths.get(SetupManager.getBaseDirectory(), "blackbox", recId);
+        return ProfileDir.current().resolve(recId);
     }
 
     /** One tagged request on this node, or a retry of one (recordingId set). */
@@ -811,6 +828,7 @@ final class TraceCollector {
         final long start;
         final String key;
         final String tag; // the capture id: GlowrootTag's value on this request's trace
+        final Path base = ProfileDir.current(); // made on the request's thread (or a retry scan's): its profile's folder
         volatile long lastWritten;
         volatile boolean untagged; // a trace matched path and time but carried another tag (or none)
         volatile boolean listed;

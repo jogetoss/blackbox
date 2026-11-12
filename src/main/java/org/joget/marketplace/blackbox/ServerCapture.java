@@ -70,7 +70,7 @@ final class ServerCapture {
     }
 
     /** Makes the store; tests (no Joget running) swap it. */
-    static java.util.function.Supplier<ServerCaptureStore> stores = () -> new ServerCaptureStore(Paths.get(SetupManager.getBaseDirectory(), "blackbox", "pending"));
+    static java.util.function.Supplier<ServerCaptureStore> stores = () -> new ServerCaptureStore(ProfileDir.current().resolve("pending"));
 
     static ServerCaptureStore store() {
         return stores.get();
