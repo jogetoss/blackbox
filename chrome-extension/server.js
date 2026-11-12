@@ -99,6 +99,17 @@ const Server = {
   me(endpoint) {
     return this.request(endpoint, 'GET', { action: 'me' });
   },
+
+  // { user, recordings: [meta...] }: the recordings this user may see (an admin sees everyone's)
+  list(endpoint) {
+    return this.request(endpoint, 'GET', { action: 'list' });
+  },
+
+  // The server's recordings page: <context>/blackbox/ next to <context>/api/blackbox; else the server's root
+  recordingsPage(endpoint) {
+    const u = new URL(endpoint);
+    return /\/api\/blackbox$/.test(u.pathname) ? u.origin + u.pathname.replace(/\/api\/blackbox$/, '/blackbox/') : u.origin + '/';
+  },
 };
 
 if (typeof module !== 'undefined') module.exports = Server; // node tests (e2e/tests/extension-trust.spec.js)

@@ -34,7 +34,7 @@ import org.json.JSONObject;
  * Plugins lists every jar in app_plugins with its date and size, marking jars that loaded no plugin.
  * Database and connectionPool hold the current profile's app_datasource file and the pool settings Joget really uses.
  * The database password is left out. JVM arguments, system properties, the datasource file and pool settings go through
- * {@link Secrets}: values with a secret name (built-in words plus the admin's secretNames setting) and values shaped like
+ * {@link Secrets}: values with a secret name (the admin's secretNames setting; empty = Secrets.DEFAULT_NAMES) and values shaped like
  * secrets are masked. The license table is kept as it is. It is shown only to users allowed to view server data, like
  * the system log itself.
  */

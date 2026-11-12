@@ -37,7 +37,7 @@ or a known one with the wrong method, gets 400 "Unknown action". Who may do what
 | Action | Method | Who | Notes |
 |---|---|---|---|
 | `me` | GET | anyone logged in | Also `user.username`, `options` (see "App export") and `sampleData` (see "Compatibility") |
-| `list` | GET | | The recordings the user can view, newest first; server data hidden where not allowed |
+| `list` | GET | | The recordings the user can view, newest first, each with its `url` (the viewer page); server data hidden where not allowed |
 | `create` | POST | uploaders | |
 | `video` | POST | the recording's uploader | Once; 404 for others |
 | `import` | POST | uploaders | A recording ZIP as the raw body (see "Storage" for its limits) |
@@ -81,7 +81,7 @@ README "Who sees what".
 
 | Right | Who |
 |---|---|
-| Upload (`canUpload`): `create`, `video`, `import` | **Who can upload** (empty = any logged-in user). Only uploads from the browser; the capture and the quick settings don't use it |
+| Upload (`canUpload`): `create`, `video`, `import` | **Who can upload** (default Logged In User; empty = any logged-in user). Only uploads from the browser; the capture and the quick settings don't use it |
 | View and delete (`canView`, `canDelete`) | The recording's uploader (`meta.owner`) |
 | Server data of a recording (`canViewServerData(meta)`) | **Who can capture other users' server data**, or the uploader, so every viewer |
 | Server data in general (`canCaptureServerData()`, no uploader rule) | **Who can capture other users' server data**: keeping a ZIP's server data on import, capturing all other server log lines |
@@ -481,7 +481,7 @@ the server's time zone; so are **Uploaded** and **First uploaded** (`BB.fmtDate`
 
 **Masking** (`Secrets`, applied when the snapshot is taken, so `server-info.json` and every export hold only the masked
 values): JVM arguments (`-Dname=value` by name, others by value), system properties, datasource keys and pool settings.
-A secret name (built-in words from Upgrade Advisor's `SecretMasker`, plus the `secretNames` setting) masks the whole
+A secret name (the `secretNames` setting; empty = `Secrets.DEFAULT_NAMES`, the names of Upgrade Advisor's `SecretMasker`) masks the whole
 value; secret-shaped values (URL user info, Bearer/Basic, JWT, private keys, `%%%%…%%%%`, known API key prefixes,
 secret-named `name=value` pairs) are masked inside any value. The license table is not masked.
 
@@ -599,7 +599,8 @@ in its rows (activity ids resolved with `getActivityById`), kept when the proces
 | `Activator` | Registers `BlackBoxPlugin`, `BlackBoxPageFilter`, `BlackBoxApiFilter` and `ServerCaptureFilter`; starts and stops `ServerCapture` (appender, timers, trace / gauge / Glowroot / export threads) |
 | `BlackBoxPlugin` | System settings + API logic (actions above); its inner class `Access` holds the permission checks |
 | `BlackBoxApiFilter` | Serves the API at `/api/blackbox?action=…` |
-| `BlackBoxPageFilter` | Serves the static pages at `/blackbox/…` |
+| `BlackBoxPageFilter` | Serves the static pages at `/blackbox/…`, and `assets/settings.js` for the settings page |
+| `settings.js` | The settings page's `_settingsDefaults` custom field: fills settings never saved (and empty permission pickers that have a default) with their defaults from `blackboxPlugin.json`, and **Reset to defaults** (a page button beside Submit, `buttons` with a `callback`) fills the whole form. Joget 8.2 shows `value` defaults only when nothing was ever saved. Saves nothing itself |
 | `RecordingStore` | Folder storage, validation (JSON shape, WebM header, size limits, id format), `meta.json` locking, old `systemLog` names |
 | `SessionFile` | Copies `session.json` / `system-log.json` to disk, checks them and reads them as streams |
 | `JsonStream` | The small pull parser `SessionFile` uses |
@@ -612,7 +613,7 @@ in its rows (activity ids resolved with `getActivityById`), kept when the proces
 | `GlowrootClient` | Glowroot's JSON backend and trace export; finds the local agent's port |
 | `GlowrootData`, `GlowrootPackager`, `GlowrootTag` | Glowroot data packages; tagging recorded requests |
 | `ServerInfo` | System Info snapshot at recording-start (host, cluster, plugins, Java, Joget, DB, pool, license) |
-| `Secrets` | Masks secrets in the System Info snapshot: built-in secret names and value shapes (from Upgrade Advisor), plus the `secretNames` setting |
+| `Secrets` | Masks secrets in the System Info snapshot: the `secretNames` setting (default: Upgrade Advisor's secret names) and value shapes (from Upgrade Advisor) |
 | `AppExport` | Finds the apps in the recorded URLs, exports them (at stop, else at upload), lists them in `app/apps.json` |
 | `AppAdmins` | An app's own admins from `app_src/<app>/app.properties`, as App Composer reads them |
 | `ExportJobs` | The background thread app exports run on, so requests answer within about 20 s |
@@ -637,7 +638,7 @@ for in Settings or on the first upload.
 | `recorder.html/js` | The recorder window (minimized while recording; asks before closing): shows the `desktopCapture` picker (window/screen) or uses the tab stream, mixes page sound and microphone into one track, records with `MediaRecorder`, saves progress every 5 s, sends `recording-ping` every `pingMs`, shows the time left and stops at `maxRecordingMs`, sends `recording-stop` with the app export's input, keeps the recording in IndexedDB (or downloads it when it can't), opens the Replay page |
 | `background.js` | Service worker: owns the recording state, opens the recorder window, attaches the debugger (Network, Runtime, Log, Page), fetches response bodies (XHR, Fetch, Document, EventSource, Other; up to 1 MB, not binary), forwards events to the recorder; starts/stops the server capture and tags the tab's requests; REC badge (orange with the reason when the server capture is off); stops on debugger detach, tab closed or recorder closed; crash recovery |
 | `viewer.html/js`, `viewer.css` | Replay UI shared by every replay page (the extension's, the plugin's, downloaded HTML, standalone): video + synced lists, timeline, request details, Features drawer |
-| `recordings.html/js` | Recordings page: kept, on-disk and upload-history rows (100 at a time) with Browser issues; batch Upload, Download ZIP, Delete for ticked rows (Upload off when `me.canUpload` is false); Import ZIP; Link / Allow / Unlink folder; crash recovery on load |
+| `recordings.html/js` | Recordings page: kept, on-disk and upload-history rows, plus the user's own recordings on the Upload URL's server that none of those rows has uploaded (`list`, filtered to `owner`; fetched on load and on focus after a minute; open on the server, no batch actions; on 401 a "Log in" note) (100 at a time) with Browser issues; batch Upload, Download ZIP, Delete for ticked rows (Upload off when `me.canUpload` is false); Import ZIP; Link / Allow / Unlink folder; crash recovery on load |
 | `actions.js` | Upload (with its form; `uploadNow` without it, `uploadMany` for a batch), Move to folder, Download ZIP and Delete of one recording; links in messages |
 | `replay.js` | Replay page (`viewer.html?id=` or `?disk=`): loads the recording, its status bar, ⚠ Upload and the fix box, Move to folder / Download ZIP / Delete, Older / Newer; with `upload=server` it uploads and opens the server's copy |
 | `report.js` | Builds `session.json`; turns a recording interrupted by a crash or a closed recorder into a normal one (`recovered`, stop reason "interrupted") and stops its server capture at the last save |

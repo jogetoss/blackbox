@@ -140,7 +140,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                                 .put("real", options.getBoolean("sample")))
                         .put("options", options));
             } else if ("list".equals(action) && !post) {
-                list(response, store, access);
+                list(request, response, store, access);
             } else if ("create".equals(action) && post) {
                 create(request, response, store, access);
             } else if ("video".equals(action) && post) {
@@ -259,7 +259,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         meta.remove("apps");
     }
 
-    private void list(HttpServletResponse response, RecordingStore store, Access access) throws IOException, JSONException {
+    private void list(HttpServletRequest request, HttpServletResponse response, RecordingStore store, Access access)
+            throws IOException, JSONException {
         JSONArray rows = new JSONArray();
         for (JSONObject meta : store.list()) {
             if (access.canView(meta)) {
@@ -270,6 +271,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 if (!server) {
                     hideServerData(meta);
                 }
+                meta.put("url", request.getContextPath() + "/blackbox/view?id=" + meta.getString("id")); // the extension links to it
                 rows.put(meta);
             }
         }
@@ -621,7 +623,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     static final String OFFICIAL_EXTENSION_ID = "anmfmkacddnmmgdcnkgkfjhagnilmkmp";
 
     /**
-     * An Origin of an extension in "Allowed extension IDs" (comma-separated; empty = any extension). Never saved:
+     * An Origin of an extension in "Allowed Chrome extension IDs" (comma-separated; empty = any extension). Never saved:
      * the official extension only. Such a POST needs no CSRF token: web pages can't send a chrome-extension Origin.
      */
     static boolean fromAllowedExtension(String origin, String allowed) {

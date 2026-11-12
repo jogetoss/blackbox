@@ -14,7 +14,7 @@ Internals and the upload API: [ARCHITECTURE.md](../ARCHITECTURE.md). Server side
 
 1. Use Chrome 116 or later. Open `chrome://extensions` and turn on **Developer mode**.
 2. **Load unpacked** → this folder. After an update, click the reload icon on the extension card. The `key` in
-   `manifest.json` gives the extension the same ID everywhere, `anmfmkacddnmmgdcnkgkfjhagnilmkmp`: the plugin's **Allowed extension IDs**
+   `manifest.json` gives the extension the same ID everywhere, `anmfmkacddnmmgdcnkgkfjhagnilmkmp`: the plugin's **Allowed Chrome extension IDs**
    accepts only this ID by default. An extension loaded before the key was added keeps its old ID until it is
    removed and loaded again.
 3. Pin the extension.
@@ -88,6 +88,9 @@ one never uploaded is gone, so move it to a folder or download it first.
 - **Import ZIP…**: a recording ZIP from a BlackBox server or another browser.
 - Tick rows for **Upload selected**, **Download ZIP**, **Delete selected**. Server copies are never deleted from here.
 - Uploaded recordings stay as **upload history**; the title opens the server copy.
+- Your recordings on the **Upload URL**'s server that this browser doesn't list (uploaded from another computer or
+  browser, or imported on the server) are listed too, marked **Not in this browser**; the title opens them on the server.
+  Log in to the server in this browser to see them (the page says so when you aren't).
 
 ## Replay page
 

@@ -35,7 +35,9 @@ import org.json.JSONObject;
  */
 final class Masker {
 
-    static final String DEFAULT_SENSITIVE = "password, ic, nric, passport, email, phone, mobile, tel, address, salary, birth, dob, bank, account, card, iban, ssn";
+    /** Also the default value of the sensitiveColumns setting in blackboxPlugin.json; keep the two the same. */
+    static final String DEFAULT_SENSITIVE = String.join("\n", "password", "ic", "nric", "passport", "email", "phone", "mobile",
+            "tel", "address", "salary", "birth", "dob", "bank", "account", "card", "iban", "ssn");
 
     /** Technical ids, kept: UUIDs and Joget process / activity ids (123_app_process). */
     private static final Pattern TECH_ID = Pattern.compile("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
@@ -52,7 +54,7 @@ final class Masker {
     private Set<String> definitionTokens = new HashSet<>();
     private String definitionText = "";
 
-    /** sensitiveWords: comma-separated words; a column whose name has one as a word is always masked. */
+    /** sensitiveWords: one word per line (commas also separate); a column whose name has one as a word is always masked. */
     Masker(String sensitiveWords) {
         this(sensitiveWords, randomKey());
     }
@@ -65,7 +67,7 @@ final class Masker {
             throw new IllegalStateException(e);
         }
         sensitive = new HashSet<>();
-        for (String w : (sensitiveWords != null ? sensitiveWords : DEFAULT_SENSITIVE).split(",")) {
+        for (String w : (sensitiveWords != null ? sensitiveWords : DEFAULT_SENSITIVE).split("[,\\r\\n]")) {
             if (!w.trim().isEmpty()) {
                 sensitive.add(w.trim().toLowerCase(Locale.ROOT));
             }

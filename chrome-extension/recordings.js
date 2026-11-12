@@ -1,5 +1,7 @@
 // Recordings page: the list (the title opens the Replay page), Browser issues, and batch Upload / Download ZIP / Delete
 // for the ticked rows. Move to folder and the other single-recording actions are on the Replay page.
+// Also lists the user's own recordings on the Upload URL's server that this browser doesn't list (uploaded from
+// another computer or browser, or imported on the server): they open on the server and take no batch actions.
 (function () {
   const $ = (id) => document.getElementById(id);
   const { state } = Store;
@@ -22,8 +24,11 @@
     e.target.value = '';
     if (file) run(() => importZip(file));
   };
-  // Another page (the recorder, the Replay page) may change the list
-  window.addEventListener('focus', () => run(render));
+  // Another page (the recorder, the Replay page) may change the list; the server list is fetched again after a minute
+  window.addEventListener('focus', () => run(async () => {
+    await render();
+    if (Date.now() - serverLoadedAt > 60000) await loadServer();
+  }));
 
   run(async () => {
     // Normally done at browser start; also here in case the extension was reloaded instead
@@ -32,7 +37,60 @@
     await Store.restoreFolder();
     await render();
     await checkUpload();
+    await loadServer();
   });
+
+  // The user's own recordings on the Upload URL's server (kind 'server'); the ones this browser lists are left out
+  let serverRows = [];
+  let serverLoadedAt = 0;
+  async function loadServer() {
+    serverLoadedAt = Date.now();
+    const settings = await Server.getSettings();
+    const { uploadUrl } = settings;
+    let note = null;
+    serverRows = [];
+    if (uploadUrl && (await Server.hasPermission(uploadUrl))) {
+      try {
+        const res = await Server.list(uploadUrl);
+        const me = res.user?.username;
+        serverRows = (res.recordings || []).filter((m) => m.owner === me).map((m) => serverRow(settings, m));
+      } catch (e) {
+        note = e.status === 401
+          ? ['Log in to ' + new URL(uploadUrl).origin + ' to also list your recordings on the server: ', 'open the server', Server.recordingsPage(uploadUrl)]
+          : ['Could not list your recordings on the server: ' + e.message, '', ''];
+      }
+    }
+    serverNote(note);
+    await render();
+  }
+
+  function serverRow(settings, m) {
+    const { uploadUrl } = settings;
+    const rec = m.recording || {};
+    const s = m.summary;
+    const url = Server.resolve(uploadUrl, m.url) || Server.recordingsPage(uploadUrl);
+    return {
+      kind: 'server', id: m.id, startedAt: rec.startedAt || m.uploadedAt, durationMs: rec.durationMs,
+      tab: { url: rec.tab?.url || '', title: m.title || rec.tab?.title || '' },
+      issues: s ? { errors: s.errors, failedRequests: s.failedRequests, slowRequests: s.slowRequests, slowThresholdMs: s.slowThresholdMs } : null,
+      uploaded: { id: m.id, url: Server.viewLink(settings, m.id, url), at: m.uploadedAt }, // like an upload from here
+    };
+  }
+
+  function serverNote(note) {
+    const p = $('serverMsg');
+    p.textContent = '';
+    p.hidden = !note;
+    if (!note) return;
+    p.append(note[0]);
+    if (note[2]) {
+      const a = document.createElement('a');
+      a.href = note[2];
+      a.target = '_blank';
+      a.textContent = note[1];
+      p.append(a);
+    }
+  }
 
   // Set when the Upload URL's server says this user may not upload: Upload selected is then disabled with the reason
   let uploadRefused = '';
@@ -71,13 +129,16 @@
   $('batchZip').onclick = () => run(downloadSelected);
   $('batchDelete').onclick = () => run(deleteSelected);
 
-  const canUpload = (r) => r.kind !== 'history' && !r.uploaded;
-  const canZip = (r) => r.kind !== 'history';
+  const canUpload = (r) => r.kind !== 'history' && r.kind !== 'server' && !r.uploaded;
+  const canZip = (r) => r.kind !== 'history' && r.kind !== 'server';
   const canDelete = (r) => r.kind === 'history' || Actions.canDelete(r);
   const picked = () => rows.filter((r) => selected.has(key(r)));
 
   async function render() {
     rows = await Store.allRows();
+    const listed = new Set(rows.map((r) => r.uploaded?.id).filter(Boolean)); // uploaded from this browser
+    rows = rows.concat(serverRows.filter((r) => !listed.has(r.id)))
+      .sort((a, b) => ((a.startedAt || a.id) < (b.startedAt || b.id) ? 1 : -1));
     const keys = new Set(rows.map(key));
     for (const k of [...selected]) if (!keys.has(k)) selected.delete(k);
     const kept = rows.filter((r) => r.kind === 'saved').length;
@@ -108,8 +169,8 @@
       const link = document.createElement('a');
       link.className = 'rec-title';
       link.textContent = r.tab?.title || r.tab?.url || r.id;
-      if (r.kind === 'history') {
-        // Uploaded, local copy gone: opens it on the server
+      if (r.kind === 'history' || r.kind === 'server') {
+        // Uploaded, local copy gone (or never in this browser): opens it on the server
         if (r.uploaded?.url) { link.href = r.uploaded.url; link.target = '_blank'; link.title = 'Opens the uploaded recording on the server'; }
       } else {
         link.href = Store.replayUrl(r);
@@ -120,6 +181,7 @@
       tr.append(issuesCell(r));
       const status = td('');
       status.append(...Store.badges(r));
+      if (r.kind === 'server') status.append(' ', badge('Not in this browser', '', 'Uploaded from another computer or browser, or imported on the server'));
       tr.append(status);
       body.append(tr);
     }
@@ -137,7 +199,8 @@
     $('unlinkFolder').hidden = !f;
     $('folderInfo').textContent = (f ? `Folder: ${f.name} (${state.folderReady ? state.diskItems.length + ' on disk' : 'access needed'}) · ` : '')
       + `${kept} in browser storage (newest ${Store.MAX_KEPT})`
-      + (rows.some((r) => r.kind === 'history') ? ` · ${rows.filter((r) => r.kind === 'history').length} in upload history` : '');
+      + (rows.some((r) => r.kind === 'history') ? ` · ${rows.filter((r) => r.kind === 'history').length} in upload history` : '')
+      + (rows.some((r) => r.kind === 'server') ? ` · ${rows.filter((r) => r.kind === 'server').length} only on the server` : '');
   }
 
   // Console errors, failed requests and slow requests of the recording (none for upload history)
@@ -146,7 +209,7 @@
     c.className = 'nowrap';
     const s = r.issues;
     if (!s) {
-      c.append(r.kind === 'history' ? '' : '–');
+      c.append(r.kind === 'history' || r.kind === 'server' ? '' : '–');
       return c;
     }
     c.append(badge(`${s.errors || 0} errors`, s.errors ? 'err' : ''), ' ', badge(`${s.failedRequests || 0} failed`, s.failedRequests ? 'warn' : ''));
@@ -163,8 +226,8 @@
     $('selCount').textContent = sel.length ? `${sel.length} selected` : 'Tick recordings to act on several at once';
     label('batchUpload', 'Upload selected', uploadRefused ? 0 : n(canUpload), 'Already uploaded, or no local copy');
     if (uploadRefused) $('batchUpload').title = uploadRefused;
-    label('batchZip', 'Download ZIP', n(canZip), 'Upload history has no local copy');
-    label('batchDelete', 'Delete selected', n(canDelete), 'Recordings on disk can be deleted once uploaded');
+    label('batchZip', 'Download ZIP', n(canZip), 'Upload history and server recordings have no local copy');
+    label('batchDelete', 'Delete selected', n(canDelete), 'Recordings on disk can be deleted once uploaded; server copies only on the server');
     function label(id, text, count, why) {
       $(id).disabled = !count;
       $(id).textContent = count ? `${text} (${count})` : text;

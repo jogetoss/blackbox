@@ -1,23 +1,37 @@
 [{
     "title" : "BlackBox",
+    "buttons" : [{
+        "name" : "resetDefaults",
+        "label" : "Reset to defaults",
+        "callback" : "blackboxResetDefaults",
+        "fields" : []
+    }],
     "properties" : [
         {
             "label" : "Recordings and server data: recordings page [CONTEXT_PATH]/blackbox/ &nbsp;·&nbsp; Uploaders view and delete their own recordings; admins every recording. For every recording that reaches it, the server records the recorded tab's Joget log lines and requests (the extension tags them) and a System Info snapshot (the Info tab), plus the parts ticked below. Server data waits on the server until the recording is uploaded, then is kept with it.",
             "type" : "header"
         },
         {
+            "name" : "_settingsDefaults",
+            "label" : "",
+            "type" : "custom",
+            "script_url" : "[CONTEXT_PATH]/blackbox/assets/settings.js"
+        },
+        {
             "name" : "canUpload",
             "label" : "Who can upload",
-            "description" : "Empty = any logged-in user. Applies to uploads from the extension and to Import ZIP. Uploaders view and delete their own recordings.",
+            "description" : "Default: Logged In User (any logged-in user; empty means the same). Applies to uploads from the extension and to Import ZIP. Uploaders view and delete their own recordings.",
             "type" : "elementselect",
+            "value" : {"className" : "org.joget.apps.userview.lib.LoggedInUserPermission", "properties" : {}},
             "options_ajax" : "[CONTEXT_PATH]/web/property/json/getElements?classname=org.joget.apps.form.model.FormPermission",
             "url" : "[CONTEXT_PATH]/web/property/json[APP_PATH]/getPropertyOptions"
         },
         {
             "name" : "canCaptureServerData",
             "label" : "Who can capture other users' server data",
-            "description" : "Empty = admins only. Who may tick \"All server log lines\" in the extension's popup (every log line the server writes during the recording, also from other users' requests; with virtual hosts, only requests to the recording's own profile, no background jobs) and keep a ZIP's server data on import (a ZIP can hold another user's recording). Everyone's own recordings always get, and show, their own server data.",
+            "description" : "Default: Is Admin (admins only; empty means the same). Who may tick \"All server log lines\" in the extension's popup (every log line the server writes during the recording, also from other users' requests; with virtual hosts, only requests to the recording's own profile, no background jobs) and keep a ZIP's server data on import (a ZIP can hold another user's recording). Everyone's own recordings always get, and show, their own server data.",
             "type" : "elementselect",
+            "value" : {"className" : "org.joget.plugin.enterprise.AdminUserviewPermission", "properties" : {}},
             "options_ajax" : "[CONTEXT_PATH]/web/property/json/getElements?classname=org.joget.apps.form.model.FormPermission",
             "url" : "[CONTEXT_PATH]/web/property/json[APP_PATH]/getPropertyOptions"
         },
@@ -63,16 +77,16 @@
         {
             "name" : "importMaxTotalMb",
             "label" : "Max total size of a ZIP import (MB)",
-            "description" : "All files of an imported ZIP together, unpacked. Each file also has Max file size. Empty = 3 x Max file size; 0 = no limit (a small ZIP can then unpack to many GB).",
+            "description" : "Default: empty = 3 x Max file size. If Max file size = 500 MB, Max total size of a ZIP import = 1500 MB. All files of an imported ZIP together, unpacked. Each file also has Max file size. 0 = no limit (a small ZIP can then unpack to many GB).",
             "type" : "textfield",
             "value" : ""
         },
         {
             "name" : "importMaxEntries",
             "label" : "Max files in a ZIP import",
-            "description" : "Empty = 5000; 0 = no limit.",
+            "description" : "Default 5000; empty means the same. 0 = no limit.",
             "type" : "textfield",
-            "value" : ""
+            "value" : "5000"
         },
         {
             "name" : "systemLogMaxMb",
@@ -129,16 +143,18 @@
         {
             "name" : "glowrootUrl",
             "label" : "Glowroot address",
-            "description" : "Used for traces and Glowroot data. Empty = each node's own Glowroot agent (found from its admin.json, usually http://localhost:4000); set = every node uses this address. Read as Glowroot's anonymous user.",
+            "description" : "Default: empty = each node's own Glowroot (found from its admin.json, usually http://localhost:4000). Used for traces and Glowroot data. Set = every node uses this address. Read as Glowroot's anonymous user.",
             "type" : "textfield",
             "value" : ""
         },
         {
             "name" : "secretNames",
-            "label" : "More secret names to mask in System Info",
-            "description" : "Comma-separated words; * matches anything; case doesn't matter. A JVM argument (-Dname=value), system property, datasource key or pool setting whose name contains one is masked. These are added to the built-in ones, which are always masked: password, passwd, passphrase, pwd, secret, token, api key, access key, private key, client secret, auth key, credential, signing key, encryption key, salt, cert, and names that start or end with pass or key. Values shaped like secrets are masked whatever their name: user:password@ in URLs, Bearer and Basic tokens, JWTs, private keys, Joget-encrypted passwords, AWS, GitHub, Slack, Google and OpenAI-style keys. Applies to recordings started after saving.",
-            "type" : "textfield",
-            "value" : ""
+            "label" : "Secret names to mask in System Info",
+            "description" : "One name per line (commas also separate); case doesn't matter. A JVM argument (-Dname=value), system property, datasource key or pool setting whose name contains one is masked, and so is a name=value pair with such a name inside a longer value. * matches anything: pass* = names that start with pass, *key = names that end with key. Empty = the default list. Values shaped like secrets are masked whatever their name: user:password@ in URLs, Bearer and Basic tokens, JWTs, private keys, Joget-encrypted passwords, AWS, GitHub, Slack, Google and OpenAI-style keys. Applies to recordings started after saving.",
+            "type" : "textarea",
+            "rows" : "12",
+            "cols" : "40",
+            "value" : "password\npasswd\npassphrase\npwd\nsecret\ntoken\napi*key\naccess*key\nprivate*key\nclient*secret\nauth*key\ncredential\nsigning*key\nencryption*key\nsalt\ncert\npass*\n*pass\n_pass_\nkey*\n*key"
         },
         {
             "name" : "allowUnmaskedCredentials",
@@ -166,7 +182,7 @@
         },
         {
             "name" : "allowedExtensionIds",
-            "label" : "Allowed extension IDs",
+            "label" : "Allowed Chrome extension IDs",
             "description" : "Comma-separated. Only these extensions may send recordings without a CSRF token; any other extension is refused. The BlackBox extension's own ID is anmfmkacddnmmgdcnkgkfjhagnilmkmp (the same on every computer). Empty = any extension.",
             "type" : "textfield",
             "value" : "anmfmkacddnmmgdcnkgkfjhagnilmkmp"
@@ -248,12 +264,14 @@
         {
             "name" : "sensitiveColumns",
             "label" : "Always-masked column names",
-            "description" : "Comma-separated words. A column whose name has one as a word (ic_no, homeAddress, email-2) is always masked, also when Mask data is not ticked. Empty = the default list.",
+            "description" : "One word per line (commas also separate). A column whose name has one as a word (ic_no, homeAddress, email-2) is always masked, also when Mask data is not ticked. Empty = the default list.",
             "control_field" : "allowCaptureAppsData",
             "control_value" : "true",
             "control_use_regex" : "false",
-            "type" : "textfield",
-            "value" : "password, ic, nric, passport, email, phone, mobile, tel, address, salary, birth, dob, bank, account, card, iban, ssn"
+            "type" : "textarea",
+            "rows" : "12",
+            "cols" : "40",
+            "value" : "password\nic\nnric\npassport\nemail\nphone\nmobile\ntel\naddress\nsalary\nbirth\ndob\nbank\naccount\ncard\niban\nssn"
         }
     ]
 }]

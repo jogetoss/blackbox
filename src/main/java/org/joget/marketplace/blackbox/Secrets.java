@@ -9,19 +9,20 @@ import java.util.regex.Pattern;
 /**
  * Masks secrets in the System Info snapshot: JVM arguments, system properties and the datasource file.
  *
- * <p>The built-in names and value shapes come from joget-upgrade-advisor's {@code SecretMasker} and are always applied;
- * the admin can only add names ({@code secretNames} setting), not remove built-in ones.
+ * <p>The secret names are the admin's {@code secretNames} setting; empty means {@link #DEFAULT_NAMES}, the names of
+ * joget-upgrade-advisor's {@code SecretMasker}. The value shapes come from SecretMasker too and are always applied.
  */
 final class Secrets {
 
     static final String MASK = "****";
 
-    /** Words that make a name secret, anywhere in it (SecretMasker.KEY_WORDS). */
-    static final String KEY_WORDS = "password|passwd|passphrase|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|"
-            + "private[_-]?key|client[_-]?secret|auth[_-]?key|credential|signing[_-]?key|encryption[_-]?key";
-
-    /** SecretMasker.SECRET_NAME: the key words, plus pass/key at either end of the name, salt and cert. */
-    private static final Pattern BUILT_IN_NAME = Pattern.compile("(?i)(" + KEY_WORDS + "|pass$|^pass|_pass_|key$|^key|salt|cert)");
+    /**
+     * SecretMasker.SECRET_NAME as setting words: its key words, salt and cert anywhere in the name, and pass/key at
+     * either end. Also the default value of the setting in blackboxPlugin.json; keep the two the same.
+     */
+    static final String DEFAULT_NAMES = String.join("\n", "password", "passwd", "passphrase", "pwd", "secret", "token",
+            "api*key", "access*key", "private*key", "client*secret", "auth*key", "credential", "signing*key",
+            "encryption*key", "salt", "cert", "pass*", "*pass", "_pass_", "key*", "*key");
 
     /** Values that are secrets whatever their name (SecretMasker.TOKEN_SHAPES). */
     private static final Pattern[] TOKEN_SHAPES = {
@@ -46,28 +47,23 @@ final class Secrets {
     private static final Pattern KEY_VALUE = Pattern.compile(
             "(?<![A-Za-z0-9_.\\-])([A-Za-z0-9_.\\-]++)(\\s*[=:]\\s*)(\"[^\"\\n]*\"|'[^'\\n]*'|[^\\s\"'&;,#<>(){}\\[\\]]++)");
 
-    static final int MAX_EXTRA = 100;
+    static final int MAX_NAMES = 100;
 
-    private final List<Pattern> extra = new ArrayList<>();
+    private final List<Glob> names = new ArrayList<>();
 
-    /** extraNames: the admin's comma-separated words; {@code *} matches anything; case doesn't matter. */
-    Secrets(String extraNames) {
-        if (extraNames == null) {
-            return;
-        }
-        for (String w : extraNames.split(",")) {
-            String word = w.trim();
-            if (word.isEmpty() || word.replace("*", "").isEmpty() || word.length() > 100 || extra.size() >= MAX_EXTRA) {
+    /**
+     * secretNames: one word per line (commas also separate); case doesn't matter. A word matches anywhere in the name;
+     * {@code *} matches anything, so {@code pass*} matches names that start with pass and {@code *key} names that end
+     * with key. Null or empty: {@link #DEFAULT_NAMES}.
+     */
+    Secrets(String secretNames) {
+        String list = secretNames == null || secretNames.trim().isEmpty() ? DEFAULT_NAMES : secretNames;
+        for (String w : list.split("[,\\r\\n]")) {
+            String word = w.trim().toLowerCase(Locale.ROOT);
+            if (word.isEmpty() || word.replace("*", "").isEmpty() || word.length() > 100 || names.size() >= MAX_NAMES) {
                 continue; // "*" alone would mask everything
             }
-            StringBuilder re = new StringBuilder();
-            for (String part : word.split("\\*", -1)) {
-                if (re.length() > 0 || word.startsWith("*")) {
-                    re.append(".*");
-                }
-                re.append(Pattern.quote(part.toLowerCase(Locale.ROOT)));
-            }
-            extra.add(Pattern.compile(re.toString()));
+            names.add(new Glob(word));
         }
     }
 
@@ -75,16 +71,68 @@ final class Secrets {
         if (name == null || name.isEmpty()) {
             return false;
         }
-        if (BUILT_IN_NAME.matcher(name).find()) {
-            return true;
-        }
         String lower = name.toLowerCase(Locale.ROOT);
-        for (Pattern p : extra) {
-            if (p.matcher(lower).find()) {
+        for (Glob g : names) {
+            if (g.matches(lower)) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * One setting word, matched without regex so that no word can make matching slow (a regex of repeated {@code .*}
+     * backtracks exponentially): the parts between stars are found in order with indexOf, the leftmost place each time,
+     * which finds a match whenever one exists. Linear in the name's length for each part.
+     */
+    static final class Glob {
+        private final String[] parts; // the non-empty parts between stars, in order
+        private final boolean startsWith; // pass*: the first part at the start
+        private final boolean endsWith; // *key: the last part at the end
+
+        Glob(String word) {
+            boolean starAtStart = word.startsWith("*");
+            boolean starAtEnd = word.endsWith("*");
+            startsWith = starAtEnd && !starAtStart;
+            endsWith = starAtStart && !starAtEnd;
+            List<String> p = new ArrayList<>();
+            for (String part : word.split("\\*")) {
+                if (!part.isEmpty()) {
+                    p.add(part);
+                }
+            }
+            parts = p.toArray(new String[0]);
+        }
+
+        boolean matches(String s) {
+            int from = 0;
+            int first = 0;
+            int last = parts.length;
+            int end = s.length();
+            if (startsWith) {
+                if (!s.startsWith(parts[0])) {
+                    return false;
+                }
+                from = parts[0].length();
+                first = 1;
+            }
+            if (endsWith) {
+                String tail = parts[parts.length - 1];
+                if (!s.endsWith(tail) || s.length() - tail.length() < from) {
+                    return false;
+                }
+                end = s.length() - tail.length();
+                last = parts.length - 1;
+            }
+            for (int i = first; i < last; i++) {
+                int at = s.indexOf(parts[i], from);
+                if (at < 0 || at + parts[i].length() > end) {
+                    return false;
+                }
+                from = at + parts[i].length();
+            }
+            return true;
+        }
     }
 
     /** A named value (system property, datasource key): all of it when the name is secret, else the secrets inside. */

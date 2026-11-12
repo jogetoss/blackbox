@@ -94,19 +94,23 @@ MAC addresses) and every `-D` system property, which may hold secrets. If that i
 
 ### Access
 
+The settings page (**Settings > Manage Plugins > BlackBox > Configure**) shows each setting's default when it was never
+saved, also for settings added in a later version. **Reset to defaults** (beside **Submit**) fills the whole form with the defaults; nothing
+is saved until **Submit**.
+
 | Setting | Default | Notes |
 |---|---|---|
-| Who can upload | any logged-in user | Uploads from the browser only: upload, import a ZIP. Uploaders view and delete their own recordings; admins every recording |
+| Who can upload | Logged In User (any logged-in user; empty = the same) | Uploads from the browser only: upload, import a ZIP. Uploaders view and delete their own recordings; admins every recording |
 | Max file size (MB) | 500 | Video and session.json each |
 | Max recording length (minutes) | 30 | 5–120; see [Limits](#limits) |
 | Storage per user (MB) | 10240 | Non-admins. 0 = no limit; see [Limits](#limits) |
 | Max recordings in progress per user | 3 | Non-admins. 0 = no limit |
 | Max recordings started per user per minute | 10 | Non-admins, per node. 0 = no limit |
 | Max total size of a ZIP import (MB) | empty = 3 × Max file size | All files unpacked together. 0 = no limit |
-| Max files in a ZIP import | empty = 5000 | 0 = no limit |
+| Max files in a ZIP import | 5000 | Empty = 5000. 0 = no limit |
 | Allow recording passwords and tokens unmasked | No | Off: every non-admin recording has credentials masked; see [Credentials in recordings](#credentials-in-recordings). Popup: **Record passwords and tokens unmasked** |
 | Allow uploads over HTTP | Yes | Off: uploads, ZIP imports and server captures need HTTPS (or `X-Forwarded-Proto: https` from a proxy); a server reached as `localhost` is always allowed. Reading recordings is not affected |
-| Allowed extension IDs | `anmfmkacddnmmgdcnkgkfjhagnilmkmp` | Extensions that may send recordings without a CSRF token. The BlackBox extension has this ID on every computer. Empty = any extension |
+| Allowed Chrome extension IDs | `anmfmkacddnmmgdcnkgkfjhagnilmkmp` | Extensions that may send recordings without a CSRF token. The BlackBox extension has this ID on every computer. Empty = any extension |
 | Allow unsandboxed trace pages in HTML exports | Yes | On: **Open full trace** in a downloaded `.html` opens the Glowroot page as it is (internal review). Off: inside a sandbox, so a crafted trace page can't reach the site the file is opened from. The recordings page always sandboxes them |
 
 #### Credentials in recordings
@@ -134,7 +138,7 @@ below add the other parts.
 
 | Setting | Default | Notes | Popup checkbox |
 |---|---|---|---|
-| Who can capture other users' server data | admins only | Who may tick **All server log lines** and keep a ZIP's server data on import | |
+| Who can capture other users' server data | Is Admin (admins only; empty = the same) | Who may tick **All server log lines** and keep a ZIP's server data on import | |
 | Max size of system logs per node per recording (MB) | 20 | Later lines are dropped and the viewer says so | |
 | Delete server data not uploaded after (days) | 7 | | |
 | Allow capturing server load | No | | **Capture server load** |
@@ -142,7 +146,7 @@ below add the other parts.
 | Allow capturing other users' traces | No | Needs the setting above. Other users' SQL with values and URLs | **Include other users' traces** |
 | Allow capturing Glowroot data | No | Needs Glowroot 0.14 | **Capture Glowroot data** |
 | Glowroot address | empty | Empty = this Joget's own agent (usually `http://localhost:4000`) | |
-| More secret names to mask in System Info | empty | Words, `*` wildcard. Added to the built-in names, which are always masked; see [Sensitive data](#sensitive-data-in-system-info) | |
+| Secret names to mask in System Info | the list below | One per line; `pass*` = starts with, `*key` = ends with. Empty = the default list; see [Sensitive data](#sensitive-data-in-system-info) | |
 
 ### Support data
 
@@ -156,7 +160,7 @@ below add the other parts.
 | Allow capturing apps data | No | Needs **Allow exporting the apps used…**; see [Apps data](#apps-data) | **Capture apps data** |
 | Allow masking apps data | No | Shown when apps data is allowed | **Mask data** |
 | Newest rows per table when the recording touched none | 20 | Shown when apps data is allowed. At most 500 | |
-| Always-masked column names | password, ic, email, phone, address… | Shown when apps data is allowed. Words in column names; always masked | |
+| Always-masked column names | password, ic, email, phone, address… | Shown when apps data is allowed. One word per line; a column whose name has one as a word is always masked. Empty = the default list | |
 
 ### Who sees what
 
@@ -237,10 +241,11 @@ keeps the license table as System Info shows it.
 
 JVM arguments, system properties, the datasource file and pool settings are masked as `****` when:
 
-- **the name** contains a built-in word: `password`, `passwd`, `passphrase`, `pwd`, `secret`, `token`, `api key`,
-  `access key`, `private key`, `client secret`, `auth key`, `credential`, `signing key`, `encryption key`, `salt`,
-  `cert`, or starts or ends with `pass` or `key` (`smtp.pass`, `platform.systemKey`); or a word from **More secret
-  names to mask in System Info**. Built-in words can't be turned off.
+- **the name** matches a line in **Secret names to mask in System Info** (one name per line; commas also separate). A word matches anywhere in the name; `*`
+  matches anything, so `pass*` matches names that start with `pass` and `*key` names that end with `key`. The default
+  list, one per line: `password, passwd, passphrase, pwd, secret, token, api*key, access*key, private*key, client*secret, auth*key,
+  credential, signing*key, encryption*key, salt, cert, pass*, *pass, _pass_, key*, *key` (`smtp.pass`,
+  `platform.systemKey`). An admin can remove words from it; empty means the default list.
 - **the value** looks like a secret, whatever its name: `user:password@` in a URL, `Bearer`/`Basic` tokens, JWTs,
   private keys, Joget-encrypted passwords (`%%%%…%%%%`), AWS, GitHub, Slack, Google and OpenAI-style keys, and
   `name=value` pairs with a secret name inside a longer value (`user=root;pwd=****`).

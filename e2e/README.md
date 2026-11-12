@@ -28,7 +28,7 @@ server data**.
 | `BB_USER` | `admin` | |
 | `BB_PASSWORD` | the user name | Local test servers use the user name as password |
 | `BB_INCOGNITO_USER` | `cat` | The user `incognito.spec.js` logs in as in the incognito window (password = user name) |
-| `BB_EXTENSION` | `../chrome-extension` | The extension to load. It must have this repo's manifest `key` (ID `anmfmkacddnmmgdcnkgkfjhagnilmkmp`): any other ID, like the released 1.2.0's unpacked, is refused unless **Allowed extension IDs** is emptied |
+| `BB_EXTENSION` | `../chrome-extension` | The extension to load. It must have this repo's manifest `key` (ID `anmfmkacddnmmgdcnkgkfjhagnilmkmp`): any other ID, like the released 1.2.0's unpacked, is refused unless **Allowed Chrome extension IDs** is emptied |
 | `BB_CONTAINER`, `BB_WFLOW` | `j8213`, `/opt/wflow` | Where `legacy-names.spec.js` edits a `meta.json` (`docker exec`) |
 | `BB_DB_CONTAINER`, `BB_DB` | `mariadb`, `jw8` | Where `export-import.spec.js`, `glowroot-standalone.spec.js` and `other-traces.spec.js` read and lock iService's tables (`docker exec`) |
 | `BB_OTHER_USER`, `BB_OTHER_PASSWORD` | `BB_USER`, the user name | The second session in `other-traces.spec.js` (must be able to read iService's list: not `cat`) |
@@ -114,6 +114,10 @@ server data**.
   its Theme and Text size pickers (kept after a reload and shared with the standalone viewer), the standalone viewer (`dist/blackbox-viewer.html`) with the server ZIP and with `session.json`, Import ZIP in the
   extension, and the extension's Download ZIP imported on the server. About 6 minutes (each ZIP waits for Glowroot data).
 
+- `tests/server-recordings.spec.js`: in a fresh profile (another computer), the Recordings page lists the user's own
+  recording that was uploaded straight to the server, once, marked **Not in this browser**, with its link from the `list`
+  API's `url` and no batch actions; one uploaded from this browser shows only as upload history; logged out, a
+  "Log in to …" note links to the server's `/blackbox/` page.
 - `tests/glowroot-standalone.spec.js`: a recording (quick settings: Glowroot trace files and data on) whose tab makes
   one slow request (a datalist read while the test holds a table lock for 4 s) and one failed one (a form load whose
   waiting query is killed: 500). BlackBox saves both traces; **Download Glowroot data** equals `glowroot/<node>.zip` in
