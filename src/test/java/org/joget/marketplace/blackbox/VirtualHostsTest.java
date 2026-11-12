@@ -67,6 +67,36 @@ public class VirtualHostsTest {
     }
 
     @Test
+    public void withoutTheOptInACaptureStartedBeforeGetsNoGlowrootDataNorOtherTraces() throws Exception {
+        String id = "00000000-0000-4000-8000-0000000000cc";
+        java.util.function.BooleanSupplier real = BlackBoxPlugin.glowrootShared;
+        BlackBoxPlugin.glowrootShared = () -> false; // virtual hosts, no -Dblackbox.sharedGlowroot (e.g. removed)
+        try {
+            ProfileDir.in(b, () -> {
+                ServerCaptureStore store = ServerCapture.store();
+                assertTrue(store.start(id, "admin", 1 << 20, 60_000, true, "", false, true, false, 0, true));
+                java.lang.reflect.Method copy = TraceCollector.class.getDeclaredMethod("copyOthers", String.class,
+                        org.json.JSONObject.class);
+                copy.setAccessible(true);
+                copy.invoke(null, id, store.readMeta(id));
+                java.lang.reflect.Method build = GlowrootPackager.class.getDeclaredMethod("build", String.class, long.class, long.class);
+                build.setAccessible(true);
+                GlowrootPackager.start(); // build() checks it is not stopping
+                build.invoke(null, id, 1L, 2L);
+            });
+            JSONArray notes = traces(b, id);
+            assertEquals("none", notes.getJSONObject(0).getString("state"));
+            assertTrue(notes.getJSONObject(0).getString("reason"), notes.getJSONObject(0).getString("reason").contains("sharedGlowroot"));
+            JSONArray status = GlowrootData.statuses(b.resolve("pending").resolve(id));
+            assertEquals("failed", status.getJSONObject(0).getString("state"));
+            assertTrue(status.getJSONObject(0).getString("reason").contains("sharedGlowroot"));
+        } finally {
+            BlackBoxPlugin.glowrootShared = real;
+            GlowrootPackager.stop();
+        }
+    }
+
+    @Test
     public void inPutsThePreviousFolderBack() throws Exception {
         Path outside = ProfileDir.current();
         ProfileDir.in(a, () -> {

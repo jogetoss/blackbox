@@ -344,8 +344,11 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
   guarded in cloud installs). Glowroot is one agent per JVM, so other users' traces and Glowroot data hold every
   profile's requests: with virtual hosts the plugin offers them (`me`) and starts them (`recording-start`) only when
   the server sets `-Dblackbox.sharedGlowroot=true` (`BlackBoxPlugin.glowrootShared`), never on a tenant admin's setting.
-  Recovery runs for each profile on its own, so one unreadable folder doesn't stop the
-  others. The server load sample is the JVM's and the server's, the same for every profile: Community and Enterprise
+  The build and the copy check it again, so a capture started before a restart without the opt-in (or watched again
+  after one) ends "failed" or with a note instead. Each profile, capture and running request is handled on its own
+  (`ProfileDir.safely`): one unreadable folder or refused file access is logged and stops neither the others nor the
+  scheduled job. Cloud installs (`MultiTenantSecurityManager`) may refuse a background thread's access to another
+  profile's folder; this, like the liveness check, is untested there. The server load sample is the JVM's and the server's, the same for every profile: Community and Enterprise
   have one database pool; cloud installs keep one per profile, which the strip doesn't show.
 - **Viewing a trace:** `trace&file=…` serves Glowroot's page with `Content-Security-Policy: sandbox allow-scripts
   allow-popups` and `Referrer-Policy: no-referrer`, so its script runs without access to Joget's cookies or pages. It

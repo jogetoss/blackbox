@@ -90,8 +90,8 @@ final class TraceCollector {
         jobs.scheduleWithFixedDelay(TraceCollector::heartbeat, 2, 2, TimeUnit.SECONDS);
         jobs.scheduleWithFixedDelay(() -> COUNTS.clear(), 1, 1, TimeUnit.DAYS);
         jobs.scheduleWithFixedDelay(() -> {
-            for (Path d : ServerCapture.checkDirs.get()) { // every profile's retry requests (virtual hosts)
-                ProfileDir.in(d, TraceCollector::retryScan);
+            for (Path d : ProfileDir.all(TraceCollector.class)) { // every profile's retry requests (virtual hosts)
+                ProfileDir.safely(TraceCollector.class, "read the trace retry requests", d, TraceCollector::retryScan);
             }
         }, RETRY_SCAN_S, RETRY_SCAN_S, TimeUnit.SECONDS);
         othersJobs = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -101,12 +101,9 @@ final class TraceCollector {
         });
         othersJobs.schedule(() -> {
             long now = System.currentTimeMillis();
-            for (Path d : ServerCapture.checkDirs.get()) { // every profile's (virtual hosts); one bad one stops no other
-                try {
-                    ProfileDir.in(d, () -> recoverOthers(ServerCapture.store(), d, now));
-                } catch (IOException | RuntimeException e) {
-                    LogUtil.warn(TraceCollector.class.getName(), "Could not check for other users' traces still to copy in " + d + ": " + e);
-                }
+            for (Path d : ProfileDir.all(TraceCollector.class)) { // every profile's (virtual hosts); one bad one stops no other
+                ProfileDir.safely(TraceCollector.class, "check for other users' traces still to copy", d,
+                        () -> recoverOthers(ServerCapture.store(), d, now));
             }
         }, 1, TimeUnit.SECONDS);
         othersJobs.scheduleWithFixedDelay(TraceCollector::othersTick, 10, 10, TimeUnit.SECONDS);
@@ -143,7 +140,8 @@ final class TraceCollector {
         for (Map.Entry<String, ProfileDir.Watch> w : OTHERS.entrySet()) {
             String id = w.getKey();
             if (now - OTHERS_NOTED.getOrDefault(id, 0L) >= OTHERS_NOTE_EVERY_MS) {
-                ProfileDir.in(w.getValue().dir, () -> noteOthers(id, now));
+                ProfileDir.safely(TraceCollector.class, "keep the other traces' note of capture " + id + " fresh", w.getValue().dir,
+                        () -> noteOthers(id, now));
             }
         }
     }
@@ -191,8 +189,8 @@ final class TraceCollector {
         for (Map.Entry<String, ProfileDir.Watch> w : OTHERS.entrySet()) {
             String id = w.getKey();
             ProfileDir.Watch watch = w.getValue();
-            ProfileDir.in(watch.dir, () -> { // the capture's profile (virtual hosts)
-                JSONObject meta = ServerCapture.store().readMeta(id);
+            ProfileDir.safely(TraceCollector.class, "check capture " + id + " for other users' traces", watch.dir, () -> {
+                JSONObject meta = ServerCapture.store().readMeta(id); // in the capture's profile (virtual hosts)
                 if (meta == null) {
                     OTHERS.remove(id); // expired or deleted
                     OTHERS_NOTED.remove(id);
@@ -210,7 +208,8 @@ final class TraceCollector {
         }
         refreshNotes(now);
         if (due[0] != null) {
-            ProfileDir.in(dueDir[0], () -> copyDue(due[0], dueMeta[0]));
+            ProfileDir.safely(TraceCollector.class, "copy the other users' traces of capture " + due[0], dueDir[0],
+                    () -> copyDue(due[0], dueMeta[0]));
         }
     }
 
@@ -236,6 +235,11 @@ final class TraceCollector {
      * lists them apart, never as the trace of a recorded request.
      */
     private static void copyOthers(String id, JSONObject meta) throws IOException {
+        if (!BlackBoxPlugin.glowrootShared.getAsBoolean()) { // e.g. started before a restart without the opt-in
+            writeOther(id, otherNote(id, "none", "With virtual hosts, other users' traces need the server started with -D"
+                    + BlackBoxPlugin.SHARED_GLOWROOT + "=true: Glowroot holds every profile's requests"));
+            return;
+        }
         GlowrootClient g = client(meta.optString("glowrootUrl"));
         if (g == null) {
             writeOther(id, otherNote(id, "failed", "Glowroot is not running on " + NODE));
@@ -409,7 +413,7 @@ final class TraceCollector {
             if (now - r.lastWritten < HEARTBEAT_MS || now - r.start < threshold(r)) {
                 continue;
             }
-            ProfileDir.in(r.base, () -> { // the request's profile (virtual hosts)
+            ProfileDir.safely(TraceCollector.class, "list a running request", r.base, () -> { // the request's profile
                 if (r.lastWritten == 0 && !reserve(r)) {
                     RUNNING.remove(r);
                     return;

@@ -59,12 +59,9 @@ final class GlowrootPackager {
         });
         jobs.schedule(() -> {
             long now = System.currentTimeMillis();
-            for (Path d : ServerCapture.checkDirs.get()) { // every profile's (virtual hosts); one bad one stops no other
-                try {
-                    ProfileDir.in(d, () -> recover(ServerCapture.store(), BlackBoxPlugin.store(), d, NODE, now));
-                } catch (IOException | RuntimeException e) { // JSONException is a RuntimeException
-                    LogUtil.warn(GlowrootPackager.class.getName(), "Could not check for unfinished Glowroot data packages in " + d + ": " + e);
-                }
+            for (Path d : ProfileDir.all(GlowrootPackager.class)) { // every profile's (virtual hosts); one bad one stops no other
+                ProfileDir.safely(GlowrootPackager.class, "check for unfinished Glowroot data packages", d,
+                        () -> recover(ServerCapture.store(), BlackBoxPlugin.store(), d, NODE, now));
             }
         }, 1, TimeUnit.SECONDS);
         jobs.scheduleWithFixedDelay(GlowrootPackager::tick, TICK_S, TICK_S, TimeUnit.SECONDS);
@@ -184,7 +181,8 @@ final class GlowrootPackager {
         for (Map.Entry<String, ProfileDir.Watch> e : WATCHED.entrySet()) {
             String id = e.getKey();
             ProfileDir.Watch watch = e.getValue();
-            ProfileDir.in(watch.dir, () -> tick(id, watch.since, now)); // the capture's profile (virtual hosts)
+            ProfileDir.safely(GlowrootPackager.class, "check the Glowroot data of capture " + id, watch.dir,
+                    () -> tick(id, watch.since, now)); // in the capture's profile (virtual hosts)
         }
     }
 
@@ -208,6 +206,11 @@ final class GlowrootPackager {
     }
 
     private static void build(String id, long from, long to) {
+        if (!BlackBoxPlugin.glowrootShared.getAsBoolean()) { // e.g. started (or left waiting) before a restart without the opt-in
+            status(id, "failed", "With virtual hosts, Glowroot data needs the server started with -D"
+                    + BlackBoxPlugin.SHARED_GLOWROOT + "=true: Glowroot holds every profile's requests", null);
+            return;
+        }
         status(id, "building", "Cutting the recording out of Glowroot's data", null);
         Path work = null;
         try {

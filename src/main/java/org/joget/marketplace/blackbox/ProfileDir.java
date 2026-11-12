@@ -2,6 +2,7 @@ package org.joget.marketplace.blackbox;
 
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import org.joget.commons.util.LogUtil;
 import org.joget.commons.util.SetupManager;
 
 /**
@@ -40,6 +41,28 @@ final class ProfileDir {
     static Path current() {
         Path dir = CURRENT.get();
         return dir != null ? dir : Paths.get(SetupManager.getBaseDirectory(), "blackbox");
+    }
+
+    /**
+     * {@link #in}, logging what fails instead of throwing: one capture or profile (an unreadable folder, a file access
+     * a cloud install refuses) must not end a scheduled job, which would then never run again.
+     */
+    static void safely(Class<?> who, String what, Path dir, Work<? extends Exception> work) {
+        try {
+            in(dir, work);
+        } catch (Exception | LinkageError e) {
+            LogUtil.warn(who.getName(), "Could not " + what + (dir != null ? " in " + dir : "") + ": " + e);
+        }
+    }
+
+    /** Every profile's blackbox folder (ServerCapture.checkDirs); none when they can't be listed. */
+    static java.util.List<Path> all(Class<?> who) {
+        try {
+            return ServerCapture.checkDirs.get();
+        } catch (RuntimeException e) {
+            LogUtil.warn(who.getName(), "Could not list the profiles' blackbox folders: " + e);
+            return java.util.Collections.emptyList();
+        }
     }
 
     /** Runs work with {@link #current()} set to dir (null: unchanged), then puts the previous one back. */
