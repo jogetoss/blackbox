@@ -23,6 +23,7 @@ import org.joget.apps.userview.model.UserviewSetting;
 import org.joget.apps.userview.service.UserviewService;
 import org.joget.directory.model.Group;
 import org.joget.directory.model.service.DirectoryManager;
+import org.joget.commons.util.HostManager;
 import org.joget.commons.util.LogUtil;
 import org.joget.commons.util.SecurityUtil;
 import org.joget.commons.util.SetupManager;
@@ -641,6 +642,18 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     static final int DEFAULT_MAX_OPEN_CAPTURES = 3;
     /** "Allow capturing other users' traces": a recording may copy every trace on the nodes it reaches (opt-in per recording). */
     static final String OTHER_TRACES = "allowCaptureOtherUsersTraces";
+    /**
+     * JVM system property: with virtual hosts, lets every profile use other users' traces and Glowroot data. Glowroot is
+     * one agent per JVM, so both hold every profile's requests; only whoever runs the server can allow that.
+     */
+    static final String SHARED_GLOWROOT = "blackbox.sharedGlowroot";
+    /** Whether Glowroot's data may go into a recording: no virtual hosts, or the server allows it (SHARED_GLOWROOT). */
+    static java.util.function.BooleanSupplier glowrootShared = () -> glowrootShared(HostManager.isVirtualHostEnabled(),
+            System.getProperty(SHARED_GLOWROOT));
+
+    static boolean glowrootShared(boolean virtualHosts, String property) {
+        return !virtualHosts || "true".equalsIgnoreCase(property == null ? "" : property.trim());
+    }
     static final long DEFAULT_USER_QUOTA_MB = 10240;
     static final StartLimiter STARTS = new StartLimiter();
 
@@ -756,12 +769,14 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         // glowrootData=false)
         boolean traces = access.mayCapture("allowCaptureTraces") && !"false".equals(request.getParameter("traces"));
         boolean gauges = access.mayCapture("allowCaptureGauges") && !"false".equals(request.getParameter("gauges"));
-        boolean glowrootData = access.mayCapture("allowCaptureGlowrootData") && !"false".equals(request.getParameter("glowrootData"));
+        boolean glowrootData = access.mayCapture("allowCaptureGlowrootData") && glowrootShared.getAsBoolean()
+                && !"false".equals(request.getParameter("glowrootData"));
         // Log lines not from this recording: the recorder's choice (allServer=true), only for users with
         // "Who can capture server data", since the lines hold other users' data
         boolean allServer = access.canCaptureServerData() && "true".equals(request.getParameter("allServer"));
         // Other users' traces: opt-in per recording (otherTraces=true), with traces, when the admin allows it
-        boolean otherTraces = traces && access.mayCapture(OTHER_TRACES) && "true".equals(request.getParameter("otherTraces"));
+        boolean otherTraces = traces && access.mayCapture(OTHER_TRACES) && glowrootShared.getAsBoolean()
+                && "true".equals(request.getParameter("otherTraces"));
         if (!ServerCapture.store().start(id, access.user.getUsername(), maxBytes, keepMs, traces, getPropertyString("glowrootUrl"), gauges,
                 glowrootData, allServer, maxRecordingMs, otherTraces)) {
             error(response, HttpServletResponse.SC_CONFLICT, "This server capture id is already in use.");
@@ -1192,8 +1207,10 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 .put("allServer", access.canCaptureServerData()) // opt-in per recording (allServer=true)
                 .put("gauges", access.mayCapture("allowCaptureGauges"))
                 .put("traces", access.mayCapture("allowCaptureTraces"))
-                .put("otherTraces", access.mayCapture("allowCaptureTraces") && access.mayCapture(OTHER_TRACES)) // opt-in
-                .put("glowrootData", access.mayCapture("allowCaptureGlowrootData"))
+                // Glowroot's whole-JVM data: with virtual hosts only when the server allows it (SHARED_GLOWROOT)
+                .put("otherTraces", access.mayCapture("allowCaptureTraces") && access.mayCapture(OTHER_TRACES)
+                        && glowrootShared.getAsBoolean()) // opt-in
+                .put("glowrootData", access.mayCapture("allowCaptureGlowrootData") && glowrootShared.getAsBoolean())
                 // Record passwords and tokens unmasked: admins always, others when allowed; the box starts unticked
                 .put("credentials", access.allows("allowUnmaskedCredentials", false));
     }

@@ -341,8 +341,12 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
   and the retry folder resolve through it. Work that belongs to no request goes through every profile's folder by path
   (`ServerCapture.checkDirs`): restart recovery of other users' traces and Glowroot data, and the trace retry
   requests. Like the liveness check, it doesn't switch the thread's Joget profile (`HostManager.setCurrentProfile` is
-  guarded in cloud installs). The server load sample is the JVM's and the server's (one database pool on Community and
-  Enterprise), the same for every profile.
+  guarded in cloud installs). Glowroot is one agent per JVM, so other users' traces and Glowroot data hold every
+  profile's requests: with virtual hosts the plugin offers them (`me`) and starts them (`recording-start`) only when
+  the server sets `-Dblackbox.sharedGlowroot=true` (`BlackBoxPlugin.glowrootShared`), never on a tenant admin's setting.
+  Recovery runs for each profile on its own, so one unreadable folder doesn't stop the
+  others. The server load sample is the JVM's and the server's, the same for every profile: Community and Enterprise
+  have one database pool; cloud installs keep one per profile, which the strip doesn't show.
 - **Viewing a trace:** `trace&file=…` serves Glowroot's page with `Content-Security-Policy: sandbox allow-scripts
   allow-popups` and `Referrer-Policy: no-referrer`, so its script runs without access to Joget's cookies or pages. It
   loads Google Fonts and Font Awesome from the internet.

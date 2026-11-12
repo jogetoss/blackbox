@@ -100,13 +100,13 @@ final class TraceCollector {
             return t;
         });
         othersJobs.schedule(() -> {
-            try {
-                long now = System.currentTimeMillis();
-                for (Path d : ServerCapture.checkDirs.get()) { // every profile's (virtual hosts)
+            long now = System.currentTimeMillis();
+            for (Path d : ServerCapture.checkDirs.get()) { // every profile's (virtual hosts); one bad one stops no other
+                try {
                     ProfileDir.in(d, () -> recoverOthers(ServerCapture.store(), d, now));
+                } catch (IOException | RuntimeException e) {
+                    LogUtil.warn(TraceCollector.class.getName(), "Could not check for other users' traces still to copy in " + d + ": " + e);
                 }
-            } catch (IOException | RuntimeException e) {
-                LogUtil.warn(TraceCollector.class.getName(), "Could not check for other users' traces still to copy: " + e);
             }
         }, 1, TimeUnit.SECONDS);
         othersJobs.scheduleWithFixedDelay(TraceCollector::othersTick, 10, 10, TimeUnit.SECONDS);
@@ -596,7 +596,8 @@ final class TraceCollector {
         }
         ScheduledExecutorService ex = jobs;
         if (ex != null && byNode.containsKey(NODE)) {
-            ex.execute(TraceCollector::retryScan); // this node's own: no need to wait for the next scan
+            Path profile = ProfileDir.current(); // the request's: the scan runs on the traces thread
+            ex.execute(() -> ProfileDir.in(profile, TraceCollector::retryScan)); // this node's own: no need to wait
         }
         int n = 0;
         for (Set<String> k : byNode.values()) {

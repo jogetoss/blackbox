@@ -58,13 +58,13 @@ final class GlowrootPackager {
             return t;
         });
         jobs.schedule(() -> {
-            try {
-                long now = System.currentTimeMillis();
-                for (Path d : ServerCapture.checkDirs.get()) { // every profile's (virtual hosts)
+            long now = System.currentTimeMillis();
+            for (Path d : ServerCapture.checkDirs.get()) { // every profile's (virtual hosts); one bad one stops no other
+                try {
                     ProfileDir.in(d, () -> recover(ServerCapture.store(), BlackBoxPlugin.store(), d, NODE, now));
+                } catch (IOException | RuntimeException e) { // JSONException is a RuntimeException
+                    LogUtil.warn(GlowrootPackager.class.getName(), "Could not check for unfinished Glowroot data packages in " + d + ": " + e);
                 }
-            } catch (IOException | RuntimeException e) { // JSONException is a RuntimeException
-                LogUtil.warn(GlowrootPackager.class.getName(), "Could not check for unfinished Glowroot data packages: " + e);
             }
         }, 1, TimeUnit.SECONDS);
         jobs.scheduleWithFixedDelay(GlowrootPackager::tick, TICK_S, TICK_S, TimeUnit.SECONDS);

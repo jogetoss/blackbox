@@ -59,6 +59,14 @@ public class VirtualHostsTest {
     }
 
     @Test
+    public void glowrootsWholeJvmDataNeedsTheServersOptInWithVirtualHosts() {
+        assertTrue("no virtual hosts: as before", BlackBoxPlugin.glowrootShared(false, null));
+        assertFalse("virtual hosts: every profile's requests, so off", BlackBoxPlugin.glowrootShared(true, null));
+        assertFalse(BlackBoxPlugin.glowrootShared(true, "yes"));
+        assertTrue("-Dblackbox.sharedGlowroot=true", BlackBoxPlugin.glowrootShared(true, " TRUE "));
+    }
+
+    @Test
     public void inPutsThePreviousFolderBack() throws Exception {
         Path outside = ProfileDir.current();
         ProfileDir.in(a, () -> {

@@ -28,6 +28,11 @@ same version.
 **Failed trace lookups of recordings made with 8.2.2 or older lose their Retry button.** Their entries don't carry
 the recording's Glowroot tag, which a trace must now have to be matched. Traces already copied stay.
 
+**With virtual hosts on, Capture Glowroot data is off in every profile** unless the server is started with
+`-Dblackbox.sharedGlowroot=true` (the same goes for the new **Include other users' traces**). Glowroot is one agent per
+JVM, so its data holds every profile's requests. Traces, Glowroot data and server load are now saved for each
+profile's own recordings, not only the profile the plugin started in.
+
 ### From 8.2.1
 
 **The plugin settings were reorganised; renamed and removed settings lose their values.** After the upgrade they fall
@@ -174,8 +179,8 @@ automatic uploads use them too. The server checks every choice again.
 | **All server log lines** | The user is in **Who can capture other users' server data** |
 | **Capture server load** | Admins always; others when **Allow capturing server load** is on |
 | **Capture Glowroot trace files** | Admins always; others when **Allow capturing Glowroot traces of slow and failed requests** is on |
-| **Include other users' traces** | Admins always; others when **Allow capturing other users' traces** is on too. Needs **Capture Glowroot trace files** ticked |
-| **Capture Glowroot data** | Admins always; others when **Allow capturing Glowroot data** is on |
+| **Include other users' traces** | Admins always; others when **Allow capturing other users' traces** is on too. Needs **Capture Glowroot trace files** ticked. With virtual hosts on, only when the server is started with `-Dblackbox.sharedGlowroot=true` |
+| **Capture Glowroot data** | Admins always; others when **Allow capturing Glowroot data** is on. With virtual hosts on, only when the server is started with `-Dblackbox.sharedGlowroot=true` |
 | **Record passwords and tokens unmasked** | Admins always; others when **Allow recording passwords and tokens unmasked** is on. Unticked: credentials are masked |
 
 - A ticked box asks for that part for this recording; the settings and the user's rights decide which boxes show.
@@ -203,7 +208,8 @@ Shown on the replay page and in the ZIP and HTML downloads, to everyone who can 
   (up to 200 per node, and what a slow Glowroot gives within 5 minutes), with the user when Glowroot records it: set
   its Servlet plugin's **Session user attribute** to `SPRING_SECURITY_CONTEXT.authentication.name` (empty by default:
   shown as "user unknown"). A note in that list says when they are still coming and how many were copied. Listed under the Traces filter **Other users' traces**, never as a recorded
-  request's trace. With **Capture Glowroot data**, the downloaded data keeps all traces of that time too.
+  request's trace. With **Capture Glowroot data**, the downloaded data keeps all traces of that time too. With
+  virtual hosts both hold every profile's requests on the node, so they need the server's opt-in (see the table above).
 - **Download Glowroot data**: the recording's slice of Glowroot's data, ready 30–90 s after the stop, to open in a
   standalone Glowroot 0.14.2 (see its `README.txt`). About 1 MB for 35 s. Building it needs free temp space about the
   size of Glowroot's `data.h2.db`.
