@@ -274,9 +274,12 @@ capture's meta): log lines not from the recording. While such a
 capture is open on a node, the appender also writes every other thread's events
 to it with `"other": true` (no `req`), including tagged requests of other recordings. Nodes write it once the capture
 is open there (the starting node, and any node that served one of its requests). With virtual hosts, only lines of
-threads in the capture's own profile: `recording-start` saves the request's profile in the meta (`profile`), and the
-appender compares it with the logging thread's `HostManager.getCurrentProfile()` (a plain thread-local read). A thread
-whose profile isn't set, or a capture without `profile` (started by 8.2.2), gets no other lines. `summary` counts those lines as
+HTTP requests to the capture's own profile: `recording-start` saves the request's profile in the meta (`profile`);
+`ServerCaptureFilter` (every request) sets a BlackBox thread-local to the request's profile
+(`DynamicDataSourceManager.getCurrentProfile()`, `ServerCapture.enterRequest`), and the appender compares the two.
+Joget's own profile thread-local is inheritable, and shared background threads (the FileManager temp cleaner, pool
+workers) keep a borrowed profile while working for every profile, so lines outside a request (no BlackBox profile) are
+left out, as is every line for a capture without `profile` (started by 8.2.2). `summary` counts those lines as
 `otherEntries`, not as entries or errors.
 
 Log4j 2 is not visible to plugin bundles (OSGi exports neither `org.apache.logging.log4j` nor `org.apache.log4j`),

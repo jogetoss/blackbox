@@ -31,8 +31,9 @@ the recording's Glowroot tag, which a trace must now have to be matched. Traces 
 **With virtual hosts on, Capture Glowroot data is off in every profile** unless the server is started with
 `-Dblackbox.sharedGlowroot=true` (the same goes for the new **Include other users' traces**). Glowroot is one agent per
 JVM, so its data holds every profile's requests. Only the server's start command counts: setting the property at run
-time (for example from a tenant's script) is ignored. **All server log lines** now keeps only the lines of the
-recording's own profile. Traces, Glowroot data and server load are now saved for each profile's own recordings, not
+time (for example from a tenant's script) is ignored. With virtual hosts on, **All server log lines** now keeps only the lines of
+the recording's own profile's requests (no background jobs); a recording started before the upgrade gets no other
+lines from then on. Traces, Glowroot data and server load are now saved for each profile's own recordings, not
 only the profile the plugin started in.
 
 ### From 8.2.1
@@ -198,8 +199,9 @@ Shown on the replay page and in the ZIP and HTML downloads, to everyone who can 
   tab's requests, plus one entry per request, lined up with the video; a network request's details show its own lines.
   Not captured: work a request hands to another thread.
 - **Other server threads** (popup's **All server log lines**): every other log line during the recording
-  (scheduler, email, other users) on the nodes the recording reached. With virtual hosts on, only the lines of the
-  recording's own profile (the profile of the thread that logs them). Greyed under the filter **This tab + other
+  (scheduler, email, other users) on the nodes the recording reached. With virtual hosts on, only the lines of
+  requests to the recording's own profile: background threads (scheduler, email, cleanup) are left out, since Joget
+  shares them between profiles. Greyed under the filter **This tab + other
   server threads**, not counted as errors.
 - **Traces** tab: the [Glowroot](https://glowroot.org) trace of each recorded request Glowroot kept (slow or failed,
   by Glowroot's own settings), and of each one that logged an ERROR, even when it was fast and returned 200 (BlackBox

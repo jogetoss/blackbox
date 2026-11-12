@@ -686,8 +686,10 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
      * profile checks off by clearing the property.
      */
     static boolean virtualHosts() {
-        return HostManager.isVirtualHostEnabled() || isTrue(startArg(START_ARGS, HostManager.SYSTEM_PROPERTY_VIRTUALHOST));
+        return VIRTUAL_HOSTS_STARTED || HostManager.isVirtualHostEnabled();
     }
+
+    private static final boolean VIRTUAL_HOSTS_STARTED = isTrue(startArg(START_ARGS, HostManager.SYSTEM_PROPERTY_VIRTUALHOST));
 
     /** Whether Glowroot's data may go into a recording: no virtual hosts, or the server allows it (SHARED_GLOWROOT). */
     static java.util.function.BooleanSupplier glowrootShared = () -> glowrootShared(virtualHosts(),

@@ -25,6 +25,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
+import org.joget.commons.util.DynamicDataSourceManager;
 import org.joget.commons.util.HostManager;
 import org.joget.commons.util.LogUtil;
 import org.joget.commons.util.SetupManager;
@@ -44,7 +45,9 @@ import org.json.JSONObject;
  * Not captured: work a request hands to other threads, and log levels below the root logger's level (info). A capture
  * started with allServer also keeps every other thread's lines (marked "other": scheduler, email, other users) on the
  * nodes where it is open: the node that started it and those that served one of its requests. With virtual hosts, only
- * the lines of threads in the capture's own profile ({@link #PROFILE}): the others are other tenants'.
+ * the lines of HTTP requests of the capture's own profile ({@link #PROFILE}, {@link #enterRequest}): Joget's shared
+ * background threads keep whichever profile they inherited while they work for every tenant, so their lines are left
+ * out.
  */
 final class ServerCapture {
 
@@ -61,6 +64,7 @@ final class ServerCapture {
 
     private static final ThreadLocal<Request> CURRENT = new ThreadLocal<>();
     private static final ThreadLocal<Boolean> APPENDING = new ThreadLocal<>();
+    private static final ThreadLocal<String> REQUEST_PROFILE = new ThreadLocal<>(); // set by enterRequest (virtual hosts)
     private static final Map<String, Capture> OPEN = new ConcurrentHashMap<>();
     private static final Map<String, Long> MISSES = new ConcurrentHashMap<>();
     private static volatile Capture[] allServer = new Capture[0]; // open captures that keep every thread's lines
@@ -194,6 +198,44 @@ final class ServerCapture {
 
     private static synchronized void updateAllServer() {
         allServer = OPEN.values().stream().filter(c -> c.allServer).toArray(Capture[]::new);
+    }
+
+    /**
+     * With virtual hosts: the current thread now serves an HTTP request (ServerCaptureFilter, every request), whose
+     * profile Joget resolved for this request. Returns what to pass to {@link #leaveRequest}.
+     */
+    static String enterRequest() {
+        String prev = REQUEST_PROFILE.get();
+        if (BlackBoxPlugin.virtualHosts()) {
+            String profile = null;
+            try {
+                profile = requestProfiles.get();
+            } catch (RuntimeException e) {
+                // unknown: its lines stay out of other recordings
+            }
+            if (profile == null) {
+                REQUEST_PROFILE.remove();
+            } else {
+                REQUEST_PROFILE.set(profile);
+            }
+        }
+        return prev;
+    }
+
+    /** Joget's profile of the current request (a seam for tests). */
+    static Supplier<String> requestProfiles = DynamicDataSourceManager::getCurrentProfile;
+
+    /** The profile enterRequest set on this thread: null outside an HTTP request or without virtual hosts. */
+    static String requestProfile() {
+        return REQUEST_PROFILE.get();
+    }
+
+    static void leaveRequest(String prev) {
+        if (prev == null) {
+            REQUEST_PROFILE.remove();
+        } else {
+            REQUEST_PROFILE.set(prev);
+        }
     }
 
     /** Marks the current thread as serving a tagged request. Returns what to pass to {@link #end}. */
@@ -368,8 +410,8 @@ final class ServerCapture {
     }
 
     /**
-     * With virtual hosts, whether a line of a thread in profile here may go into a capture of profile capture: only the
-     * same, known profile (a thread whose profile isn't set yet may serve any tenant).
+     * With virtual hosts, whether a line of a request in profile here may go into a capture of profile capture: only the
+     * same, known profile (here is null outside an HTTP request).
      */
     static boolean sameProfile(String capture, String here) {
         return capture != null && !capture.isEmpty() && capture.equals(here);
@@ -624,7 +666,7 @@ final class ServerCapture {
                     }
                 }
                 boolean virtualHosts = all.length > 0 && BlackBoxPlugin.virtualHosts();
-                String here = virtualHosts ? HostManager.getCurrentProfile() : null; // a plain read, no lookup
+                String here = virtualHosts ? requestProfile() : null; // null: not an HTTP request
                 for (Capture c : all) {
                     if ((r == null || c != r.capture) && (!virtualHosts || sameProfile(c.profile, here))) {
                         c.write(new JSONObject(e.toString()).put("other", true)); // not this recording's tab

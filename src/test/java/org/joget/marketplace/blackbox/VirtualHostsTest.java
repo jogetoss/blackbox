@@ -99,6 +99,24 @@ public class VirtualHostsTest {
         assertFalse("another tenant's thread", ServerCapture.sameProfile("tenant1", "tenant2"));
         assertFalse("a thread with no profile yet", ServerCapture.sameProfile("tenant1", null));
         assertFalse("a capture started by plugin 8.2.2: no profile recorded", ServerCapture.sameProfile(null, null));
+        // Only an HTTP request's own profile counts: a background thread (no request) has none
+        Supplier<String> realProfiles = ServerCapture.requestProfiles;
+        String vh = System.setProperty("wflow.virtualhost", "true");
+        ServerCapture.requestProfiles = () -> "tenant1";
+        try {
+            String outer = ServerCapture.enterRequest();
+            assertEquals("tenant1", ServerCapture.requestProfile());
+            String[] onThread = new String[] {"unset"};
+            Thread job = new Thread(() -> onThread[0] = ServerCapture.requestProfile()); // inherits nothing
+            job.start();
+            job.join();
+            assertNull("a background thread's lines stay out", onThread[0]);
+            ServerCapture.leaveRequest(outer);
+            assertNull(ServerCapture.requestProfile());
+        } finally {
+            ServerCapture.requestProfiles = realProfiles;
+            restore("wflow.virtualhost", vh);
+        }
         String id = "00000000-0000-4000-8000-0000000000ee";
         ProfileDir.in(a, () -> {
             ServerCaptureStore store = ServerCapture.store();

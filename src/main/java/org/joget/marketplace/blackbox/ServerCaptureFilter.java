@@ -64,7 +64,16 @@ public class ServerCaptureFilter extends PluginWebFilterAbstract {
 
     @Override
     public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain) throws IOException, ServletException {
-        HttpServletRequest request = (HttpServletRequest) req;
+        String profile = ServerCapture.enterRequest(); // with virtual hosts: this request's profile, for All server log lines
+        try {
+            capture((HttpServletRequest) req, res, chain);
+        } finally {
+            ServerCapture.leaveRequest(profile);
+        }
+    }
+
+    private void capture(HttpServletRequest request, ServletResponse res, FilterChain chain) throws IOException, ServletException {
+        ServletRequest req = request;
         String id = request.getHeader(ServerCapture.HEADER);
         ServerCapture.Capture capture = id == null ? null : ServerCapture.find(id);
         if (capture == null) {

@@ -16,7 +16,7 @@
         {
             "name" : "canCaptureServerData",
             "label" : "Who can capture other users' server data",
-            "description" : "Empty = admins only. Who may tick \"All server log lines\" in the extension's popup (every log line the server writes during the recording, also from other users' requests; with virtual hosts, only the recording's own profile) and keep a ZIP's server data on import (a ZIP can hold another user's recording). Everyone's own recordings always get, and show, their own server data.",
+            "description" : "Empty = admins only. Who may tick \"All server log lines\" in the extension's popup (every log line the server writes during the recording, also from other users' requests; with virtual hosts, only requests to the recording's own profile, no background jobs) and keep a ZIP's server data on import (a ZIP can hold another user's recording). Everyone's own recordings always get, and show, their own server data.",
             "type" : "elementselect",
             "options_ajax" : "[CONTEXT_PATH]/web/property/json/getElements?classname=org.joget.apps.form.model.FormPermission",
             "url" : "[CONTEXT_PATH]/web/property/json[APP_PATH]/getPropertyOptions"
