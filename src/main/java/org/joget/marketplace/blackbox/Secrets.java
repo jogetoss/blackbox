@@ -7,7 +7,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Masks secrets in the System Info snapshot: JVM arguments, system properties and the datasource file.
+ * Masks secrets in the System Info snapshot: JVM arguments, system properties and the datasource file. The license
+ * table has its own fixed list (ServerInfo.LICENSE_SECRETS).
  *
  * <p>The secret names are the admin's {@code secretNames} setting; empty means {@link #DEFAULT_NAMES}, the names of
  * joget-upgrade-advisor's {@code SecretMasker}. The value shapes come from SecretMasker too and are always applied.
@@ -22,7 +23,15 @@ final class Secrets {
      */
     static final String DEFAULT_NAMES = String.join("\n", "password", "passwd", "passphrase", "pwd", "secret", "token",
             "api*key", "access*key", "private*key", "client*secret", "auth*key", "credential", "signing*key",
-            "encryption*key", "salt", "cert", "pass*", "*pass", "_pass_", "key*", "*key");
+            "encryption*key", "salt", "cert", "pass*", "*pass", "_pass_", "key*", "*key",
+            "!wflow.systemkey"); // Enterprise's system key generator (-Dwflow.systemkey=Domain), not a secret
+
+    /**
+     * The default list before !wflow.systemkey was added (development builds after 8.2.2; no release has it). Those
+     * builds seeded the setting with it, so a saved list equal to it (same words, same order; case, spaces and blank
+     * lines aside) means the default.
+     */
+    static final String OLD_DEFAULT_NAMES = DEFAULT_NAMES.substring(0, DEFAULT_NAMES.lastIndexOf('\n'));
 
     /** Values that are secrets whatever their name (SecretMasker.TOKEN_SHAPES). */
     private static final Pattern[] TOKEN_SHAPES = {
@@ -50,28 +59,78 @@ final class Secrets {
     static final int MAX_NAMES = 100;
 
     private final List<Glob> names = new ArrayList<>();
+    private final List<Glob> notSecret = new ArrayList<>(); // !word lines: never a secret name, whatever matches
+    private final boolean on;
+
+    /**
+     * Only passwords, by name (password, passwd, passphrase, pwd, pass at either end) and by shape (user:password@ in a
+     * URL, ...): the database and pool sections when the rest is recorded unmasked, so the database password stays out.
+     */
+    static Secrets passwords() {
+        return new Secrets("password\npasswd\npassphrase\npwd\npass*\n*pass\n_pass_", true);
+    }
+
+    /** Masks nothing: System Info recorded unmasked (the popup's "Record System Info secrets unmasked"). */
+    static Secrets none() {
+        return new Secrets(null, false);
+    }
 
     /**
      * secretNames: one word per line (commas also separate); case doesn't matter. A word matches anywhere in the name;
      * {@code *} matches anything, so {@code pass*} matches names that start with pass and {@code *key} names that end
-     * with key. Null or empty: {@link #DEFAULT_NAMES}.
+     * with key. A line starting with {@code !} is an exception for one whole name: {@code !wflow.systemkey} matches that
+     * name only (not wflow.systemkey.password); {@code *} at an end leaves that end open ({@code !app.*}).
+     * Null or empty: {@link #DEFAULT_NAMES}.
      */
     Secrets(String secretNames) {
-        String list = secretNames == null || secretNames.trim().isEmpty() ? DEFAULT_NAMES : secretNames;
+        this(secretNames, true);
+    }
+
+    private Secrets(String secretNames, boolean on) {
+        this.on = on;
+        String list = secretNames == null || secretNames.trim().isEmpty() || words(secretNames).equals(words(OLD_DEFAULT_NAMES))
+                ? DEFAULT_NAMES : secretNames;
         for (String w : list.split("[,\\r\\n]")) {
             String word = w.trim().toLowerCase(Locale.ROOT);
-            if (word.isEmpty() || word.replace("*", "").isEmpty() || word.length() > 100 || names.size() >= MAX_NAMES) {
-                continue; // "*" alone would mask everything
+            boolean exception = word.startsWith("!");
+            if (exception) {
+                word = word.substring(1).trim();
             }
-            names.add(new Glob(word));
+            if (word.isEmpty() || word.replace("*", "").isEmpty() || word.length() > 100
+                    || names.size() + notSecret.size() >= MAX_NAMES) {
+                continue; // "*" alone would mask everything (or, as an exception, nothing)
+            }
+            (exception ? notSecret : names).add(new Glob(word, exception));
         }
     }
 
+    /** The list's words: lower case, trimmed, blanks dropped. */
+    private static List<String> words(String list) {
+        List<String> out = new ArrayList<>();
+        for (String w : list.split("[,\\r\\n]")) {
+            String word = w.trim().toLowerCase(Locale.ROOT);
+            if (!word.isEmpty()) {
+                out.add(word);
+            }
+        }
+        return out;
+    }
+
+    /** False for {@link #none()}. */
+    boolean masks() {
+        return on;
+    }
+
     boolean isSecretName(String name) {
-        if (name == null || name.isEmpty()) {
+        if (!on || name == null || name.isEmpty()) {
             return false;
         }
         String lower = name.toLowerCase(Locale.ROOT);
+        for (Glob g : notSecret) {
+            if (g.matches(lower)) {
+                return false;
+            }
+        }
         for (Glob g : names) {
             if (g.matches(lower)) {
                 return true;
@@ -89,12 +148,20 @@ final class Secrets {
         private final String[] parts; // the non-empty parts between stars, in order
         private final boolean startsWith; // pass*: the first part at the start
         private final boolean endsWith; // *key: the last part at the end
+        private final String exact; // a whole-name word without stars: the name itself
 
+        /** A secret word: matches anywhere in the name; pass* and *key anchor one end. */
         Glob(String word) {
+            this(word, false);
+        }
+
+        /** whole (! exceptions): the word must cover the whole name; only a * at an end leaves that end open. */
+        Glob(String word, boolean whole) {
             boolean starAtStart = word.startsWith("*");
             boolean starAtEnd = word.endsWith("*");
-            startsWith = starAtEnd && !starAtStart;
-            endsWith = starAtStart && !starAtEnd;
+            startsWith = whole ? !starAtStart : starAtEnd && !starAtStart;
+            endsWith = whole ? !starAtEnd : starAtStart && !starAtEnd;
+            exact = whole && !word.contains("*") ? word : null;
             List<String> p = new ArrayList<>();
             for (String part : word.split("\\*")) {
                 if (!part.isEmpty()) {
@@ -105,6 +172,9 @@ final class Secrets {
         }
 
         boolean matches(String s) {
+            if (exact != null) {
+                return exact.equals(s);
+            }
             int from = 0;
             int first = 0;
             int last = parts.length;
@@ -157,7 +227,7 @@ final class Secrets {
 
     /** Secrets inside free text: token shapes, Bearer/Basic, user:password@ in URLs, secret-named name=value pairs. */
     String maskValue(String s) {
-        if (s == null || s.isEmpty()) {
+        if (!on || s == null || s.isEmpty()) {
             return s;
         }
         for (Pattern p : TOKEN_SHAPES) {

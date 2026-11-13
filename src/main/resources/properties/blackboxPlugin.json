@@ -150,16 +150,32 @@
         {
             "name" : "secretNames",
             "label" : "Secret names to mask in System Info",
-            "description" : "One name per line (commas also separate); case doesn't matter. A JVM argument (-Dname=value), system property, datasource key or pool setting whose name contains one is masked, and so is a name=value pair with such a name inside a longer value. * matches anything: pass* = names that start with pass, *key = names that end with key. Empty = the default list. Values shaped like secrets are masked whatever their name: user:password@ in URLs, Bearer and Basic tokens, JWTs, private keys, Joget-encrypted passwords, AWS, GitHub, Slack, Google and OpenAI-style keys. Applies to recordings started after saving.",
+            "description" : "One name per line (commas also separate); case doesn't matter. A JVM argument (-Dname=value), system property, datasource key or pool setting whose name contains one is masked, and so is a name=value pair with such a name inside a longer value. * matches anything: pass* = names that start with pass, *key = names that end with key. A line starting with ! is an exception for one whole name: !wflow.systemkey keeps exactly that name unmasked (* at an end leaves that end open: !app.*). Empty = the default list. Values shaped like secrets are masked whatever their name: user:password@ in URLs, Bearer and Basic tokens, JWTs, private keys, Joget-encrypted passwords, AWS, GitHub, Slack, Google and OpenAI-style keys. Applies to recordings started after saving.",
             "type" : "textarea",
             "rows" : "12",
             "cols" : "40",
-            "value" : "password\npasswd\npassphrase\npwd\nsecret\ntoken\napi*key\naccess*key\nprivate*key\nclient*secret\nauth*key\ncredential\nsigning*key\nencryption*key\nsalt\ncert\npass*\n*pass\n_pass_\nkey*\n*key"
+            "value" : "password\npasswd\npassphrase\npwd\nsecret\ntoken\napi*key\naccess*key\nprivate*key\nclient*secret\nauth*key\ncredential\nsigning*key\nencryption*key\nsalt\ncert\npass*\n*pass\n_pass_\nkey*\n*key\n!wflow.systemkey"
         },
         {
             "name" : "allowUnmaskedCredentials",
-            "label" : "Allow recording passwords and tokens unmasked",
-            "description" : "For non-admins; admins may always use it. Off: the extension masks credentials in every recording before saving it: Authorization, Cookie, Set-Cookie and CSRF or API key headers, and values whose name has a secret word (password, token, secret, api key...) in URLs, form and JSON bodies and response bodies. On: the popup offers \"Record passwords and tokens unmasked\" (unticked by default) for recordings that need them.",
+            "label" : "Allow recording browser secrets unmasked",
+            "description" : "For non-admins; admins may always use it. Off: the extension masks credentials in every recording before saving it: Authorization, Cookie, Set-Cookie and CSRF or API key headers, and values whose name has a secret word (password, token, secret, api key...) in URLs, form and JSON bodies and response bodies. On: the popup offers \"Record browser secrets unmasked\" (unticked by default) for recordings that need them.",
+            "type" : "checkbox",
+            "value" : "",
+            "options" : [{"value" : "true", "label" : ""}]
+        },
+        {
+            "name" : "allowUnmaskedSystemInfo",
+            "label" : "Allow recording System Info secrets unmasked",
+            "description" : "For non-admins; admins may always use it. Off: the Info tab's JVM arguments, system properties, datasource file and pool settings have their secrets masked (see Secret names to mask in System Info), e.g. smtp.pass. On: the popup offers \"Record System Info secrets unmasked\" (unticked by default). The database password is never recorded. Separate from Allow recording browser secrets unmasked, which covers the browser's traffic, and from the license option below.",
+            "type" : "checkbox",
+            "value" : "",
+            "options" : [{"value" : "true", "label" : ""}]
+        },
+        {
+            "name" : "allowUnmaskedLicense",
+            "label" : "Allow recording license secrets unmasked",
+            "description" : "Enterprise only (Community has no license table). For non-admins; admins may always use it. Off: the Info tab's License section shows the system key (platform.systemKey), the license signature (platform.license.signature, the system key the license was issued for) and the MAC address (platform.net.address) as ****; the rest of the license table is shown as System Info shows it. On: the popup offers \"Record license secrets unmasked\" (unticked by default).",
             "type" : "checkbox",
             "value" : "",
             "options" : [{"value" : "true", "label" : ""}]

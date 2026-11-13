@@ -1489,6 +1489,9 @@ function renderInfo() {
     for (const [key, title] of groups) {
       let values = key === 'cluster' && si.cluster ? clusterRows(si.cluster, served) : si[key];
       if (key === 'joget') values = { ...si.joget, ...si.process }; // the process start is Joget's start
+      // false: recorded unmasked. Absent: made by plugin 8.2.2 or older, which masked nothing on this tab
+      if (key === 'joget' && si.secretsMasked !== true) values['System Info secrets'] = si.secretsMasked === false ? 'unmasked' : 'unmasked (older recording)';
+      if (key === 'joget' && si.license && si.licenseMasked !== true) values['License secrets'] = si.licenseMasked === false ? 'unmasked' : 'unmasked (older recording)';
       if (key === 'recentChanges') values = recentChanges(si.recentChanges);
       if (key === 'plugins' && values) values = pluginRows(values);
       if (key === 'host' && values) values = renameKeys(values, { 'Physical memory': 'Total RAM' }); // older recordings

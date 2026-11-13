@@ -35,22 +35,34 @@ import org.json.JSONObject;
  * Database and connectionPool hold the current profile's app_datasource file and the pool settings Joget really uses.
  * The database password is left out. JVM arguments, system properties, the datasource file and pool settings go through
  * {@link Secrets}: values with a secret name (the admin's secretNames setting; empty = Secrets.DEFAULT_NAMES) and values shaped like
- * secrets are masked. The license table is kept as it is. It is shown only to users allowed to view server data, like
- * the system log itself.
+ * secrets are masked. It is shown only to users allowed to view server data, like the system log itself. A recording
+ * started with "Record System Info secrets unmasked" (admins, or users the allowUnmaskedSystemInfo setting allows) uses
+ * {@link Secrets#none()}: only the database password stays out. The license table is separate: its system key, signature
+ * and MAC addresses ({@link #LICENSE_SECRETS}) are masked unless the recording was started with "Record license secrets
+ * unmasked" (allowUnmaskedLicense); the rest of it is kept as System Info shows it.
  */
 final class ServerInfo {
 
     static final String FILE = "server-info.json";
 
+    /**
+     * License entries masked unless asked (name prefixes): the system key, the license signature (on Enterprise it is
+     * the system key the license was issued for: DomainSystemKeyGenerator uses License.getSignature() as the key, and
+     * ContainerSystemKeyGenerator accepts a license only when its signature equals the system key) and the MAC addresses.
+     */
+    static final String[] LICENSE_SECRETS = {"platform.systemKey", "platform.license.signature", "platform.net.address"};
+
     private ServerInfo() {
     }
 
     static JSONObject collect(HttpServletRequest request) throws JSONException {
-        return collect(request, 0, new Secrets(null));
+        return collect(request, 0, new Secrets(null), true);
     }
 
     /** recentDays: how far back "recentChanges" looks (0: not collected); secrets: what to mask. */
-    static JSONObject collect(HttpServletRequest request, int recentDays, Secrets secrets) throws JSONException {
+    static JSONObject collect(HttpServletRequest request, int recentDays, Secrets secrets, boolean maskLicense) throws JSONException {
+        // The database password stays out even when the System Info secrets are recorded unmasked
+        Secrets dbSecrets = secrets.masks() ? secrets : Secrets.passwords();
         long now = System.currentTimeMillis();
         Runtime rt = Runtime.getRuntime();
         java.lang.management.RuntimeMXBean jvm = ManagementFactory.getRuntimeMXBean();
@@ -102,13 +114,13 @@ final class ServerInfo {
         Properties dsFile = null;
         try {
             dsFile = DynamicDataSourceManager.getProperties();
-            db = database(DynamicDataSourceManager.getCurrentProfile(), dsFile, secrets);
+            db = database(DynamicDataSourceManager.getCurrentProfile(), dsFile, dbSecrets);
         } catch (RuntimeException | LinkageError e) {
             // not readable here
         }
         JSONObject pool = null;
         try {
-            pool = pool(AppUtil.getApplicationContext().getBean("setupDataSource"), dsFile, secrets);
+            pool = pool(AppUtil.getApplicationContext().getBean("setupDataSource"), dsFile, dbSecrets);
         } catch (Exception | LinkageError e) {
             // outside a running Joget
         }
@@ -134,7 +146,9 @@ final class ServerInfo {
         }
 
         JSONObject result = new JSONObject().put("takenAt", now)
-                .put("host", host).put("process", process).put("java", java).put("joget", joget).put("database", db);
+                .put("host", host).put("process", process).put("java", java).put("joget", joget).put("database", db)
+                .put("secretsMasked", secrets.masks()) // false: recorded unmasked; the viewer's Info tab says so
+                .put("licenseMasked", maskLicense);
         if (pool != null && pool.length() > 0) {
             result.put("connectionPool", pool);
         }
@@ -154,7 +168,7 @@ final class ServerInfo {
             result.put("plugins", plugins);
         }
         if (license != null) {
-            result.put("license", sorted(license));
+            result.put("license", license(license, maskLicense));
         }
         return result.put("systemProperties", masked(system, secrets));
     }
@@ -595,12 +609,12 @@ final class ServerInfo {
     }
 
     static void save(Path captureDir, HttpServletRequest request) {
-        save(captureDir, request, 0, new Secrets(null));
+        save(captureDir, request, 0, new Secrets(null), true);
     }
 
-    static void save(Path captureDir, HttpServletRequest request, int recentDays, Secrets secrets) {
+    static void save(Path captureDir, HttpServletRequest request, int recentDays, Secrets secrets, boolean maskLicense) {
         try {
-            Files.write(captureDir.resolve(FILE), collect(request, recentDays, secrets).toString().getBytes(StandardCharsets.UTF_8));
+            Files.write(captureDir.resolve(FILE), collect(request, recentDays, secrets, maskLicense).toString().getBytes(StandardCharsets.UTF_8));
         } catch (Exception e) {
             LogUtil.warn(ServerInfo.class.getName(), "Could not save the server info of a recording: " + e.getMessage());
         }
@@ -618,6 +632,22 @@ final class ServerInfo {
         m.put("platform.jvm.max", rt.maxMemory() / MB + " MB");
         m.put("platform.jvm.processors", String.valueOf(rt.availableProcessors()));
         return m;
+    }
+
+    /** The license table, sorted; with mask, {@link #LICENSE_SECRETS} as {@link Secrets#MASK} (empty values stay empty). */
+    static JSONObject license(Map<?, ?> map, boolean mask) throws JSONException {
+        JSONObject o = sorted(map);
+        if (mask) {
+            for (java.util.Iterator<?> it = o.keys(); it.hasNext();) {
+                String k = String.valueOf(it.next());
+                for (String p : LICENSE_SECRETS) {
+                    if (k.startsWith(p) && !o.optString(k).isEmpty()) {
+                        o.put(k, Secrets.MASK);
+                    }
+                }
+            }
+        }
+        return o;
     }
 
     /** Sorted, each value through {@link Secrets#mask} by its name. */
@@ -642,6 +672,11 @@ final class ServerInfo {
         if (value != null && !value.trim().isEmpty()) {
             info.put(label, value.trim());
         }
+    }
+
+    /** Enterprise: SysInfo, and with it the license table, is there. */
+    static boolean hasLicense() {
+        return enterprise() != null;
     }
 
     /** Joget Enterprise's SysInfo class (Settings > System Info), from Joget's own classloader, or null on Community. */

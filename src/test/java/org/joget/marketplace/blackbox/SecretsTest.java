@@ -141,4 +141,73 @@ public class SecretsTest {
         builtIn.maskValue(sb.toString());
         assertTrue("took " + (System.nanoTime() - t) / 1_000_000 + " ms", System.nanoTime() - t < 2_000_000_000L);
     }
+
+    @Test
+    public void noneMasksNothing() {
+        Secrets none = Secrets.none();
+        assertFalse(none.masks());
+        assertTrue(builtIn.masks());
+        assertFalse(none.isSecretName("platform.systemKey"));
+        assertEquals("abc123", none.mask("platform.systemKey", "abc123"));
+        assertEquals("-Dsmtp.pass=s3cret", none.maskArgument("-Dsmtp.pass=s3cret"));
+        assertEquals("jdbc:mysql://root:s3cret@db/jwdb", none.maskValue("jdbc:mysql://root:s3cret@db/jwdb"));
+        assertEquals("****", builtIn.mask("platform.systemKey", "abc123"));
+    }
+
+    @Test
+    public void exceptionsAreNeverSecret() {
+        assertTrue("the license's system key", builtIn.isSecretName("platform.systemKey"));
+        assertFalse("the system key generator argument", builtIn.isSecretName("wflow.systemkey"));
+        assertEquals("-Dwflow.systemkey=Domain", builtIn.maskArgument("-Dwflow.systemkey=Domain"));
+        Secrets s = new Secrets("*key\n! app.*key ");
+        assertFalse(s.isSecretName("app.publicKey"));
+        assertTrue(s.isSecretName("other.publicKey"));
+        assertTrue("a lone ! is ignored", new Secrets("*key\n!\n!*").isSecretName("a.key"));
+        // An exception covers the whole name, not a longer one that contains it
+        assertTrue(builtIn.isSecretName("wflow.systemkey.password"));
+        assertTrue(new Secrets("password\n!app").isSecretName("app.password"));
+        assertFalse(new Secrets("password\n!app.*").isSecretName("app.password"));
+        assertTrue(new Secrets("password\n!app.*").isSecretName("my.app.password"));
+    }
+
+    @Test
+    public void licenseMasksOnlySystemKeySignatureAndMac() throws Exception {
+        Map<String, String> license = new LinkedHashMap<>();
+        license.put("platform.systemKey", "EE-DOMAIN-localhost");
+        license.put("platform.net.address", "FA  33  D4  59  E7  B2");
+        license.put("platform.license.holder", "Free");
+        license.put("platform.license.signature", "EE-DOMAIN-example.com");
+        license.put("platform.license.expiry", "");
+        JSONObject o = ServerInfo.license(license, true);
+        assertEquals("****", o.getString("platform.systemKey"));
+        assertEquals("****", o.getString("platform.net.address"));
+        assertEquals("the signature is the issued system key", "****", o.getString("platform.license.signature"));
+        assertEquals("Free", o.getString("platform.license.holder"));
+        assertEquals("", o.getString("platform.license.expiry"));
+        assertEquals("", ServerInfo.license(java.util.Collections.singletonMap("platform.license.signature", ""), true)
+                .getString("platform.license.signature"));
+        JSONObject u = ServerInfo.license(license, false);
+        assertEquals("EE-DOMAIN-localhost", u.getString("platform.systemKey"));
+        assertEquals("FA  33  D4  59  E7  B2", u.getString("platform.net.address"));
+        assertEquals("EE-DOMAIN-example.com", u.getString("platform.license.signature"));
+    }
+
+    @Test
+    public void theOldDefaultListMeansTheNewDefault() {
+        assertTrue(Secrets.DEFAULT_NAMES.endsWith("\n!wflow.systemkey"));
+        assertFalse(Secrets.OLD_DEFAULT_NAMES.contains("!"));
+        assertFalse("saved old default", new Secrets(Secrets.OLD_DEFAULT_NAMES).isSecretName("wflow.systemkey"));
+        assertFalse("CRLF and case", new Secrets(Secrets.OLD_DEFAULT_NAMES.replace("\n", "\r\n").toUpperCase()).isSecretName("wflow.systemkey"));
+        assertTrue(new Secrets(Secrets.OLD_DEFAULT_NAMES).isSecretName("platform.systemKey"));
+        assertTrue("an edited list is kept as it is", new Secrets(Secrets.OLD_DEFAULT_NAMES + "\ncustomer.id").isSecretName("wflow.systemkey"));
+    }
+
+    @Test
+    public void passwordsOnlyKeepsTheDatabasePasswordOut() {
+        Secrets p = Secrets.passwords();
+        assertEquals("jdbc:mysql://root:****@db/jwdb", p.maskValue("jdbc:mysql://root:s3cret@db/jwdb"));
+        assertEquals("****", p.mask("workflowPwd", "s3cret"));
+        assertEquals("user=root;pwd=****", p.maskValue("user=root;pwd=s3cret"));
+        assertEquals("not a password", "abc", p.mask("platform.systemKey", "abc"));
+    }
 }

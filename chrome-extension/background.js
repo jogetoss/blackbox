@@ -138,7 +138,8 @@ async function startServerCapture(tabId) {
     const q = await Quick.get();
     const res = await postAction(uploadUrl, 'recording-start', id, { allServer: String(q.allServer),
       gauges: String(q.gauges), traces: String(q.traces), otherTraces: String(q.traces && q.otherTraces),
-      glowrootData: String(q.glowrootData) });
+      glowrootData: String(q.glowrootData), systemSecrets: String(q.systemSecrets),
+      license: String(q.license) });
     const body = await res.json().catch(() => null);
     slowMs = (body?.serverCapture || body?.systemLog)?.slowThresholdMs; // systemLog: plugin 8.2.1 and older
     ({ pingMs, lostMs, maxRecordingMs, maxSizeMb } = body?.serverCapture || {});

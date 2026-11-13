@@ -87,7 +87,9 @@ README "Who sees what".
 | Server data in general (`canCaptureServerData()`, no uploader rule) | **Who can capture other users' server data**: keeping a ZIP's server data on import, capturing all other server log lines |
 | Have an app exported (`canExportApp`) | The app's own admins, or **Who can export apps they don't administer** for apps Joget lets them access (see "App export") |
 | Apps data of an exported app (`isAppAdmin` or `allowOtherAppsData`) | The app's own admins; others only with **Allow apps data from apps they don't administer**. Otherwise the `.jwa` has no rows or process data and `apps[].sample.skipped` says why |
-| Record credentials unmasked (`me.options.credentials`) | Admins, or **Allow recording passwords and tokens unmasked**; enforced in the extension only (`mask.js`) |
+| Record credentials unmasked (`me.options.credentials`) | Admins, or **Allow recording browser secrets unmasked**; enforced in the extension only (`mask.js`) |
+| Record System Info secrets unmasked (`me.options.systemSecrets`) | Admins, or **Allow recording System Info secrets unmasked**; enforced on the server at `recording-start` (`systemSecrets=true`, `Secrets.none()`) |
+| Record license secrets unmasked (`me.options.license`) | Admins, or **Allow recording license secrets unmasked**; enforced on the server at `recording-start` (`license=true`, `ServerInfo.LICENSE_SECRETS`) |
 
 - Server data in `meta.json` (`serverCapture`, `serverData`, `apps`) is removed by `hideServerData` for users without
   `canViewServerData(meta)`, in `list`, `meta` and `download&format=html` (whose page carries the meta as JSON). The ZIP keeps only a
@@ -475,7 +477,7 @@ the server's time zone; so are **Uploaded** and **First uploaded** (`BB.fmtDate`
   setting as the pool really uses it. A value that differs from the file shows `(file says x)`. **Ignored file keys**
   lists keys the pool has no setting for: Joget skips them silently, usually because of a typo (`maxactive`).
 - **License**: Enterprise's license table (`SysInfo.getLicenseProperties()`), including the license signature, system
-  key and MAC addresses. Missing on Community.
+  key and MAC addresses (masked, see below). Missing on Community.
 - **System properties**: System Info's system table (`SysInfo.getSystemProperties()`): every Java system property plus
   JVM memory and processors. On Community the same values are read directly.
 
@@ -483,7 +485,18 @@ the server's time zone; so are **Uploaded** and **First uploaded** (`BB.fmtDate`
 values): JVM arguments (`-Dname=value` by name, others by value), system properties, datasource keys and pool settings.
 A secret name (the `secretNames` setting; empty = `Secrets.DEFAULT_NAMES`, the names of Upgrade Advisor's `SecretMasker`) masks the whole
 value; secret-shaped values (URL user info, Bearer/Basic, JWT, private keys, `%%%%…%%%%`, known API key prefixes,
-secret-named `name=value` pairs) are masked inside any value. The license table is not masked.
+secret-named `name=value` pairs) are masked inside any value. A `!word` line is an exception for one whole name
+(`*` at an end leaves it open); the default list ends with `!wflow.systemkey` (Enterprise's system key generator), and a
+saved list equal to `Secrets.OLD_DEFAULT_NAMES` (the default before that line) counts as the default. A recording
+started with `systemSecrets=true` by a user `allowUnmaskedSystemInfo` allows (admins always) uses `Secrets.none()`:
+nothing is masked by name or shape, except in the database and pool sections, which then use `Secrets.passwords()`
+(password-like names and shapes such as `user:password@` in the URL), so the database password stays out.
+
+The license table doesn't use the word list: `ServerInfo.license()` masks the entries starting with
+`ServerInfo.LICENSE_SECRETS` (`platform.systemKey`, `platform.license.signature` — the system key the license was
+issued for — and `platform.net.address`) unless the recording was started with `license=true` by a user
+`allowUnmaskedLicense` allows (offered on Enterprise only). `server-info.json` records the choice as `secretsMasked`
+and `licenseMasked`; when either is `false`, the viewer's Info tab says so in the Joget section.
 
 ## App export
 

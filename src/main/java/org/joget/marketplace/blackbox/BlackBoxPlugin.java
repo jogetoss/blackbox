@@ -831,8 +831,11 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         // The capture's profile: with virtual hosts, All server log lines keeps only this profile's threads
         ServerCapture.store().put(id, ServerCapture.PROFILE, DynamicDataSourceManager.getCurrentProfile());
         ServerCapture.find(id); // this node samples the server load from now (GaugeSampler)
+        // System Info as it is now, secrets masked unless the recorder asks (systemSecrets=true) and may
+        boolean unmaskedInfo = access.allows("allowUnmaskedSystemInfo", false) && "true".equals(request.getParameter("systemSecrets"));
+        boolean unmaskedLicense = access.allows("allowUnmaskedLicense", false) && "true".equals(request.getParameter("license"));
         ServerInfo.save(ServerCapture.store().dir(id), request, (int) Math.min(positive("recentChangesDays", 7), 365),
-                new Secrets(getPropertyString("secretNames"))); // System Info as it is now, secrets masked
+                unmaskedInfo ? Secrets.none() : new Secrets(getPropertyString("secretNames")), !unmaskedLicense);
         JSONObject started = new JSONObject().put("id", id).put("maxMb", maxBytes / (1024 * 1024))
                 .put("traces", traces).put("gauges", gauges).put("glowrootData", glowrootData).put("allServer", allServer)
                 .put("otherTraces", otherTraces).put("slowThresholdMs", slowMs());
@@ -1259,8 +1262,13 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 .put("otherTraces", access.mayCapture("allowCaptureTraces") && access.mayCapture(OTHER_TRACES)
                         && glowrootShared.getAsBoolean()) // opt-in
                 .put("glowrootData", access.mayCapture("allowCaptureGlowrootData") && glowrootShared.getAsBoolean())
-                // Record passwords and tokens unmasked: admins always, others when allowed; the box starts unticked
-                .put("credentials", access.allows("allowUnmaskedCredentials", false));
+                // Record browser secrets unmasked: admins always, others when allowed; the box starts unticked
+                .put("credentials", access.allows("allowUnmaskedCredentials", false))
+                // Record System Info secrets unmasked: admins always, others when allowed; the box starts unticked
+                .put("systemSecrets", access.allows("allowUnmaskedSystemInfo", false))
+                // Record license secrets unmasked: admins always, others when allowed; unticked. Enterprise only
+                // (Community has no license table)
+                .put("license", access.allows("allowUnmaskedLicense", false) && ServerInfo.hasLicense());
     }
 
     // ---------- Glowroot traces ----------

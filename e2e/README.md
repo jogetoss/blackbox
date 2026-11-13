@@ -91,6 +91,12 @@ server data**.
   the file that was there after; about 4 minutes. Uploads are deleted.
 - `tests/mask.spec.js`: the recorder's credential masking (`mask.js`) in node, no browser or server: URLs, headers,
   form and JSON bodies, free text, look-alike names left alone, the server's offer and the box, and long inputs.
+- `tests/system-secrets.spec.js`: three headless screen recordings (blank video) as `BB_USER` (an admin, so both boxes
+  are offered): no box ticked, **Record System Info secrets unmasked** only, **Record license secrets unmasked** only.
+  The server-info snapshot is unmasked only for its own box (`secretsMasked`, `licenseMasked`); on Enterprise,
+  `platform.systemKey` and `platform.net.address` stay `****` unless the license box is ticked (so does a non-empty
+  `platform.license.signature`). The recordings are kept
+  on the server; set `BB_CLEANUP=1` to delete them.
 - `tests/curl.spec.js`: **Copy as cURL** (`toCurl` from `viewer.js`) in node: the command runs through a real bash with
   `curl` replaced by a function that prints its arguments, so a crafted method, URL, header or body stays one plain
   argument and runs nothing; real methods are kept.

@@ -25,6 +25,14 @@ same version.
 
 ### From 8.2.2
 
+**The Info tab now masks secrets.** In 8.2.2 it showed JVM arguments, system properties, the datasource file and the
+license table as they are. Now secret-named and secret-shaped values are masked (see
+[Sensitive data](#sensitive-data-in-system-info)), and so are the license's system key, signature and MAC address.
+Admins can still record them unmasked with the popup's **Record System Info secrets unmasked** and **Record license
+secrets unmasked**; non-admins only when **Allow recording System Info secrets unmasked** or **Allow recording license
+secrets unmasked** is on. **Allow recording passwords and tokens unmasked** is now **Allow recording browser secrets
+unmasked** (same key, value kept).
+
 **Failed trace lookups of recordings made with 8.2.2 or older lose their Retry button.** Their entries don't carry
 the recording's Glowroot tag, which a trace must now have to be matched. Traces already copied stay.
 
@@ -64,8 +72,8 @@ Server load, traces, Glowroot data, app export and apps data are now asked per r
 [Settings](#settings).
 
 **Every uploader now sees their own recording's server data**, with no setting to turn it off. In 8.2.1 this was
-off by default (no capture, and `ownServerData` No). It includes the **Info** tab: the license table (system key,
-MAC addresses) and every `-D` system property, which may hold secrets. If that is a problem, limit **Who can upload**.
+off by default (no capture, and `ownServerData` No). It includes the **Info** tab, with its secrets masked (see
+[From 8.2.2](#from-822)). If that is a problem, limit **Who can upload**.
 
 **Also renamed:**
 
@@ -108,7 +116,9 @@ is saved until **Submit**.
 | Max recordings started per user per minute | 10 | Non-admins, per node. 0 = no limit |
 | Max total size of a ZIP import (MB) | empty = 3 × Max file size | All files unpacked together. 0 = no limit |
 | Max files in a ZIP import | 5000 | Empty = 5000. 0 = no limit |
-| Allow recording passwords and tokens unmasked | No | Off: every non-admin recording has credentials masked; see [Credentials in recordings](#credentials-in-recordings). Popup: **Record passwords and tokens unmasked** |
+| Allow recording browser secrets unmasked | No | Off: every non-admin recording has credentials masked; see [Credentials in recordings](#credentials-in-recordings). Popup: **Record browser secrets unmasked** |
+| Allow recording System Info secrets unmasked | No | Off: the Info tab's secrets are masked for every non-admin recording; see [Sensitive data](#sensitive-data-in-system-info). Popup: **Record System Info secrets unmasked** |
+| Allow recording license secrets unmasked | No | Enterprise only. Off: the License section's `platform.systemKey`, `platform.license.signature` and `platform.net.address` are masked for every non-admin recording; see [Sensitive data](#sensitive-data-in-system-info). Popup: **Record license secrets unmasked** |
 | Allow uploads over HTTP | Yes | Off: uploads, ZIP imports and server captures need HTTPS (or `X-Forwarded-Proto: https` from a proxy); a server reached as `localhost` is always allowed. Reading recordings is not affected |
 | Allowed Chrome extension IDs | `anmfmkacddnmmgdcnkgkfjhagnilmkmp` | Extensions that may send recordings without a CSRF token. The BlackBox extension has this ID on every computer. Empty = any extension |
 | Allow unsandboxed trace pages in HTML exports | Yes | On: **Open full trace** in a downloaded `.html` opens the Glowroot page as it is (internal review). Off: inside a sandbox, so a crafted trace page can't reach the site the file is opened from. The recordings page always sandboxes them |
@@ -116,8 +126,8 @@ is saved until **Submit**.
 #### Credentials in recordings
 
 The extension masks credentials as `****` before a recording is saved anywhere (browser storage, files, the upload),
-unless the user may record them unmasked (admins, or **Allow recording passwords and tokens unmasked**) and ticks
-**Record passwords and tokens unmasked** in the popup (unticked by default). Masked:
+unless the user may record them unmasked (admins, or **Allow recording browser secrets unmasked**) and ticks
+**Record browser secrets unmasked** in the popup (unticked by default). Masked:
 
 - `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`, `api_key` headers, and any header whose
   name has a secret word: `password`, `pwd`, `secret`, `token`, `api key`, `credential`, `csrf`, `session id`, `otp`… (so
@@ -188,7 +198,9 @@ automatic uploads use them too. The server checks every choice again.
 | **Capture Glowroot trace files** | Admins always; others when **Allow capturing Glowroot traces of slow and failed requests** is on |
 | **Include other users' traces** | Admins always; others when **Allow capturing other users' traces** is on too. Needs **Capture Glowroot trace files** ticked. With virtual hosts on, only when the server is started with `-Dblackbox.sharedGlowroot=true` |
 | **Capture Glowroot data** | Admins always; others when **Allow capturing Glowroot data** is on. With virtual hosts on, only when the server is started with `-Dblackbox.sharedGlowroot=true` |
-| **Record passwords and tokens unmasked** | Admins always; others when **Allow recording passwords and tokens unmasked** is on. Unticked: credentials are masked |
+| **Record browser secrets unmasked** | Admins always; others when **Allow recording browser secrets unmasked** is on. Unticked: credentials are masked |
+| **Record System Info secrets unmasked** | Admins always; others when **Allow recording System Info secrets unmasked** is on. Unticked: System Info secrets are masked |
+| **Record license secrets unmasked** | Enterprise only. Admins always; others when **Allow recording license secrets unmasked** is on. Unticked: the system key, signature and MAC address are masked |
 
 - A ticked box asks for that part for this recording; the settings and the user's rights decide which boxes show.
 - Apps data is real unless **Mask data** is ticked; the popup warns while real data will be exported.
@@ -234,8 +246,8 @@ Shown on the replay page and in the ZIP and HTML downloads, to everyone who can 
     balancer needs sticky sessions.
 
 **Sensitive data:** traces and Glowroot data hold SQL with parameter values and request details; app definitions can
-hold plugin settings and environment variables. Info masks secrets in JVM arguments and system properties (below), but
-keeps the license table as System Info shows it.
+hold plugin settings and environment variables. Info masks secrets in JVM arguments and system properties, and the
+license's system key, signature and MAC address (below).
 
 #### Sensitive data in System Info
 
@@ -244,11 +256,30 @@ JVM arguments, system properties, the datasource file and pool settings are mask
 - **the name** matches a line in **Secret names to mask in System Info** (one name per line; commas also separate). A word matches anywhere in the name; `*`
   matches anything, so `pass*` matches names that start with `pass` and `*key` names that end with `key`. The default
   list, one per line: `password, passwd, passphrase, pwd, secret, token, api*key, access*key, private*key, client*secret, auth*key,
-  credential, signing*key, encryption*key, salt, cert, pass*, *pass, _pass_, key*, *key` (`smtp.pass`,
-  `platform.systemKey`). An admin can remove words from it; empty means the default list.
+  credential, signing*key, encryption*key, salt, cert, pass*, *pass, _pass_, key*, *key, !wflow.systemkey` (`smtp.pass`,
+  `-Dsystem.apiKey`). A line starting with `!` is an exception: a name it matches is never masked, so the default
+  list keeps `-Dwflow.systemkey` (Enterprise's system key generator, e.g. `Domain`) visible. An exception covers one
+  whole name (`!wflow.systemkey` doesn't keep `wflow.systemkey.password` visible); `*` at an end leaves that end open
+  (`!app.*`). An admin can remove words from it; empty
+  means the default list. A saved list equal to the default list before `!wflow.systemkey` was added
+  (development builds only) counts as the new default; an edited list is kept as it is.
 - **the value** looks like a secret, whatever its name: `user:password@` in a URL, `Bearer`/`Basic` tokens, JWTs,
   private keys, Joget-encrypted passwords (`%%%%…%%%%`), AWS, GitHub, Slack, Google and OpenAI-style keys, and
   `name=value` pairs with a secret name inside a longer value (`user=root;pwd=****`).
+
+Nothing is masked when the recording was started with **Record System Info secrets unmasked** in the popup (admins,
+or users that **Allow recording System Info secrets unmasked** allows; unticked by default). The Info tab then shows
+**System Info secrets: unmasked** (a recording made with plugin 8.2.2 or older, which masked nothing there, shows
+**unmasked (older recording)**). The database password is never recorded: the database and pool settings still mask password names (`pwd`,
+`passwd`…) and `user:password@` in the URL. This is separate from **Record browser secrets
+unmasked**, which covers the browser's traffic.
+
+**License** (Enterprise only): the License section is kept as System Info shows it, except the system key
+(`platform.systemKey`), the license signature (`platform.license.signature`, which is the system key the license was
+issued for) and the MAC address (`platform.net.address`), which are masked unless the recording was started with **Record license secrets unmasked**
+(admins, or users that **Allow recording license secrets unmasked** allows; unticked by default). The Info tab then
+shows **License secrets: unmasked**. The word list
+above doesn't apply to the license, and the two unmasked options are independent.
 
 The lists come from Joget Upgrade Advisor's secret masker. The snapshot is taken at recording start, so a changed
 setting applies to recordings started after it.

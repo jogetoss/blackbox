@@ -49,7 +49,7 @@ function linkify(text) {
 // [checkbox, Quick key]: ticked = true
 const QUICK_BOXES = [['qApps', 'apps'], ['qSample', 'sample'], ['qMask', 'mask'], ['qAllServer', 'allServer'],
   ['qGauges', 'gauges'], ['qTraces', 'traces'], ['qOtherTraces', 'otherTraces'], ['qGlowroot', 'glowrootData'],
-  ['qCreds', 'credentials']];
+  ['qCreds', 'credentials'], ['qSysSecrets', 'systemSecrets'], ['qLicense', 'license']];
 let offer = null;
 
 async function initQuick() {
@@ -105,7 +105,10 @@ function showQuick(o) {
   $('qOtherTraces').disabled = !$('qTraces').checked;
   $('qGlowrootRow').hidden = !o?.glowrootData;
   $('qCredsRow').hidden = !o?.credentials; // unticked: the recorder masks credentials (mask.js)
-  $('qServer').hidden = !(o?.apps || o?.allServer || o?.gauges || o?.traces || o?.glowrootData || o?.credentials);
+  $('qSysSecretsRow').hidden = !o?.systemSecrets; // unticked: the server masks System Info secrets (Secrets.java)
+  $('qLicenseRow').hidden = !o?.license; // Enterprise only; unticked: the server masks the license's system key, signature and MAC address
+  $('qServer').hidden = !(o?.apps || o?.allServer || o?.gauges || o?.traces || o?.glowrootData || o?.credentials
+    || o?.systemSecrets || o?.license);
 }
 
 function render(rec) {

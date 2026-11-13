@@ -1,6 +1,6 @@
 // Masks credentials in recorded network data before it is saved (session.json, the partial saves, the upload).
-// On unless the server allows this user to record them unmasked (plugin setting "Allow recording passwords and
-// tokens unmasked", admins always) and the popup's "Record passwords and tokens unmasked" is ticked.
+// On unless the server allows this user to record them unmasked (plugin setting "Allow recording browser secrets
+// unmasked", admins always) and the popup's "Record browser secrets unmasked" is ticked.
 // The secret words are the plugin's Secrets.java list (from Joget Upgrade Advisor's SecretMasker).
 // Used by the recorder; a plain script (no modules), also loaded by node for the tests.
 
