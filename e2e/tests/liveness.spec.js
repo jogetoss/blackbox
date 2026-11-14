@@ -16,7 +16,7 @@ const WFLOW = process.env.BB_WFLOW || '/opt/wflow';
 
 const sh = (args) => execFileSync('docker', ['exec', CONTAINER, ...args], { encoding: 'utf8' });
 
-// The test override (plugin README, Storage): short timing for this spec. Written as this user, as joget.sh does.
+// The test override (guide/storage.md): short timing for this spec. Written as this user, as joget.sh does.
 const OVERRIDE = { pingMs: 5000, lostMs: 20000, checkMs: 5000, minLimitMs: 60000 };
 const OVERRIDE_FILE = `${WFLOW}/blackbox/liveness-test.json`;
 const shAsMe = (args, input) => execFileSync('docker', ['exec', '-i', '-u', String(process.getuid()), CONTAINER, ...args], { encoding: 'utf8', input });

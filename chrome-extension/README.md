@@ -8,7 +8,7 @@ to a folder, download them as ZIP or upload them.
 - `session.json`: console logs, uncaught exceptions, browser log entries, navigations and network requests (headers,
   post data, status, timing, text bodies up to 1 MB). Each entry's `t` (ms since start) matches the video position.
 
-Internals and the upload API: [ARCHITECTURE.md](../ARCHITECTURE.md). Server side: the [plugin README](../README.md).
+Internals and the upload API: [ARCHITECTURE.md](../ARCHITECTURE.md). Server side: the [plugin README](../README.md) and [guide](../guide/).
 
 ## Install
 
@@ -22,7 +22,7 @@ Internals and the upload API: [ARCHITECTURE.md](../ARCHITECTURE.md). Server side
 
 ## Extension settings
 
-Popup → **Settings** (this browser only; server options are in the plugin README's [Settings](../README.md#settings)):
+Popup → **Settings** (this browser only; server options are in the plugin's [Settings](../guide/settings.md)):
 
 - **Upload URL**: e.g. `https://example.com/jw/api/blackbox`. **Save** asks Chrome for access and checks the connection.
 - **Recording page URL** (optional): opened by **Open uploaded**; `{id}` becomes the recording id. Empty: the server's link.
@@ -41,7 +41,7 @@ Popup → **Settings** (this browser only; server options are in the plugin READ
    - Server options (**Export the apps used**, **Capture apps data**, **Mask data**, **All server log lines**,
      **Capture server load**, **Capture Glowroot trace files**, **Capture Glowroot data**), shown only when the server
      allows them: see
-     [Per-recording choices](../README.md#per-recording-choices-popup). The choices are remembered for later
+     [Per-recording choices](../guide/settings.md#per-recording-choices-popup). The choices are remembered for later
      recordings. All start unticked; apps data is real unless **Mask data** is ticked (the popup warns).
 2. For a window or the screen, pick it in the recorder window. Chrome's "started debugging this browser" banner is
    expected.

@@ -1,13 +1,15 @@
 # BlackBox architecture
 
 How the extension (`chrome-extension/`) and the Joget plugin (`src/`) work inside. For installing and using them, see
-[README.md](README.md) and [chrome-extension/README.md](chrome-extension/README.md).
+[README.md](README.md), the [guide](guide/) and [chrome-extension/README.md](chrome-extension/README.md).
 
 ## Docs in this repository
 
 | Path | What |
 |---|---|
-| `README.md` | Plugin: build, install, use, settings |
+| `README.md` | Plugin: features, quick start, compatibility, build |
+| `guide/` | Plugin guide: settings, security, server data, liveness and limits, apps, storage |
+| `UPGRADE.md` | Breaking changes between releases |
 | `e2e/README.md` | Browser tests of the extension (Playwright, its own Chromium) against a running Joget |
 | `chrome-extension/README.md` | Extension: install, settings, record, recordings, replay |
 | `ARCHITECTURE.md` | This file: internals, API, permissions, storage |
@@ -77,7 +79,7 @@ Plugin and extension 8.2.1 call the capture summary `systemLog`. The plugin neve
 ## Permissions
 
 `BlackBoxPlugin.Access` decides, per request; Joget admins may always do everything. The settings are listed in
-README "Who sees what".
+[Who sees what](guide/security.md#who-sees-what).
 
 | Right | Who |
 |---|---|

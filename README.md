@@ -1,382 +1,78 @@
-# BlackBox Joget plugin
+# BlackBox for Joget
 
-The BlackBox Chrome extension records the browser side of a problem (video, sound, console, network, navigation).
-This plugin stores those recordings in Joget, adds the server side (system logs, Glowroot traces, server load, system
-info, the apps used) and replays both together. Recordings download as ZIP or as one HTML file that replays anywhere.
+Record a problem once, and get both sides of it. The BlackBox Chrome extension records the browser (video, sound,
+console, network, navigation); this Joget plugin stores the recording, adds the server side (system logs, Glowroot
+traces, server load, system info, the apps used) and replays both together.
 
 **Demo (1:11):** [the bug nobody could reproduce](demo/hero.mp4). More clips (app export, reading a replay, slow
 requests, setup, safe to share, other users' traces): [demo/README.md](demo/README.md).
 
-Internals, API and storage: [ARCHITECTURE.md](ARCHITECTURE.md). Extension: [chrome-extension/README.md](chrome-extension/README.md).
-Browser tests: [e2e/README.md](e2e/README.md).
+## Features
 
-## Build and install
+- **Replay page:** video, console, network and server log lines on one timeline, with **Next issue**.
+- **Server data:** the recorded tab's Joget log lines, Glowroot traces of slow and failed requests, other users'
+  traces, server load and a System Info snapshot. See [Server data](guide/server-data.md).
+- **The apps used:** exported as `.jwa` as they were at that moment, optionally with their data, real or masked. See
+  [Apps](guide/apps.md).
+- **Safe to share:** passwords, tokens and server secrets masked by default; uploaders see only their own recordings.
+  See [Security](guide/security.md).
+- **Share outside Joget:** **Download ZIP** imports on another Joget; **Download HTML** replays in any browser.
+- **Limits:** recording length, size, storage per user and start rate. See [Liveness and limits](guide/limits.md).
 
-```bash
-mvn -o package                                          # runs the unit tests too
-cp target/blackbox-8.2-SNAPSHOT.jar <wflow>/app_plugins/ # or upload in Settings > Manage Plugins
-```
+## Quick start
 
-Built against `wflow-core` 8.2-SNAPSHOT (javax.servlet). The jar includes the extension's replay viewer: rebuild it
-after changing `chrome-extension/viewer.js` or `viewer.css`. Install the plugin before (or with) the extension of the
-same version.
+1. Build the plugin (`mvn -o package`) and upload `target/blackbox-<version>.jar` in **Settings > Manage Plugins**, or
+   copy it to `<wflow>/app_plugins/`.
+2. Load the extension: `chrome://extensions` → **Developer mode** → **Load unpacked** → `chrome-extension/`
+   ([details](chrome-extension/README.md#install)).
+3. In the extension's **Settings**, set **Upload URL** to `<context>/api/blackbox` and log in to Joget in that browser.
+4. Record. When you stop, the recording uploads and opens at `<context>/blackbox/view?id=<id>`.
 
-## Upgrading
-
-### From 8.2.2
-
-**The Info tab now masks secrets.** In 8.2.2 it showed JVM arguments, system properties, the datasource file and the
-license table as they are. Now secret-named and secret-shaped values are masked (see
-[Sensitive data](#sensitive-data-in-system-info)), and so are the license's system key, signature and MAC address.
-Admins can still record them unmasked with the popup's **Record System Info secrets unmasked** and **Record license
-secrets unmasked**; non-admins only when **Allow recording System Info secrets unmasked** or **Allow recording license
-secrets unmasked** is on.
-
-**Recordings now mask browser credentials.** Extension 1.3.0 replaces passwords, tokens, cookies and `Authorization`
-headers in the network log, URLs and console with `****` before a recording is saved (see
-[Credentials in recordings](#credentials-in-recordings)). Admins can record them unmasked with the popup's **Record
-browser secrets unmasked**; non-admins only when **Allow recording browser secrets unmasked** is on.
-
-**Plugin 8.2.3 needs extension 1.3.0.** **Allowed Chrome extension IDs** now accepts only
-`anmfmkacddnmmgdcnkgkfjhagnilmkmp` by default. Extension 1.3.0 always has that ID (its manifest `key`); extension
-1.2.0 loaded unpacked has another, so its uploads are refused. **Before** putting the 1.3.0 files in the old extension's
-folder, upload the recordings it keeps while the plugin is still 8.2.2 (or while **Allowed Chrome extension IDs** is
-empty), or download them as ZIP: reloading the old extension over the new files turns it off for good (checked on
-Chromium 140), and removing it deletes its storage. Then remove the old extension and load 1.3.0 unpacked. Or empty **Allowed Chrome extension IDs** to accept any extension.
-
-**New limits** (all settings, 0 = no limit; see [Limits](#limits)). For non-admins: **Storage per user** 10240 MB
-(HTTP 413), **Max recordings in progress per user** 3 and **Max recordings started per user per minute** 10 (HTTP 429:
-the recording goes on without server data). For every ZIP import: **Max files in a ZIP import** 5000 and **Max total
-size of a ZIP import** 3 × **Max file size**. An upload or import that 8.2.2 accepted can now be refused. **Allow uploads over HTTP** (on by default) can be turned off to require HTTPS.
-
-**Failed trace lookups of recordings made with 8.2.2 or older lose their Retry button.** Their entries don't carry
-the recording's Glowroot tag, which a trace must now have to be matched. Traces already copied stay.
-
-**With virtual hosts on, Capture Glowroot data is off in every profile** unless the server is started with
-`-Dblackbox.sharedGlowroot=true` (the same goes for the new **Include other users' traces**). Glowroot is one agent per
-JVM, so its data holds every profile's requests. Only the server's start command counts: setting the property at run
-time (for example from a tenant's script) is ignored. With virtual hosts on, **All server log lines** now keeps only the lines of
-the recording's own profile's requests (no background jobs); a recording started before the upgrade gets no other
-lines from then on. Traces, Glowroot data and server load are now saved for each profile's own recordings, not
-only the profile the plugin started in.
-
-### From 8.2.1
-
-**The plugin settings were reorganised; renamed and removed settings lose their values.** After the upgrade they fall
-back to their defaults (see [Settings](#settings)). Open **Configure** and set them again; check the access settings
-first, as a restricted install opens up otherwise:
-
-| 8.2.1 setting (key) | Now (key) | Default now |
-|---|---|---|
-| Who can upload (`uploadPermission`) | Who can upload (`canUpload`) | any logged-in user: **a restriction set in 8.2.1 is lost** |
-| Who can view all recordings (`viewPermission`) | removed: admins see every recording, others their own | |
-| Who can delete any recording (`deletePermission`) | removed: admins delete any recording, others their own | |
-| Uploaders can view and delete their own recordings (`ownerAccess`) | removed: always on | |
-| Capture system logs during recordings (`captureSystemLogs`) | removed: every recording is captured | |
-| Who can view system logs (`systemLogPermission`) | Who can capture other users' server data (`canCaptureServerData`): **All server log lines** and keeping a ZIP's server data on import | admins only |
-| Uploaders can view the server data of their own recordings (`ownServerData`) | removed: always on | |
-| Delete system logs not uploaded after (days) (`systemLogKeepDays`) | Delete server data not uploaded after (days) (`serverDataKeepDays`) | 7 |
-| Sample server load during recordings (`captureGauges`) | Allow capturing server load (`allowCaptureGauges`) | No (was Yes) |
-| Copy Glowroot traces of slow and failed requests (`captureTraces`) | Allow capturing Glowroot traces… (`allowCaptureTraces`) | No (was Yes) |
-| Copy Glowroot data for the recording (`captureGlowrootData`) | Allow capturing Glowroot data (`allowCaptureGlowrootData`) | No |
-| Max file size (MB) (`maxSizeMb`) | unchanged: value kept | |
-| Max size of system logs per recording (MB) (`systemLogMaxMb`) | Max size of system logs per node per recording (MB), same key: value kept | |
-| Glowroot address (`glowrootUrl`) | unchanged: value kept | |
-
-Server load, traces, Glowroot data, app export and apps data are now asked per recording in the popup's
-**Quick Settings**; the **Allow…** settings decide whether non-admins see those boxes. New settings are listed under
-[Settings](#settings).
-
-**Every uploader now sees their own recording's server data**, with no setting to turn it off. In 8.2.1 this was
-off by default (no capture, and `ownServerData` No). It includes the **Info** tab, with its secrets masked (see
-[From 8.2.2](#from-822)). If that is a problem, limit **Who can upload**.
-
-**Also renamed:**
-
-- The `canViewSystemLog` flag in the API's recording JSON is now `canViewServerData`.
-- The capture summary `systemLog` is now `serverCapture` (in `meta.json`, in `session.json`'s `recording`, and in the
-  `recording-start` answer). Recordings and ZIPs made with 8.2.1 still open, upload and import: their `systemLog` is
-  still read.
-
-**Plugin 8.2.2 needs extension 1.2.0 or later** (8.2.3 needs 1.3.0, see [From 8.2.2](#from-822)). Older extensions
-are not supported with it, and extension 1.2.0 or later with plugin 8.2.1 or older uploads recordings without their
-server data. Upgrade the plugin and the extension together.
+Who may upload, capture server data or export apps: [Settings](guide/settings.md).
 
 ## Use
 
-- **Recordings list:** `<context>/blackbox/`: your own recordings (admins: all). Tick rows to
-  **Download ZIP** or **Delete selected**. **Import ZIP…** adds a ZIP as a new recording owned by you.
+- **Recordings list:** `<context>/blackbox/`: your own recordings (admins: all). Tick rows to **Download ZIP** or
+  **Delete selected**. **Import ZIP…** adds a ZIP as a new recording owned by you.
 - **Replay page:** `<context>/blackbox/view?id=<id>`. **Features** in its header lists what it can do.
-- **Uploading:** set the extension's **Upload URL** to `<context>/api/blackbox`. Uploads use your Joget login in that
-  browser; when you are logged in, a stopped recording uploads and opens here by itself.
-- **Downloads:** **Download ZIP** (to import elsewhere) and **Download HTML** (replays without Joget; **Open full trace**
-  works in it too). Both include the server data, so share them only with people who may see it.
+- **Uploading:** uploads use your Joget login in that browser; when you are logged in, a stopped recording uploads and
+  opens by itself.
+- **Downloads:** **Download ZIP** (to import elsewhere) and **Download HTML** (replays without Joget; **Open full
+  trace** works in it too). Both include the server data, so share them only with people who may see it.
 
-## Settings
+## Compatibility
 
-**Settings > Manage Plugins > BlackBox > Configure** (system-wide). Permission settings take a Joget permission plugin
-(user, group, role, department, BeanShell…); Yes/No settings are checkboxes. Admins can always do everything.
+Joget DX 8.2 (Community and Enterprise), Chrome 116 or later. Install the plugin before (or with) the extension of the
+same release:
 
-### Access
-
-The settings page (**Settings > Manage Plugins > BlackBox > Configure**) shows each setting's default when it was never
-saved, also for settings added in a later version. **Reset to defaults** (beside **Submit**) fills the whole form with the defaults; nothing
-is saved until **Submit**.
-
-| Setting | Default | Notes |
-|---|---|---|
-| Who can upload | Logged In User (any logged-in user; empty = the same) | Uploads from the browser only: upload, import a ZIP. Uploaders view and delete their own recordings; admins every recording |
-| Max file size (MB) | 500 | Video and session.json each |
-| Max recording length (minutes) | 30 | 5–120; see [Limits](#limits) |
-| Storage per user (MB) | 10240 | Non-admins. 0 = no limit; see [Limits](#limits) |
-| Max recordings in progress per user | 3 | Non-admins. 0 = no limit |
-| Max recordings started per user per minute | 10 | Non-admins, per node. 0 = no limit |
-| Max total size of a ZIP import (MB) | empty = 3 × Max file size | All files unpacked together. 0 = no limit |
-| Max files in a ZIP import | 5000 | Empty = 5000. 0 = no limit |
-| Allow recording browser secrets unmasked | No | Off: every non-admin recording has credentials masked; see [Credentials in recordings](#credentials-in-recordings). Popup: **Record browser secrets unmasked** |
-| Allow recording System Info secrets unmasked | No | Off: the Info tab's secrets are masked for every non-admin recording; see [Sensitive data](#sensitive-data-in-system-info). Popup: **Record System Info secrets unmasked** |
-| Allow recording license secrets unmasked | No | Enterprise only. Off: the License section's `platform.systemKey`, `platform.license.signature` and `platform.net.address` are masked for every non-admin recording; see [Sensitive data](#sensitive-data-in-system-info). Popup: **Record license secrets unmasked** |
-| Allow uploads over HTTP | Yes | Off: uploads, ZIP imports and server captures need HTTPS (or `X-Forwarded-Proto: https` from a proxy); a server reached as `localhost` is always allowed. Reading recordings is not affected |
-| Allowed Chrome extension IDs | `anmfmkacddnmmgdcnkgkfjhagnilmkmp` | Extensions that may send recordings without a CSRF token. The BlackBox extension has this ID on every computer. Empty = any extension |
-| Allow unsandboxed trace pages in HTML exports | Yes | On: **Open full trace** in a downloaded `.html` opens the Glowroot page as it is (internal review). Off: inside a sandbox, so a crafted trace page can't reach the site the file is opened from. The recordings page always sandboxes them |
-
-#### Credentials in recordings
-
-The extension masks credentials as `****` before a recording is saved anywhere (browser storage, files, the upload),
-unless the user may record them unmasked (admins, or **Allow recording browser secrets unmasked**) and ticks
-**Record browser secrets unmasked** in the popup (unticked by default). Masked:
-
-- `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`, `api_key` headers, and any header whose
-  name has a secret word: `password`, `pwd`, `secret`, `token`, `api key`, `credential`, `csrf`, `session id`, `otp`… (so
-  `OWASP_CSRFTOKEN` too).
-- Values with a secret-word name in URLs (`?token=`), form posts (`j_password=`), JSON request and response bodies
-  (`"access_token": …`), and `user:password@` in URLs.
-- Secret-shaped values anywhere, also in console messages: `Bearer`/`Basic` tokens, JWTs, private keys, AWS, GitHub,
-  Slack and Google keys.
-
-Record ids and other values stay, so the app export still finds the records the recording used. `session.json`
-says `recording.credentialsMasked`. Masking runs in the browser: the data is the user's own, so it guards against
-leaking it by accident, not against a user who crafts a session.json.
-
-### Server data
-
-Every recording that reaches the server gets the recorded tab's log lines and a System Info snapshot. The settings
-below add the other parts.
-
-| Setting | Default | Notes | Popup checkbox |
-|---|---|---|---|
-| Who can capture other users' server data | Is Admin (admins only; empty = the same) | Who may tick **All server log lines** and keep a ZIP's server data on import | |
-| Max size of system logs per node per recording (MB) | 20 | Later lines are dropped and the viewer says so | |
-| Delete server data not uploaded after (days) | 7 | | |
-| Allow capturing server load | No | | **Capture server load** |
-| Allow capturing Glowroot traces of slow and failed requests | No | | **Capture Glowroot trace files** |
-| Allow capturing other users' traces | No | Needs the setting above. Other users' SQL with values and URLs | **Include other users' traces** |
-| Allow capturing Glowroot data | No | Needs Glowroot 0.14 | **Capture Glowroot data** |
-| Glowroot address | empty | Empty = this Joget's own agent (usually `http://localhost:4000`) | |
-| Secret names to mask in System Info | the list below | One per line; `pass*` = starts with, `*key` = ends with. Empty = the default list; see [Sensitive data](#sensitive-data-in-system-info) | |
-
-### Support data
-
-| Setting | Default | Notes | Popup checkbox |
-|---|---|---|---|
-| Recent changes period (days) | 7 | Info tab: changed app versions and wflow files; at most 365 | |
-| Allow exporting the apps used in the recording | No | | **Export the apps used** |
-| Max apps to export | 3 | 0 = no limit (0–9999; anything else means 3); apps not allowed don't count | |
-| Who can export apps they don't administer | nobody | Only apps Joget lets them access | |
-| Allow apps data from apps they don't administer | No | Off: such an app is exported without its rows and process data (the Apps tab says why) | |
-| Allow capturing apps data | No | Needs **Allow exporting the apps used…**; see [Apps data](#apps-data) | **Capture apps data** |
-| Allow masking apps data | No | Shown when apps data is allowed | **Mask data** |
-| Newest rows per table when the recording touched none | 20 | Shown when apps data is allowed. At most 500 | |
-| Always-masked column names | password, ic, email, phone, address… | Shown when apps data is allowed. One word per line; a column whose name has one as a word is always masked. Empty = the default list | |
-
-### Who sees what
-
-| What | Who |
+| Plugin | Extension |
 |---|---|
-| Upload, import a ZIP | **Who can upload** (others get **Upload selected** disabled in the extension) |
-| View and delete a recording, with its server data (system logs, traces, server load, Glowroot data, Info, exported apps) | Its uploader |
-| Capture all server log lines (popup), keep a ZIP's server data on import | **Who can capture other users' server data**: these can hold other users' data. The list page says when a ZIP's server data was left out |
-| Have an app exported (definition and data) | The app's own admins, or **Who can export apps they don't administer** for apps Joget lets them access (one of the app's userviews allows them). Other apps are listed as not exported. Data of an app the user doesn't administer only with **Allow apps data from apps they don't administer** |
-| Downloads (ZIP, HTML) | Anyone who can view the recording |
+| 8.2.3 | 1.3.0 |
+| 8.2.2 | 1.2.0 |
+| 8.2.1 | 1.1.0 |
 
-### Per-recording choices (popup)
+Upgrading from an earlier release: [UPGRADE.md](UPGRADE.md).
 
-The popup's **Quick Settings** shows these when the settings and the user's rights allow them (the user must be
-logged in to the Upload URL's server). All start unticked; choices are remembered and kept with the recording, so
-automatic uploads use them too. The server checks every choice again.
+## Documentation
 
-| Popup checkbox | Shown when |
+| Page | What |
 |---|---|
-| **Export the apps used** | Admins always; others when **Allow exporting the apps used in the recording** is on and they may have some app exported |
-| **Capture apps data** | **Export the apps used** is shown, and the user is an admin or **Allow capturing apps data** is on |
-| **Mask data** | **Capture apps data** is shown, and the user is an admin or **Allow masking apps data** is on |
-| **All server log lines** | The user is in **Who can capture other users' server data** |
-| **Capture server load** | Admins always; others when **Allow capturing server load** is on |
-| **Capture Glowroot trace files** | Admins always; others when **Allow capturing Glowroot traces of slow and failed requests** is on |
-| **Include other users' traces** | Admins always; others when **Allow capturing other users' traces** is on too. Needs **Capture Glowroot trace files** ticked. With virtual hosts on, only when the server is started with `-Dblackbox.sharedGlowroot=true` |
-| **Capture Glowroot data** | Admins always; others when **Allow capturing Glowroot data** is on. With virtual hosts on, only when the server is started with `-Dblackbox.sharedGlowroot=true` |
-| **Record browser secrets unmasked** | Admins always; others when **Allow recording browser secrets unmasked** is on. Unticked: credentials are masked |
-| **Record System Info secrets unmasked** | Admins always; others when **Allow recording System Info secrets unmasked** is on. Unticked: System Info secrets are masked |
-| **Record license secrets unmasked** | Enterprise only. Admins always; others when **Allow recording license secrets unmasked** is on. Unticked: the system key, signature and MAC address are masked |
+| [Settings](guide/settings.md) | Every plugin setting, and the popup's per-recording choices |
+| [Security](guide/security.md) | Who sees what, masked credentials, sensitive data in System Info |
+| [Server data](guide/server-data.md) | System logs, traces, Glowroot data, server load, the Info tab |
+| [Liveness and limits](guide/limits.md) | How a recording stays alive, and its time, size and storage limits |
+| [Apps](guide/apps.md) | App export and apps data |
+| [Storage](guide/storage.md) | Where recordings are kept |
+| [UPGRADE.md](UPGRADE.md) | Breaking changes between releases |
+| [chrome-extension/README.md](chrome-extension/README.md) | The extension: install, record, recordings, replay |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Internals and the API |
+| [e2e/README.md](e2e/README.md) | Browser tests |
 
-- A ticked box asks for that part for this recording; the settings and the user's rights decide which boxes show.
-- Apps data is real unless **Mask data** is ticked; the popup warns while real data will be exported.
-- **Capture apps data** needs **Export the apps used**; **Mask data** needs both.
-- If the apps weren't exported at stop, the upload form offers the same three app choices.
+## Build
 
-## Server data
+```bash
+mvn -o package    # runs the unit tests too; the jar is target/blackbox-8.2-SNAPSHOT.jar
+```
 
-Shown on the replay page and in the ZIP and HTML downloads, to everyone who can view the recording.
-
-- **System logs** tab: Joget log lines (as in `joget.log`: info and up by default) written while serving the recorded
-  tab's requests, plus one entry per request, lined up with the video; a network request's details show its own lines.
-  Not captured: work a request hands to another thread.
-- **Other server threads** (popup's **All server log lines**): every other log line during the recording
-  (scheduler, email, other users) on the nodes the recording reached. With virtual hosts on, only the lines of
-  requests to the recording's own profile: background threads (scheduler, email, cleanup) are left out, since Joget
-  shares them between profiles. Greyed under the filter **This tab + other
-  server threads**, not counted as errors.
-- **Traces** tab: the [Glowroot](https://glowroot.org) trace of each recorded request Glowroot kept (slow or failed,
-  by Glowroot's own settings), and of each one that logged an ERROR, even when it was fast and returned 200 (BlackBox
-  asks Glowroot to keep those). Only traces Glowroot tagged with this recording are used, so another user's request
-  on the same page at the same moment is never shown as yours. Failed lookups have **Retry** (not for imported
-  recordings, nor for ones recorded with plugin 8.2.2 or older). Glowroot must allow anonymous access.
-- **Other users' traces** (popup's **Include other users' traces**): about 30 s after the stop, each node the
-  recording reached adds the traces Glowroot kept of every other request and background job during the recording
-  (up to 200 per node, and what a slow Glowroot gives within 5 minutes), with the user when Glowroot records it: set
-  its Servlet plugin's **Session user attribute** to `SPRING_SECURITY_CONTEXT.authentication.name` (empty by default:
-  shown as "user unknown"). A note in that list says when they are still coming and how many were copied. Listed under the Traces filter **Other users' traces**, never as a recorded
-  request's trace. With **Capture Glowroot data**, the downloaded data keeps all traces of that time too. With
-  virtual hosts both hold every profile's requests on the node, so they need the server's opt-in (see the table above).
-- **Download Glowroot data**: the recording's slice of Glowroot's data, ready 30–90 s after the stop, to open in a
-  standalone Glowroot 0.14.2 (see its `README.txt`). About 1 MB for 35 s. Building it needs free temp space about the
-  size of Glowroot's `data.h2.db`.
-- **Server load** strip: CPU, heap, busy request threads, DB connections and GC time per node, every second. No
-  Glowroot needed.
-- **Info** tab: the server at recording start.
-  - **Changes in the last *N* days** (hidden when none): edited or published versions of the apps the recording used
-    and of apps sharing their tables, changed wflow files.
-  - **Joget** (start time, uptime), **Plugin** (every jar in `app_plugins`; "not loaded" = failed, see the Joget log),
-    host, Java, database settings, **DB pool**, license, system properties.
-  - **Cluster**: its nodes and the requests each served. **Node switches** counts requests that moved between nodes;
-    Joget logins don't follow unless **Session replication** is on (a Tomcat cluster, Enterprise only), so the load
-    balancer needs sticky sessions.
-
-**Sensitive data:** traces and Glowroot data hold SQL with parameter values and request details; app definitions can
-hold plugin settings and environment variables. Info masks secrets in JVM arguments and system properties, and the
-license's system key, signature and MAC address (below).
-
-#### Sensitive data in System Info
-
-JVM arguments, system properties, the datasource file and pool settings are masked as `****` when:
-
-- **the name** matches a line in **Secret names to mask in System Info** (one name per line; commas also separate). A word matches anywhere in the name; `*`
-  matches anything, so `pass*` matches names that start with `pass` and `*key` names that end with `key`. The default
-  list, one per line: `password, passwd, passphrase, pwd, secret, token, api*key, access*key, private*key, client*secret, auth*key,
-  credential, signing*key, encryption*key, salt, cert, pass*, *pass, _pass_, key*, *key, !wflow.systemkey` (`smtp.pass`,
-  `-Dsystem.apiKey`). A line starting with `!` is an exception: a name it matches is never masked, so the default
-  list keeps `-Dwflow.systemkey` (Enterprise's system key generator, e.g. `Domain`) visible. An exception covers one
-  whole name (`!wflow.systemkey` doesn't keep `wflow.systemkey.password` visible); `*` at an end leaves that end open
-  (`!app.*`). An admin can remove words from it; empty
-  means the default list. A saved list equal to the default list before `!wflow.systemkey` was added
-  (development builds only) counts as the new default; an edited list is kept as it is.
-- **the value** looks like a secret, whatever its name: `user:password@` in a URL, `Bearer`/`Basic` tokens, JWTs,
-  private keys, Joget-encrypted passwords (`%%%%…%%%%`), AWS, GitHub, Slack, Google and OpenAI-style keys, and
-  `name=value` pairs with a secret name inside a longer value (`user=root;pwd=****`).
-
-Nothing is masked when the recording was started with **Record System Info secrets unmasked** in the popup (admins,
-or users that **Allow recording System Info secrets unmasked** allows; unticked by default). The Info tab then shows
-**System Info secrets: unmasked** (a recording made with plugin 8.2.2 or older, which masked nothing there, shows
-**unmasked (older recording)**). The database password is never recorded: the database and pool settings still mask password names (`pwd`,
-`passwd`…) and `user:password@` in the URL. This is separate from **Record browser secrets
-unmasked**, which covers the browser's traffic.
-
-**License** (Enterprise only): the License section is kept as System Info shows it, except the system key
-(`platform.systemKey`), the license signature (`platform.license.signature`, which is the system key the license was
-issued for) and the MAC address (`platform.net.address`), which are masked unless the recording was started with **Record license secrets unmasked**
-(admins, or users that **Allow recording license secrets unmasked** allows; unticked by default). The Info tab then
-shows **License secrets: unmasked**. The word list
-above doesn't apply to the license, and the two unmasked options are independent.
-
-The lists come from Joget Upgrade Advisor's secret masker. The snapshot is taken at recording start, so a changed
-setting applies to recordings started after it.
-
-### Liveness
-
-- The extension tells the server every 30 s that the recording is running (`recording-ping`); this keeps the Joget
-  session alive.
-- If the server has ended the capture, the recording stops (reason `server-stopped: …`). If the user is logged out,
-  the recorder shows **Server capture ended: logged out** and records on without server data.
-- No ping for 3 minutes (browser crashed, killed or offline): the server ends the capture at the last ping, with stop
-  reason `browser-lost`. A capture that never got a ping is ended only by the hard limit.
-- A recording recovered after a crash ends its capture at its last save (every 5 s), if that fits the capture (after
-  its start, at most 3 minutes after the last ping); otherwise at the last ping. The save time comes from the
-  browser's clock, so a browser clock that is off moves the end by the same amount.
-
-### Limits
-
-- **Max recording length** (30 minutes by default): the recorder shows the time left, warns 2 minutes before, and at
-  the limit stops and saves as if the user pressed stop (reason `time-limit`; apps are exported as usual). When no
-  server answers the start (no Upload URL, logged out, server down) the extension uses 30 minutes. If the browser
-  doesn't stop, the server ends the capture 2 minutes after the limit, at the limit, with reason `time-limit`.
-- **Size:** video is recorded at 1.5 Mbit/s (about 340 MB for 30 minutes). At 90% of **Max file size** the recorder
-  stops and saves (reason `size-limit`), so the upload doesn't fail. No size guard when no server answered the start.
-- **Storage per user** (10 GB): an upload, video or ZIP import that would take a non-admin's recordings past it
-  (every file in their recording folders, server data and exported apps included) gets HTTP 413 and "Delete some
-  recordings first".
-- **Recordings in progress** (3) and **started per minute** (10): a non-admin's `recording-start` past either gets
-  HTTP 429; the recording still works, without server data. A closed browser's captures stop on their own.
-- **ZIP import:** besides **Max file size** per file, all files together may unpack to at most **Max total size of a
-  ZIP import** (3 × Max file size), and the ZIP may hold at most **Max files in a ZIP import** (5000). A ZIP past
-  either is refused and nothing is kept.
-
-## App export
-
-When the recording stops, BlackBox exports the Joget apps the tab used as `.jwa` files (definition only: no form data,
-plugins or groups), **as they were at that moment**. Apps with problems come first, then the most used, up to **Max
-apps to export**. The version is the one the URL names, else the published one, else the latest. App Center is only
-exported when it had problems or was the only app. If the export runs long, the recording uploads without waiting and
-the apps are added when it ends (the replay page shows **Exporting apps…**). If there was no export at stop (no
-capture, or it failed), the export runs at upload.
-
-- **App** tab: each app's requests, time in use, **Download .jwa**, apps data and processes. Apps not exported are
-  one grey line.
-- **Recordings list:** app names under the title, ⚠ for apps with problems.
-- **Apps lane** (under the Issues timeline): which app the tab showed when; click to filter. The Network and System
-  logs tabs have the same **App** filter.
-- The ZIP includes the `.jwa` files; the HTML download lists the apps only.
-
-## Apps data
-
-With **Capture apps data**, each `.jwa` gets rows the way Joget's own export adds them, so **importing the `.jwa`
-imports the rows too** (unless "do not import form data" is ticked). Rows per app table:
-
-- **Opened or saved** in the recording (record, process and activity ids in URLs and form posts);
-- **Linked** to those (grid and subform rows, rows they point at);
-- otherwise the **newest** rows (setting).
-
-**Real** (default): real values and original record ids, so importing overwrites rows with the same ids. Columns
-matching **Always-masked column names** are masked. Uploaded files are copied up to 5 MB each and 50 MB per app; larger
-ones become placeholders.
-
-**Masked** (**Mask data** ticked): letters and digits are replaced with the same kind, so length and format stay; the
-same value gets the same fake throughout. Record ids (primary keys) get new ones, also where other rows point at them,
-so importing never overwrites rows; the old → new map is in the ZIP's `apps.json`. User names (created by / modified
-by) become `user1`, `user2`… wherever they appear; uploaded files become placeholders. Kept: option values, values in
-the app definition, yes/no/true/false, numbers up to 5 digits, UUIDs, process ids. Dates keep their year.
-
-**Process data** (read only; Joget can't import running processes): the processes the recording touched, with state,
-requester, dates, variables and each activity's state and assignees; masked with the rest when **Mask data** is
-ticked. At most 20 processes per app and 100 activities each; archived processes are not found.
-
-## Storage
-
-One folder per recording under `<wflow>/blackbox/<id>/`, no database tables. Server data waiting for its recording's
-upload is in `<wflow>/blackbox/pending/` (deleted after **Delete server data not uploaded after**), trace retries in
-`<wflow>/blackbox/retry/`. A shared `wflow` folder works for clusters. Back it up like other `wflow` data; deleting a
-recording removes its folder.
-
-For tests only: `<wflow>/blackbox/liveness-test.json` (`pingMs`, `lostMs`, `checkMs`, `minLimitMs`, each at least
-1000 ms) shortens the liveness timings without a restart; the log warns while it is in use. Delete it afterwards. With
-virtual hosts each profile has its own (`<wflow>/app_profiles/<profile>/blackbox/liveness-test.json`). See
-ARCHITECTURE.md, Storage.
+Built against `wflow-core` 8.2-SNAPSHOT (javax.servlet). The jar includes the extension's replay viewer: rebuild it
+after changing `chrome-extension/viewer.js` or `viewer.css`.
