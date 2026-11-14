@@ -109,7 +109,8 @@ with the id in `allowedExtensionIds` (never saved: `OFFICIAL_EXTENSION_ID`, fixe
 Content-Length, 413) on create, video and import; `recording-start` checks `StartLimiter` (`captureStartsPerMinute`,
 in memory per node, 429) and `ServerCaptureStore.openCount` (`maxOpenCaptures`, 429). `RecordingZip.importZip` reads
 through `BudgetZip`, whose entry streams share one budget of uncompressed bytes (`importMaxTotalMb`, empty = 3 ×
-`maxSizeMb`), and refuses more than `importMaxEntries` entries (empty = 5000).
+`maxSizeMb`), and refuses more than `importMaxEntries` entries (empty = 5000). Both exist because a ZIP of many entries just under
+the per-file limit, or of entries sharing one compressed block, would otherwise unpack to far more than its own size.
 
 **HTTPS-only uploads** (`allowHttpUpload` off): `handle()` refuses the POST actions in `UPLOAD_ACTIONS` (create,
 video, import, recording-start/stop/ping) with 403 unless `secureOrLocal`: `isSecure()`, `X-Forwarded-Proto: https`,
@@ -192,7 +193,8 @@ Info and the app export at stop (their own sections).
    While it records, the recorder also sends a heartbeat (below).
 4. The replay page loads `system-log.json` for allowed users and lines it up with the video. The plugin sends
    `X-BlackBox-Time` (server clock) on tagged responses; if the server clock differs from the browser's by more than
-   250 ms, the viewer corrects it. The plugin's own request entries (not in `joget.log`) are only shown in a network
+   250 ms, the viewer corrects it. A cached response keeps the header of when it was first fetched, so only fresh
+   responses count. The plugin's own request entries (not in `joget.log`) are only shown in a network
    request's details.
 
 Not captured: work a request hands to another thread, and log lines that never reach the root logger's appenders.
@@ -288,6 +290,9 @@ left out, as is every line for a capture without `profile` (started by 8.2.2). `
 
 Log4j 2 is not visible to plugin bundles (OSGi exports neither `org.apache.logging.log4j` nor `org.apache.log4j`),
 so `ServerCapture` reaches it through Joget's classloader by reflection; the appender is a `java.lang.reflect.Proxy`.
+A log4j reconfiguration replaces the root logger's config and drops the appender, so each flush checks and adds it
+again. The appender never throws into the application's logging call, and a failed write (pending folder gone, disk
+full) is not logged, since it runs inside a logging call.
 
 ## Glowroot traces
 
@@ -316,6 +321,17 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
 - **Matching:** a Glowroot trace is a request's only when its header's `attributes` hold `BlackBox recording` = the
   capture id (`TraceStore.tagged`), besides the same method, path and start ±2 s. A trace that matches all but the tag
   ends the lookup as "none" with that reason. Each entry keeps its `capture` id.
+- **Glowroot's API:** a trace can be listed a moment before its header can be read (404): the lookup skips it and
+  tries again later instead of failing. The queries of a trace with no SQL answer 404 (its header says whether there
+  are any). Glowroot's duration is a little longer than the filter measures, and its start a little earlier.
+- **Slow threshold:** a Glowroot slow threshold below 100 ms reads as "trace everything", so the lists then use the
+  default 2000 ms (`ServerData.slowMs`).
+- **Finding Glowroot:** `GlowrootClient` reads the address from `admin.json` next to the `-javaagent` jar:
+  `agent-<host>/admin.json` when Glowroot keeps one folder per server (multi-directory mode), else `admin.json`. The
+  agent version comes from the agent jar's manifest, as Glowroot's Environment page shows it. `glowroot.jar` is on the
+  bootstrap or system class path, never in the bundle, so `GlowrootTag` looks the agent API up through the bootstrap,
+  system and context loaders; an older Glowroot without `setTransactionSlowThreshold(long, TimeUnit)` keeps only
+  slow or failed traces.
 - **Other users' traces** (`otherTraces`): `TraceCollector.watchOthers` on each node the capture opened on; 30 s
   after `stoppedAt`, `collectOthers` reads the Web and Background points of [start, stop + 30 s], skips the
   capture's own (tagged) and those started after the stop, and writes up to `MAX_OTHERS` (200) entries `other: true`
@@ -399,8 +415,19 @@ so `ServerCapture` reaches it through Joget's classloader by reflection; the app
   the recording with Glowroot's own shaded H2 driver (`lib/glowroot-embedded-collector.jar`, H2 1.3), reads only the
   blocks the kept rows point to straight from the live `*.capped.db` ring files, writes them into new capped files of
   the same ring size, rewrites the capped ids, and compacts the copy. It runs on one low-priority thread inside Joget,
-  with a small H2 cache; temporary files go to `java.io.tmpdir` and are deleted afterwards. A block Glowroot
+  with a small H2 cache (`CACHE_SIZE=8192`); temporary files go to `java.io.tmpdir` and are deleted afterwards. A block Glowroot
   overwrites before it is read is left out, and the status says how many.
+- **Order and class loading:** H2 is copied first and the capped files are read after, so every capped id in the copy
+  exists in the capped files. The shaded H2 driver loads in a `URLClassLoader` whose parent is the loader of
+  `java.sql` (the platform loader on Java 9+), so it sees JDBC and nothing of Joget or the bundle.
+- **Capped files (Glowroot 0.14):** a header of `currIndex` (long), `sizeKb` (int) and `lastResizeBaseIndex` (long),
+  then the ring. Each block is its length (long) and its LZF bytes; Glowroot never splits a length across the ring's
+  end, though the bytes may wrap. Glowroot writes a chunk (one LZF block, up to 64 KB) and then the header, so up to
+  1/16 of the ring (at most 1 MB; rings are at least 1 MB) past the header's position may already be overwritten. A
+  block counts only if it wasn't overwritten before or while it was read (the header is checked again after the read);
+  the smallest id still kept is computed the way Glowroot does.
+- **Tests:** H2 1.4.199 (test scope) lets `GlowrootDataTest` build a Glowroot-shaped database in the PageStore format
+  that Glowroot's H2 1.3 writes.
 - **The ZIP:** `data/` (`data.h2.db` and the five capped files) and `README.txt` with the steps and the time range.
   It opens in Glowroot's offline viewer (`java -jar glowroot.jar` in a dist folder holding `data/`), which only reads:
   it starts no agent (no samples of its own JVM, no alerts or monitors) and schedules no reaper, so nothing expires.
@@ -437,7 +464,7 @@ Joget (with Process), Plugin; then Host, Cluster, Java, Database, DB pool, Licen
 - License keys `platform.version`, `platform.db.profile`, `platform.db.jdbc.driver`;
 - system properties shown in Joget, Host, Cluster or Java (`platform.jvm.total/max/processors/used`, `wflow.name`,
   `os.*`, `java.version`, `java.runtime.version`, `java.vm.name`, `java.vm.vendor`, `user.timezone`), and those a
-  `-D` argument sets to the same value.
+  `-D` argument sets to the same value. When a name has several `-D`, the last one wins, as in Java.
 
 Sections:
 
@@ -477,7 +504,8 @@ the server's time zone; so are **Uploaded** and **First uploaded** (`BB.fmtDate`
   every other key in the file. The password is left out, and `password=` values in the URL are masked.
 - **DB pool** (`connectionPool`): the pool state at recording start (size, active, idle, waiting), then every Tomcat JDBC pool
   setting as the pool really uses it. A value that differs from the file shows `(file says x)`. **Ignored file keys**
-  lists keys the pool has no setting for: Joget skips them silently, usually because of a typo (`maxactive`).
+  lists keys the pool has no setting for: Joget's `DynamicDataSource` copies every other file key onto the Tomcat JDBC
+  pool with BeanUtils and skips the ones it can't set silently, usually because of a typo (`maxactive`).
 - **License**: Enterprise's license table (`SysInfo.getLicenseProperties()`), including the license signature, system
   key and MAC addresses (masked, see below). Missing on Community.
 - **System properties**: System Info's system table (`SysInfo.getSystemProperties()`): every Java system property plus
@@ -487,7 +515,9 @@ the server's time zone; so are **Uploaded** and **First uploaded** (`BB.fmtDate`
 values): JVM arguments (`-Dname=value` by name, others by value), system properties, datasource keys and pool settings.
 A secret name (the `secretNames` setting; empty = `Secrets.DEFAULT_NAMES`, the names of Upgrade Advisor's `SecretMasker`) masks the whole
 value; secret-shaped values (URL user info, Bearer/Basic, JWT, private keys, `%%%%…%%%%`, known API key prefixes,
-secret-named `name=value` pairs) are masked inside any value. A `!word` line is an exception for one whole name
+secret-named `name=value` pairs) are masked inside any value. Setting words are matched without regex (the parts between
+`*` found in order with `indexOf`), and `KEY_VALUE` takes a name in one possessive run, so no word an admin enters
+can make matching slow. A `!word` line is an exception for one whole name
 (`*` at an end leaves it open); the default list ends with `!wflow.systemkey` (Enterprise's system key generator), and a
 saved list equal to `Secrets.OLD_DEFAULT_NAMES` (the default before that line) counts as the default. A recording
 started with `systemSecrets=true` by a user `allowUnmaskedSystemInfo` allows (admins always) uses `Secrets.none()`:
@@ -595,17 +625,22 @@ App filter and the App tab's problem lists, so the lane works for local recordin
 `recording-stop` and `create` take `sampleData=none|masked|real` (missing: real; none without **Allow capturing apps
 data**, admins excepted). `masked` also gives every record a new id (`IdMap(keep=false)`); `real` keeps the ids. `AppExport.save` calls an `AfterExport` hook per saved `.jwa`: `SampleData.build` with one
 `Masker` (random HMAC key per export, so fakes are stable within a recording and differ between them) and one `IdMap` for all apps of
-the recording, then `SampleData.addTo` rewrites the `.jwa` with `data/<table>.json` (`FormUtil.formRowSetToJson(rows,
-true)`, the format `AppService.importFormData` reads) and `app_formuploads/<table>/<newId>/<file>`. Data comes from
+the recording, then `SampleData.addTo` rewrites the `.jwa` with `data/<table>.json` (the format `AppService.importFormData`
+reads; dates as `yyyy-MM-dd HH:mm:ss` in the server's time zone, the pattern `FormUtil.jsonToFormRowSet` parses) and `app_formuploads/<table>/<newId>/<file>`. Data comes from
 `FormDataDao` (`load`, `find` with `e.customProperties.<col> IN (...)`, newest by `dateModified`) and
 `FileUtil.getUploadPath`; activity ids are resolved with `WorkflowManager.getActivityById`. `apps.json` gets each app's
 `sample` summary (mode, tables: rows, how picked, files, masked columns) and the recording's `idMap`.
+
+The export runs on a background thread after the stopping request ended, so it must not use the request's locale:
+`FormUtil.formRowSetToJson` and `FormRow.getProperty` format dates with it and throw there (Tomcat: "The request
+object has been recycled"), and Joget's own export then writes `[]`. So `SampleData` formats the rows itself.
 
 `ProcessData` runs in the same hook: process ids from the recorded ids, the sample's old record ids and the process ids
 in its rows (activity ids resolved with `getActivityById`), kept when the process definition id starts with
 `<appId>#`; `getRunningProcessById`, `getProcessVariableList`, `getActivityList` (by `dateCreated`, oldest first) and
 `getRunningActivityInfo` (assignees, accepted user). At most 20 processes per app and 100 activities per process
-(`activitiesCut: true` when cut). Written to the app's `processes` in `apps.json`.
+(`activitiesCut: true` when cut). Written to the app's `processes` in `apps.json`. Joget returns an empty
+`WorkflowProcess` (not null) for an unknown process id.
 
 ## Plugin parts
 
@@ -615,12 +650,12 @@ in its rows (activity ids resolved with `getActivityById`), kept when the proces
 | `BlackBoxPlugin` | System settings + API logic (actions above); its inner class `Access` holds the permission checks |
 | `BlackBoxApiFilter` | Serves the API at `/api/blackbox?action=…` |
 | `BlackBoxPageFilter` | Serves the static pages at `/blackbox/…`, and `assets/settings.js` for the settings page |
-| `settings.js` | The settings page's `_settingsDefaults` custom field: fills settings never saved (and empty permission pickers that have a default) with their defaults from `blackboxPlugin.json`, and **Reset to defaults** (a page button beside Submit, `buttons` with a `callback`) fills the whole form. Joget 8.2 shows `value` defaults only when nothing was ever saved. Saves nothing itself |
+| `settings.js` | The settings page's `_settingsDefaults` custom field: fills settings never saved (and empty permission pickers that have a default) with their defaults from `blackboxPlugin.json`, and **Reset to defaults** (a page button beside Submit, `buttons` with a `callback`) fills the whole form. Joget 8.2 shows `value` defaults only when nothing was ever saved. Joget's property editor `eval()`s the file as one object literal and mixes it into the field, so it isn't valid stand-alone JS. Saves nothing itself |
 | `RecordingStore` | Folder storage, validation (JSON shape, WebM header, size limits, id format), `meta.json` locking, old `systemLog` names |
 | `SessionFile` | Copies `session.json` / `system-log.json` to disk, checks them and reads them as streams |
-| `JsonStream` | The small pull parser `SessionFile` uses |
+| `JsonStream` | The small pull parser `SessionFile` uses; keeps its own read buffer (`Reader.read()` per character is slow), and caps a name at 4096 characters so one huge key can't grow to the file's size |
 | `RecordingZip` | `download&format=zip` and `import`: the recording as one ZIP and back |
-| `RecordingHtml` | `download&format=html`: view.html with viewer.css/js inlined and display.js in `<head>`, the recording in `<script>` data blocks, `export.js` to open it. The full trace pages go in too, one `application/gzip` block each (base64, ~105 KB instead of ~450 KB); `export.js` unzips them with `DecompressionStream` into `blob:` URLs for **Open full trace** (no link in a browser without it). With `allowUnsandboxedTraces` off, `meta.tracesSandboxed` makes each page a wrapper with a `sandbox="allow-scripts allow-popups"` iframe (`srcdoc`), the same sandbox as the `trace` endpoint's CSP |
+| `RecordingHtml` | `download&format=html`: view.html with viewer.css/js inlined and display.js in `<head>`, the recording in `<script>` data blocks, `export.js` to open it. The full trace pages go in too, one `application/gzip` block each (base64, ~105 KB instead of ~450 KB); `export.js` unzips them with `DecompressionStream` into `blob:` URLs for **Open full trace** (no link in a browser without it). With `allowUnsandboxedTraces` off, `meta.tracesSandboxed` makes each page a wrapper with a `sandbox="allow-scripts allow-popups"` iframe (`srcdoc`), the same sandbox as the `trace` endpoint's CSP. In the data blocks every `<` is written `\u003c`, so no `</script` can end a block early; a literal `</script>` or `</style>` in an inlined viewer file breaks every HTML download (`RecordingHtmlTest`). `export.js` writes `<\/` for `</` for the same reason, and decodes the video with `fetch()` of its `data:` URL so the page doesn't block |
 | `ServerCaptureFilter` | Marks requests that carry `X-BlackBox-Id` (all URLs, before Spring Security) |
 | `ServerCapture` | Root-logger appender, per-thread marking, pending files, flush/idle/cleanup timer |
 | `ServerCaptureStore` | Pending capture folders: start, stop, the stop's copy of the lines (`writeLines`), state such as `appExport` (`put`), attach (merge nodes, sort by time, move traces, gauges, Glowroot data, `server-info.json` and `app/`), clean up |
@@ -718,7 +753,36 @@ with `recovered: true`, then sends `recording-stop` with the last save time for 
 stop time").
 
 The recorder is a window, not an offscreen document: a `chooseDesktopMedia` stream id can only be opened by the page
-that showed the picker.
+that showed the picker. The picker is a dialog inside that window and can't be resized while open, so the window
+opens big enough for all of it; the picker lists the recorder window too, so its title tells the user not to pick it.
+`chrome.tabCapture` is called in the popup: opening the popup grants it for that tab (window and screen use it only for
+the tab's sound, so they still start without it).
+
+**Extension behaviours worth knowing:**
+
+- **State before events:** `background.js` saves the recording state before enabling the CDP domains, so the first
+  events aren't dropped (`Runtime.enable` replays console messages already on the page). On stop it clears the state
+  first, so a second stop (the debugger's `onDetach` after the user's stop) does nothing.
+- **Redirects:** a redirect reuses the same CDP `requestId`, so the recorder closes the previous hop as its own entry
+  before starting the next.
+- **Network errors:** `fetch()` rejects with `TypeError: Failed to fetch` for every network failure (wrong host or
+  port, server down, certificate), so the extension says "Could not reach …" instead; older recordings may still
+  carry "Failed to fetch".
+- **Permissions:** `chrome.permissions.request` and `FileSystemHandle.requestPermission` work only while the click
+  still counts as a user gesture: ask before any `await` and before a `confirm()`. Automatic uploads have no click,
+  so Save in Settings asks for host access instead.
+- **Blob URLs:** a Blob URL must outlive its `chrome.downloads` download, so the recorder window stays open after a
+  download fallback, and Move to folder keeps its page until the download ends.
+- **IndexedDB:** each connection is closed after use, so another page (recorder, viewer, Recordings) can upgrade the
+  database version; an open connection blocks the upgrade.
+- **Uploads:** a row keeps its server id after `create`, so a retry after a failed video upload reuses it instead of
+  creating a second recording. An imported ZIP's capture id belongs to the server it was recorded on, so the import
+  drops it.
+- **Video:** `MediaRecorder`'s WebM has no duration (the video element reports `Infinity` and can't seek); the viewer
+  seeks far past the end once, which makes Chrome scan the file and find the real duration.
+- **Untrusted text:** recorded text comes from other pages, and `session.json` can be crafted, so the viewer shows it
+  with `textContent`, never `innerHTML`. **Copy as cURL** single-quotes every value for the shell, puts a URL that
+  starts with `-` after `--url`, and turns a method that isn't 1–20 letters into GET (`e2e/tests/curl.spec.js`).
 
 **Sound.** Page sound comes from `chrome.tabCapture` on the started tab in every mode, because the picker shares
 system audio only for a screen on Windows and ChromeOS (Linux and macOS get none, and windows never have sound).
@@ -733,3 +797,19 @@ When the picker does share system audio, it replaces the tab's sound. Details:
   recording. `session.json` says what it has: `recording.audio` = `{ page, pageSource: "tab" | "system", mic,
   message }`, where `message` says why a sound is missing.
 - With **Page sound** off, neither the tab's sound nor system audio is requested.
+
+## Things to keep in step
+
+Nothing in the code checks these; change both sides together.
+
+- `Secrets.DEFAULT_NAMES` equals the `secretNames` default in `blackboxPlugin.json`.
+- `Masker.DEFAULT_SENSITIVE` equals the `sensitiveColumns` default in `blackboxPlugin.json`.
+- `ServerCaptureStore.FORWARD_MS` (24 h) stays longer than `TraceCollector.GIVE_UP_MS` (10 min), so a late trace still
+  finds the pending folder's pointer to the recording.
+- `TraceCollector.HEARTBEAT_MS` (3 min) stays shorter than `TraceStore.STALE_MS` (10 min), so a pending note is
+  rewritten before it reads as failed.
+- `BlackBoxPlugin`'s top recording length (120 min) stays within `GaugeSampler.MAX_MS` (2 h).
+- `session.json` writes its `recording` block first and `summary` right after: the Recordings list reads only the
+  first 16 KB of each file on disk (`store.js` `readHead`). Keep that key order in `report.js`.
+- `viewer.html`'s `<!-- upload form (actions.js) -->` and `<!-- /upload form -->` are code: `build-standalone.py` cuts
+  the upload form out between them.

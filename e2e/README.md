@@ -65,6 +65,9 @@ server data**.
   `videoBytes` in the capture's `meta.json`, read with `docker exec`), stops with `server-stopped: stopped` after the
   server stopped the capture, and goes on after a 401 with "Server capture ended: logged out". Nothing is uploaded.
   Set the test override first (`{"pingMs":2000}`, see [Storage](../guide/storage.md)) or each test waits about a minute.
+  It waits for the recorder page to close to know the recording was kept, not for `getState()` to clear: the state
+  clears before the recorder saves, and opening the Recordings page in that gap recovers the half-saved recording as
+  interrupted.
 - `tests/lost-browser.spec.js`: through the API, a capture pinged once and then left silent is stopped by the server
   at its last ping (`stopReason` `browser-lost`, read with `docker exec`); one never pinged stays open. Set the test
   override first (`{"lostMs":5000,"checkMs":2000}`) or it waits over 3 minutes. Nothing is uploaded.
