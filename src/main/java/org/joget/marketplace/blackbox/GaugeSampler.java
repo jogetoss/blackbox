@@ -17,15 +17,6 @@ import org.joget.commons.util.LogUtil;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * Samples this node's load once a second while a recording's capture is open here: heap, GC time, CPU, Tomcat's
- * busy request threads and Joget's database pool. The replay page draws them as the Server load strip, to show
- * whether the server was short of memory, CPU, threads or connections when something got slow.
- *
- * Read from the JVM itself (no Glowroot needed). A node starts sampling a capture when the capture opens on it (the
- * start call, or its first tagged request) and stops when the capture is stopped, or after {@link #MAX_MS}.
- * Samples go to gauges/{node}.jsonl next to the traces ({@link GaugeStore}).
- */
 final class GaugeSampler {
 
     private static final long MAX_MS = 2 * 3600 * 1000L;
@@ -60,7 +51,6 @@ final class GaugeSampler {
         CAPTURES.clear();
     }
 
-    /** A capture is open on this node: sample for it until it stops. */
     static void watch(ServerCapture.Capture capture) {
         if (timer != null && capture.gauges) {
             CAPTURES.putIfAbsent(capture.id, new Sampled(ProfileDir.current()));
@@ -76,13 +66,13 @@ final class GaugeSampler {
         JSONObject sample;
         try {
             sample = sample(now);
-        } catch (RuntimeException e) { // JSONException too
+        } catch (RuntimeException e) {
             return;
         }
         for (Map.Entry<String, Sampled> e : CAPTURES.entrySet()) {
             if (!ProfileDir.safely(GaugeSampler.class, "save the server load of capture " + e.getKey(), e.getValue().dir,
-                    () -> append(e.getKey(), e.getValue(), now, sample))) { // in the capture's profile (virtual hosts)
-                CAPTURES.remove(e.getKey()); // its folder fails: stop sampling for it
+                    () -> append(e.getKey(), e.getValue(), now, sample))) {
+                CAPTURES.remove(e.getKey());
             }
         }
     }
@@ -106,7 +96,6 @@ final class GaugeSampler {
         }
     }
 
-    /** One sample. Values the JVM or the server can't give are left out. */
     static JSONObject sample(long now) throws JSONException {
         JSONObject s = new JSONObject().put("ts", now);
         MemoryUsage heap = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage();
@@ -117,7 +106,7 @@ final class GaugeSampler {
             gc += Math.max(0, b.getCollectionTime());
         }
         if (lastGcMs >= 0) {
-            s.put("gcMs", Math.max(0, gc - lastGcMs)); // GC time in the last second
+            s.put("gcMs", Math.max(0, gc - lastGcMs));
         }
         lastGcMs = gc;
 
@@ -140,7 +129,6 @@ final class GaugeSampler {
         }
 
         try {
-            // Joget's DynamicDataSource is a Tomcat JDBC pool (getActive, getMaxActive, getWaitCount)
             Object ds = AppUtil.getApplicationContext().getBean("setupDataSource");
             s.put("dbActive", call(ds, "getActive")).put("dbMax", call(ds, "getMaxActive")).put("dbWaiting", call(ds, "getWaitCount"));
         } catch (Exception | LinkageError e) {
@@ -169,7 +157,7 @@ final class GaugeSampler {
 
     private static final class Sampled {
         final long since = System.currentTimeMillis();
-        final java.nio.file.Path dir; // the capture's profile folder (virtual hosts)
+        final java.nio.file.Path dir;
         long metaCheckedAt;
 
         Sampled(java.nio.file.Path dir) {

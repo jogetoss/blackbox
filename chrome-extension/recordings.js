@@ -1,15 +1,10 @@
-// Recordings page: the list (the title opens the Replay page), Browser issues, and batch Upload / Download ZIP / Delete
-// for the ticked rows. Move to folder and the other single-recording actions are on the Replay page.
-// Also lists the user's own recordings on the Upload URL's server that this browser doesn't list (uploaded from
-// another computer or browser, or imported on the server): they open on the server and take no batch actions.
 (function () {
   const $ = (id) => document.getElementById(id);
   const { state } = Store;
-  const PAGE = 100;          // rows shown at first; Show more adds this many
+  const PAGE = 100;
   let shown = PAGE;
 
   $('settings').onclick = () => chrome.runtime.openOptionsPage();
-  // Incognito has its own copy of the extension ("incognito": "split") whose browser storage is gone when it closes
   $('incognitoNote').hidden = !chrome.extension.inIncognitoContext;
   $('showMore').onclick = () => { shown += PAGE; run(render); };
   Actions.initUploadForm(async (row, title) => {
@@ -24,14 +19,12 @@
     e.target.value = '';
     if (file) run(() => importZip(file));
   };
-  // Another page (the recorder, the Replay page) may change the list; the server list is fetched again after a minute
   window.addEventListener('focus', () => run(async () => {
     await render();
     if (Date.now() - serverLoadedAt > 60000) await loadServer();
   }));
 
   run(async () => {
-    // Normally done at browser start; also here in case the extension was reloaded instead
     const recovered = await recoverPartials();
     if (recovered.length) message(`Recovered ${recovered.length} recording(s) interrupted by a crash. They end where the last save was (every 5 s).`);
     await Store.restoreFolder();
@@ -40,7 +33,6 @@
     await loadServer();
   });
 
-  // The user's own recordings on the Upload URL's server (kind 'server'); the ones this browser lists are left out
   let serverRows = [];
   let serverLoadedAt = 0;
   async function loadServer() {
@@ -73,7 +65,7 @@
       kind: 'server', id: m.id, startedAt: rec.startedAt || m.uploadedAt, durationMs: rec.durationMs,
       tab: { url: rec.tab?.url || '', title: m.title || rec.tab?.title || '' },
       issues: s ? { errors: s.errors, failedRequests: s.failedRequests, slowRequests: s.slowRequests, slowThresholdMs: s.slowThresholdMs } : null,
-      uploaded: { id: m.id, url: Server.viewLink(settings, m.id, url), at: m.uploadedAt }, // like an upload from here
+      uploaded: { id: m.id, url: Server.viewLink(settings, m.id, url), at: m.uploadedAt },
     };
   }
 
@@ -92,7 +84,6 @@
     }
   }
 
-  // Set when the Upload URL's server says this user may not upload: Upload selected is then disabled with the reason
   let uploadRefused = '';
   async function checkUpload() {
     const { uploadUrl } = await Server.getSettings();
@@ -101,7 +92,7 @@
       const me = await Server.me(uploadUrl);
       uploadRefused = me.canUpload ? '' : `You (${me.user.name}) are not allowed to upload recordings. Ask the server's admin.`;
     } catch (e) {
-      return; // not logged in or not reachable: the upload itself says so
+      return;
     }
     renderBatch();
   }
@@ -115,10 +106,8 @@
     $('error').hidden = !e;
   }
 
-  // Rows: the title opens the recording (Replay page, or the server copy for upload history); single-recording
-  // actions are on the Replay page. Ticked rows get the batch actions above the table.
   let rows = [];
-  const selected = new Set(); // row keys "kind:id"
+  const selected = new Set();
   const key = (r) => r.kind + ':' + r.id;
 
   $('selAll').onchange = () => {
@@ -136,7 +125,7 @@
 
   async function render() {
     rows = await Store.allRows();
-    const listed = new Set(rows.map((r) => r.uploaded?.id).filter(Boolean)); // uploaded from this browser
+    const listed = new Set(rows.map((r) => r.uploaded?.id).filter(Boolean));
     rows = rows.concat(serverRows.filter((r) => !listed.has(r.id)))
       .sort((a, b) => ((a.startedAt || a.id) < (b.startedAt || b.id) ? 1 : -1));
     const keys = new Set(rows.map(key));
@@ -161,7 +150,7 @@
       tr.append(sel);
 
       const started = td(utc(r.startedAt) || r.id);
-      if (r.startedAt) started.title = new Date(r.startedAt).toLocaleString(); // the reporter's own clock time
+      if (r.startedAt) started.title = new Date(r.startedAt).toLocaleString();
       tr.append(started);
       const page = td('');
       page.className = 'page';
@@ -170,7 +159,6 @@
       link.className = 'rec-title';
       link.textContent = r.tab?.title || r.tab?.url || r.id;
       if (r.kind === 'history' || r.kind === 'server') {
-        // Uploaded, local copy gone (or never in this browser): opens it on the server
         if (r.uploaded?.url) { link.href = r.uploaded.url; link.target = '_blank'; link.title = 'Opens the uploaded recording on the server'; }
       } else {
         link.href = Store.replayUrl(r);
@@ -203,7 +191,6 @@
       + (rows.some((r) => r.kind === 'server') ? ` · ${rows.filter((r) => r.kind === 'server').length} only on the server` : '');
   }
 
-  // Console errors, failed requests and slow requests of the recording (none for upload history)
   function issuesCell(r) {
     const c = td('');
     c.className = 'nowrap';
@@ -244,7 +231,6 @@
   async function deleteSelected() {
     const del = picked().filter(canDelete);
     if (!del.length) return;
-    // Files on disk: Chrome asks for edit permission only while this click still counts, so before the confirm
     if (del.some((r) => r.kind === 'disk') && (await state.folder.requestPermission({ mode: 'readwrite' })) !== 'granted') {
       throw new Error(`BlackBox needs permission to edit "${state.folder.name}" to delete files.`);
     }
@@ -269,15 +255,12 @@
     return b;
   }
 
-  // A recording ZIP (Download ZIP on a BlackBox server) becomes a recording in browser storage, like a new one:
-  // it can be replayed, uploaded (to this or another server) or exported. Its server data is not kept.
   async function importZip(file) {
     const parts = await readZip(file);
     if (!parts.has('session.json')) throw new Error(`${file.name} has no session.json: it is not a BlackBox recording ZIP.`);
     const report = JSON.parse(await parts.get('session.json').text());
     if (!Array.isArray(report.console) || !Array.isArray(report.network)) throw new Error('This is not a BlackBox session.json.');
-    // The capture id belongs to the server it was recorded on: an upload elsewhere must not try to attach it
-    for (const key of ['serverCapture', 'systemLog']) delete report.recording?.[key]?.id; // systemLog: ZIPs of plugin 8.2.1 and older
+    for (const key of ['serverCapture', 'systemLog']) delete report.recording?.[key]?.id;
     const started = Date.parse(report.recording?.startedAt);
     const id = started ? recordingId(started) : file.name.replace(/\.zip$/i, '');
     if (await idbGet(id)) throw new Error('This recording is already in the extension.');
@@ -292,9 +275,6 @@
     $('libraryMsg').hidden = !text;
   }
 
-  // ---------- helpers ----------
-
-  // Same as utc() in viewer.js (the standalone viewer can't load a shared file)
   function utc(v) {
     if (v == null || v === '') return undefined;
     const d = new Date(v);

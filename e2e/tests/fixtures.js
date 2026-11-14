@@ -1,6 +1,3 @@
-// A Chromium with the extension loaded unpacked, in its own temporary profile (your Chrome is not touched).
-// The extension is copied to a temporary folder and given host access to the Joget server in its manifest, so
-// uploads need no permission prompt (Playwright can't click Chrome's own dialogs).
 const { test: base, chromium, expect } = require('@playwright/test');
 const fs = require('fs');
 const os = require('os');
@@ -8,11 +5,8 @@ const path = require('path');
 
 const JOGET = process.env.BB_JOGET || 'http://localhost:3128/jw';
 const USER = process.env.BB_USER || 'admin';
-const PASSWORD = process.env.BB_PASSWORD || USER; // local test servers: the password is the username
-// The extension under test: this repo's, or BB_EXTENSION (another build with this repo's manifest key: any other
-// extension ID is refused unless the plugin's Allowed Chrome extension IDs is emptied)
+const PASSWORD = process.env.BB_PASSWORD || USER;
 const EXTENSION = process.env.BB_EXTENSION || path.join(__dirname, '..', '..', 'chrome-extension');
-// The extension of plugin 8.2.1 and older keeps the server capture under recording.systemLog; later ones under serverCapture
 const LEGACY_EXTENSION = !fs.readFileSync(path.join(EXTENSION, 'report.js'), 'utf8').includes('serverCapture');
 const CAPTURE_KEY = LEGACY_EXTENSION ? 'systemLog' : 'serverCapture';
 
@@ -30,10 +24,8 @@ const test = base.extend({
     manifest.host_permissions = [new URL(JOGET).origin + '/*'];
     fs.writeFileSync(path.join(ext, 'manifest.json'), JSON.stringify(manifest, null, 2));
     const context = await chromium.launchPersistentContext(profile, {
-      channel: 'chromium', // the full Chromium: headless mode that runs extensions
+      channel: 'chromium',
       headless: !process.env.BB_HEADED,
-      // A DevTools port (written to <profile>/DevToolsActivePort) for incognito.spec.js: Playwright can't see incognito windows
-      // Chrome's screen picker can't be clicked: Chromium picks the whole screen by itself (incognito-recording.spec.js)
       args: [`--disable-extensions-except=${ext}`, `--load-extension=${ext}`, '--remote-debugging-port=0',
         '--auto-select-desktop-capture-source=Entire screen'],
     });
@@ -48,16 +40,14 @@ const test = base.extend({
   },
 });
 
-/** Logs in to Joget in this browser (the extension uploads with the browser's cookies). */
 async function loginJoget(page) {
   await page.goto(`${JOGET}/web/login`);
   await page.fill('#j_username', USER);
   await page.fill('#j_password', PASSWORD);
   await Promise.all([page.waitForNavigation(), page.press('#j_password', 'Enter')]);
-  await page.waitForLoadState('networkidle'); // the first login may still be redirecting
+  await page.waitForLoadState('networkidle');
 }
 
-/** Calls the BlackBox API with the browser's Joget session. POSTs send the page's CSRF token. */
 async function api(page, action, params = {}, method = 'GET') {
   return page.evaluate(async ({ base, action, params, method }) => {
     const headers = {};
@@ -70,7 +60,6 @@ async function api(page, action, params = {}, method = 'GET') {
   }, { base: JOGET, action, params, method });
 }
 
-/** The apps of a recording once its app export, which runs in the background on the server, has finished. */
 async function appsWhenExported(page, id, timeoutMs = 90_000) {
   const until = Date.now() + timeoutMs;
   for (;;) {
@@ -83,7 +72,6 @@ async function appsWhenExported(page, id, timeoutMs = 90_000) {
 
 const ASSIGNMENT = `${JOGET}/web/client/app/iService/2/assignment/82809_70801_iService_supportRequest_requestAcceptByDepartment`;
 
-/** A session.json of a recording that opened an iService assignment (j8213's test data); no video. */
 function report(now, title, recording = {}) {
   return {
     tool: 'BlackBox e2e',
@@ -101,7 +89,6 @@ function report(now, title, recording = {}) {
   };
 }
 
-/** The extension's settings and one kept recording, written with its own storage code. */
 async function keep(page, extensionId, id, rep) {
   await page.goto(`chrome-extension://${extensionId}/recordings.html`);
   await page.evaluate(async ({ id, uploadUrl, report }) => {
@@ -110,7 +97,6 @@ async function keep(page, extensionId, id, rep) {
   }, { id, uploadUrl: `${JOGET}/api/blackbox`, report: rep });
 }
 
-/** What the recorder does: start a server capture, then stop it with the recording's requests (stopOnServer). */
 async function captureAndStop(page, params) {
   return page.evaluate(async ({ uploadUrl, url, params }) => {
     const id = crypto.randomUUID();
@@ -130,9 +116,8 @@ async function uploaded(joget, title) {
   return rec;
 }
 
-const INCOGNITO_USER = process.env.BB_INCOGNITO_USER || 'cat'; // a non-admin user who can log in (password = username)
+const INCOGNITO_USER = process.env.BB_INCOGNITO_USER || 'cat';
 
-/** A browser-level DevTools connection: targets() and evaluate(targetId, expression). */
 async function devtools(profile) {
   const [port, wsPath] = fs.readFileSync(path.join(profile, 'DevToolsActivePort'), 'utf8').trim().split('\n');
   const ws = new WebSocket(`ws://127.0.0.1:${port}${wsPath}`);
@@ -160,13 +145,7 @@ async function devtools(profile) {
   };
 }
 
-/**
- * Turns on Allow in Incognito, opens an incognito window logged in to Joget as INCOGNITO_USER (plus `urls`, e.g. an
- * extension page, in more incognito windows) and returns the DevTools connection to drive it: Playwright can't see
- * incognito windows. `page` is a normal window's page; it ends on the extension's Recordings page.
- */
 async function openIncognito(page, extensionId, profile, urls = []) {
-  // As on chrome://extensions. It reloads the extension, which Chromium then disables unless Developer mode is on.
   await page.goto('chrome://extensions');
   await page.evaluate((id) => new Promise((ok) => chrome.developerPrivate.updateProfileConfiguration({ inDeveloperMode: true },
     () => chrome.developerPrivate.updateExtensionConfiguration({ extensionId: id, incognitoAccess: true }, ok))), extensionId);
@@ -182,7 +161,7 @@ async function openIncognito(page, extensionId, profile, urls = []) {
   dt.find = async (type, part) => (await dt.targets()).filter((t) => t.type === type && t.url.includes(part));
   let login;
   await expect.poll(async () => (login = (await dt.find('page', '/web/login'))[0])).toBeTruthy();
-  dt.incognito = login.browserContextId; // the normal window's pages are in Playwright's context
+  dt.incognito = login.browserContextId;
   dt.loginPage = login.targetId;
   await expect.poll(() => dt.evaluate(login.targetId, `document.readyState === 'complete' && !!document.querySelector('#j_password')`)).toBe(true);
   await dt.evaluate(login.targetId, `(() => {
@@ -190,7 +169,6 @@ async function openIncognito(page, extensionId, profile, urls = []) {
     document.querySelector('#j_password').value = ${JSON.stringify(INCOGNITO_USER)};
     document.querySelector('#j_password').form.querySelector('[type=submit]').click();
   })()`);
-  // The extension's service worker in each copy
   dt.workers = async () => {
     const all = await dt.find('service_worker', `chrome-extension://${extensionId}/`);
     return { normal: all.find((t) => t.browserContextId !== dt.incognito), incognito: all.find((t) => t.browserContextId === dt.incognito) };
@@ -199,7 +177,6 @@ async function openIncognito(page, extensionId, profile, urls = []) {
   return dt;
 }
 
-/** Who a service worker (or page) of the extension calls the server as. */
 const WHO_AM_I = `fetch(${JSON.stringify(JOGET + '/api/blackbox?action=me')}, { credentials: 'include' })
   .then((r) => r.ok ? r.json().then((me) => me.user.username) : 'HTTP ' + r.status)`;
 

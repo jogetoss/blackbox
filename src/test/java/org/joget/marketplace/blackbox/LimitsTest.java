@@ -10,13 +10,11 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.junit.Test;
 
-/** Disk and rate limits: ZIP import budget and entry cap, storage per user, open captures, starts per minute. */
 public class LimitsTest {
 
     private static final String SESSION = "{\"recording\":{\"startedAt\":\"2026-01-01T00:00:00Z\"},\"console\":[],\"network\":[]}";
     private static final byte[] WEBM = {0x1A, 0x45, (byte) 0xDF, (byte) 0xA3};
 
-    /** session.json, then a video padded to videoBytes: compresses to almost nothing. */
     private static Path zip(Path dir, int videoBytes, int extraEntries) throws Exception {
         Path zip = dir.resolve("in-" + videoBytes + "-" + extraEntries + ".zip");
         try (ZipOutputStream z = new ZipOutputStream(Files.newOutputStream(zip))) {
@@ -36,7 +34,7 @@ public class LimitsTest {
     public void importStopsAtTheTotalBudget() throws Exception {
         Path tmp = Files.createTempDirectory("bb-lim");
         RecordingStore store = new RecordingStore(Files.createTempDirectory("bb-store"));
-        Path z = zip(tmp, 3 << 20, 0); // 3 MB unpacked, a few KB packed
+        Path z = zip(tmp, 3 << 20, 0);
         assertTrue("a zip bomb in miniature", Files.size(z) < 64 * 1024);
         try {
             RecordingZip.importZip(store, z, 10 << 20, false, "u", "U", 1 << 20, 0);

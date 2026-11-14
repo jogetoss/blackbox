@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BlackBox Replay</title>
   <style>
-/* Green theme: palette from the Joget DX 9 graphic. --bg is the page ground, --surface the cards, header and fields.
-   Issue colours (error, failed, nav, server, api) and the load lines stay clear of the brand green. */
 :root {
   --bg: #f6f7f6;
   --surface: #ffffff;
@@ -16,7 +14,7 @@
   --fg-2: #5d6c66;
   --line: #e1e7e4;
   --field-line: #c9d4cf;
-  --accent: #087c5e; /* buttons and links: 5.2:1 with white text */
+  --accent: #087c5e;
   --on-accent: #ffffff;
   --brand: #105045;
   --error: #c62f22;
@@ -26,7 +24,6 @@
   --nav: #2f6fd6;
   --failed: #d86a00;
   --api: #b0458a;
-  /* Server load lines: Okabe-Ito colours, distinct for colour-blind viewers too; threads moved off green */
   --g-cpu: #0072b2;
   --g-heap: #cc79a7;
   --g-threads: #d55e00;
@@ -37,11 +34,8 @@
   --shadow: 0 1px 2px rgba(11, 42, 33, .06), 0 4px 14px rgba(11, 42, 33, .05);
   --radius: 10px;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  /* Headings use Poppins only if it is installed: no web font, so downloaded HTML looks the same offline */
   --display: Poppins, system-ui, sans-serif;
 }
-/* Theme: System follows the OS; Light/Dark come from the extension settings (theme.js) or the standalone pages'
-   own pickers (display.js), which set data-theme */
 :root { color-scheme: light dark; }
 :root[data-theme="light"] { color-scheme: light; }
 @media (prefers-color-scheme: dark) {
@@ -76,7 +70,6 @@ body {
 a { color: var(--accent); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 body.drag { outline: 3px dashed var(--accent); outline-offset: -6px; }
-/* Pill buttons; hover outlines them in the accent */
 button, .button {
   font: inherit; font-weight: 600; color: var(--fg); background: var(--surface);
   border: 1px solid var(--field-line); border-radius: 999px; padding: 4px 12px; cursor: pointer;
@@ -97,7 +90,6 @@ header h1 {
   font: 600 17px/1.3 var(--display); letter-spacing: -.01em; margin: 0; flex: 1; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* Brand mark: a dark green tile with the red "recording" dot */
 header h1::before {
   content: ""; display: inline-block; width: 22px; height: 22px; margin-right: 10px; vertical-align: -5px; border-radius: 7px;
   background: radial-gradient(circle, var(--error) 0 4px, color-mix(in srgb, var(--error) 35%, var(--brand)) 4.5px 6.5px, var(--brand) 7px);
@@ -113,14 +105,12 @@ body.page-recordings .library {
   border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: auto;
 }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-/* Theme and Text size pickers of the downloaded HTML and the standalone viewer (display.js) */
 .display-settings { display: flex; gap: 8px; align-items: center; }
 .display-pick { color: var(--fg-2); font-size: 12px; white-space: nowrap; }
 #error { background: var(--error-bg); color: var(--error); padding: 8px 14px; margin: 12px 20px 0; border-radius: 8px; }
 .incognito-note { margin: 12px 20px 0; background: var(--warn-bg); color: var(--warn); padding: 8px 14px; border-radius: 8px; }
 .empty { flex: 1; display: grid; place-items: center; color: var(--fg-2); padding: 16px; text-align: center; }
 
-/* Video and panel as two cards across the full window; the 12px gap holds the column splitter */
 #app {
   flex: 1; min-height: 0; padding: 12px 20px 16px; gap: 12px;
   display: grid; grid-template-columns: minmax(0, 3fr) var(--panel-w, minmax(380px, 2fr));
@@ -131,14 +121,12 @@ body.page-recordings .library {
   .splitter.split-x { display: none; }
 }
 
-/* ---- player ---- */
 .player { display: flex; flex-direction: column; gap: 10px; padding: 14px; min-height: 0; }
 video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 8px; object-fit: contain; }
 .no-video { flex: 1; display: grid; place-items: center; text-align: center; background: var(--bg-2); border-radius: 8px; color: var(--fg-2); padding: 16px; }
 .clock-row { display: flex; justify-content: space-between; align-items: center; }
 #clock { font: 600 14px var(--mono); font-variant-numeric: tabular-nums; }
 .jump { display: flex; gap: 6px; white-space: nowrap; }
-/* One lane per issue kind, in the legend's order, so issues at the same moment don't cover each other */
 .timeline { position: relative; height: 38px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
 .marker { position: absolute; height: 6px; width: 3px; margin-left: -1px; border-radius: 2px; }
 .marker.error { background: var(--error); top: 4px; }
@@ -155,7 +143,6 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 8p
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
 .dot.error { background: var(--error); } .dot.failed { background: var(--failed); } .dot.nav { background: var(--nav); }
 
-/* Network overview on the Network tab, under the toolbar (viewer.js builds it) */
 .net-overview { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
 .ov-head { display: flex; align-items: center; gap: 4px 14px; flex-wrap: wrap; color: var(--fg-2); font-size: 12px; }
 .ov-head .dot { border-radius: 2px; }
@@ -171,7 +158,6 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 8p
   position: absolute; top: 0; bottom: 0; pointer-events: none;
   background: color-mix(in srgb, var(--accent) 18%, transparent); border: 1px solid var(--accent); border-width: 0 1px;
 }
-/* Apps lane under the timeline (viewer.js): one colour per app, by order of first appearance */
 :root { --app-0: #0072b2; --app-1: #e69f00; --app-2: #009e73; --app-3: #cc79a7; --app-4: #56b4e9; --app-5: #d55e00; }
 .lane { display: flex; flex-direction: column; gap: 3px; }
 .app-lane { position: relative; height: 22px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
@@ -186,7 +172,6 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 8p
 .app-3 { --c: var(--app-3); } .app-4 { --c: var(--app-4); } .app-5 { --c: var(--app-5); }
 .dot.app-0, .dot.app-1, .dot.app-2, .dot.app-3, .dot.app-4, .dot.app-5 { background: var(--c); border-radius: 2px; }
 .app-filter[hidden] { display: none; }
-/* App tab: one folded block per app, Download .jwa in its header */
 .info .apps-head { font-weight: 600; margin: 0 0 4px; }
 .info details.app { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; margin: 8px 0; }
 .info details.app > summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
@@ -198,7 +183,6 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 8p
 .act-table th { color: var(--fg-2); font-weight: 600; }
 .act-table td.num { color: var(--fg-2); }
 .act-table td.date { white-space: nowrap; font-family: var(--mono); }
-/* Server load strip under the timeline (viewer.js) */
 .load { display: flex; flex-direction: column; gap: 3px; }
 .load-strip { height: 48px; cursor: pointer; }
 .load-node { padding: 0 4px; font-size: 12px; }
@@ -206,13 +190,10 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 8p
 .dot.g-cpu { background: var(--g-cpu); } .dot.g-heap { background: var(--g-heap); } .dot.g-threads { background: var(--g-threads); }
 .dot.g-db { background: var(--g-db); } .dot.g-gc { background: var(--g-gc); border-radius: 1px; }
 
-/* Waterfall column of a network row */
 .row .wf { position: relative; align-self: center; height: 8px; background: var(--bg-2); border-radius: 2px; }
 .wf-bar { position: absolute; top: 0; bottom: 0; border-radius: 2px; background: var(--fg-2); }
 .wf-bar.doc { background: var(--nav); } .wf-bar.api { background: var(--api); } .wf-bar.failed { background: var(--failed); }
 
-/* Resize handles (viewer.js): in the gap between video and panel, and above the detail pane. A grip shows where;
-   it turns green on hover, while dragging and on keyboard focus (arrow keys resize) */
 .splitter { position: absolute; z-index: 5; touch-action: none; }
 .splitter.split-x { top: 0; bottom: 0; left: -13px; width: 12px; cursor: col-resize; }
 .splitter.split-y { left: 0; right: 0; top: -7px; height: 14px; cursor: row-resize; }
@@ -224,7 +205,6 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 8p
 body.resizing-split-x { cursor: col-resize; user-select: none; }
 body.resizing-split-y { cursor: row-resize; user-select: none; }
 
-/* ---- panel ---- */
 .panel { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .tabs { display: flex; flex: none; gap: 2px; padding: 0 8px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
 .tabs button { flex: none; border: 0; border-radius: 0; background: none; color: var(--fg-2); padding: 11px 10px 9px; border-bottom: 3px solid transparent; }
@@ -253,7 +233,6 @@ body.resizing-split-y { cursor: row-resize; user-select: none; }
 .tab-note { padding: 6px 10px; border-bottom: 1px solid var(--line); background: var(--warn-bg); color: var(--warn); font-size: 12px; }
 .row.network { grid-template-columns: 64px 52px 44px minmax(0, 1fr) 64px 56px 72px; }
 .row:hover { background: var(--bg-2); }
-/* Not reached yet: grey at full contrast (faded red was hard to read); errors keep a faint red edge */
 .row.future, .row.future.lvl-error, .row.future.lvl-warn, .row.future.lvl-nav, .row.future.bad { color: var(--fg-2); background: none; }
 .row.future.lvl-error, .row.future.bad { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--error) 45%, transparent); }
 .row.future .t { opacity: 1; }
@@ -276,7 +255,7 @@ body.resizing-split-y { cursor: row-resize; user-select: none; }
 .kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 16px; }
 .kv dt { color: var(--fg-2); }
 .kv dd { margin: 0; word-break: break-all; font-family: var(--mono); font-size: 12px; }
-.kv.multiline dd { white-space: pre-wrap; } /* JVM arguments: one per line */
+.kv.multiline dd { white-space: pre-wrap; }
 
 .detail { position: relative; flex: 0 0 var(--detail-h, 45%); min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); background: var(--bg-2); border-radius: 0 0 var(--radius) var(--radius); }
 .detail-head { display: flex; align-items: center; gap: 6px 8px; padding: 8px 10px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
@@ -291,7 +270,6 @@ body.resizing-split-y { cursor: row-resize; user-select: none; }
   font: 12px/1.45 var(--mono); white-space: pre-wrap; word-break: break-all; max-height: 400px; overflow: auto;
 }
 
-/* Extension only: Recordings page (recordings.js) and Replay page status (replay.js) */
 button.primary, button.primary:hover { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 button.primary:hover { filter: brightness(1.08); }
 button:disabled:hover, .button.disabled:hover { border-color: var(--field-line); color: var(--fg); }
@@ -313,7 +291,6 @@ button:disabled { opacity: .5; cursor: default; }
 .badge.yes { background: var(--current); color: var(--accent); }
 .badge.err { background: var(--error-bg); color: var(--error); }
 .badge.warn { background: var(--warn-bg); color: var(--warn); }
-/* Recordings lists (extension and server): select column, batch bar, title link, small second lines */
 .library th.sel, .library td.sel { width: 32px; padding-right: 0; }
 .library-bar input[type=search] { flex: 1; min-width: 160px; max-width: 420px; border-radius: 999px; padding: 6px 14px; background: var(--bg-2); border-color: transparent; }
 .library-bar .batch { display: flex; gap: 8px; align-items: center; margin-left: auto; flex-wrap: wrap; }
@@ -335,11 +312,8 @@ header > .muted { white-space: nowrap; }
 .upload-box label.check input { padding: 0; }
 .upload-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
 .upload-box progress { width: 100%; }
-/* Status bar under the header, the same on every replay page: where this copy is, then its actions */
 .rec-status { padding: 6px 20px; font-size: 13px; color: var(--fg-2); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 header .rec-status { padding: 0; }
-/* Replay pages, two rows: [title (shrinks with "…" first) + Older / Newer], then [where … actions].
-   Each row wraps on its own when the window is too narrow. */
 header.replay-head { flex-direction: column; align-items: stretch; gap: 8px; }
 .header-left { display: flex; align-items: center; gap: 8px 20px; min-width: 0; }
 .header-left h1 { flex: 1 1 auto; }
@@ -349,7 +323,7 @@ header.replay-head { flex-direction: column; align-items: stretch; gap: 8px; }
 .rec-nav { display: flex; align-items: center; gap: 6px; white-space: nowrap; color: var(--fg-2); font-size: 12.5px; }
 .rec-nav[hidden] { display: none !important; }
 .button.disabled { opacity: .45; pointer-events: none; }
-.button.busy { opacity: .45; cursor: not-allowed; } /* waiting for something; the title says what */
+.button.busy { opacity: .45; cursor: not-allowed; }
 .where { font-weight: 600; color: var(--fg); background: var(--bg-2); border-radius: 999px; padding: 2px 10px; margin-right: 4px; cursor: help; white-space: nowrap; }
 .where::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--accent); vertical-align: 1px; }
 .notes {
@@ -361,7 +335,6 @@ header.replay-head { flex-direction: column; align-items: stretch; gap: 8px; }
 .rec-status a, .upload-box a { color: var(--accent); }
 .muted { color: var(--fg-2); }
 
-/* Features drawer: slides over the panel on the right, the video stays visible */
 .drawer {
   position: fixed; top: 0; right: 0; bottom: 0; z-index: 20; width: min(440px, 100vw);
   display: flex; flex-direction: column; background: var(--surface); border-left: 1px solid var(--line);
@@ -372,10 +345,8 @@ header.replay-head { flex-direction: column; align-items: stretch; gap: 8px; }
 .drawer-body { flex: 1; overflow: auto; padding: 4px 16px 16px; }
 #featuresBtn.active { background: var(--current); color: var(--accent); border-color: var(--accent); }
 
-/* Upload button after a failed automatic upload; the reason is in its tooltip */
 button.warn { background: var(--warn-bg); color: var(--warn); border-color: var(--warn); }
 
-/* Short confirmations (replay.js toast) */
 .toast {
   position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 30; max-width: calc(100vw - 32px);
   padding: 8px 14px; border-radius: 999px; background: var(--fg); color: var(--surface); font-size: 13px;
@@ -383,7 +354,6 @@ button.warn { background: var(--warn-bg); color: var(--warn); border-color: var(
 }
 .toast[hidden] { display: none; }
 
-/* Upload URL field in the fix box: full width of the box, like the upload form's fields */
 .fix-url { display: grid; gap: 4px; }
 .fix-url[hidden] { display: none; }
 .fix-url input { width: 100%; box-sizing: border-box; font-family: var(--mono); }
@@ -392,25 +362,20 @@ button.warn { background: var(--warn-bg); color: var(--warn); border-color: var(
 .info details.process summary { cursor: pointer; font-weight: 600; }
 .info details.process h4 { font-size: 12px; margin: 8px 0 2px; color: var(--fg-2); }
 .row.server.other { opacity: .6; font-style: italic; }
-.row.trace.other .state { font-style: italic; } /* other users' traces: the user in place of the state */
+.row.trace.other .state { font-style: italic; }
 </style>
   <script>
-// Theme (System / Light / Dark) and Text size pickers for the pages that run without the extension: the downloaded
-// HTML file (RecordingHtml) and dist/blackbox-viewer.html (build-standalone.py). Inlined in <head> so the saved choice
-// applies before the page draws. Same values and localStorage keys as theme.js, which sets them from the extension's
-// Settings on the other pages. Saved in this browser for every file opened from disk; without storage, the choice
-// lasts until the page closes.
 (function () {
   const root = document.documentElement;
   const SIZES = [['0.9', '90%'], ['1', '100%'], ['1.15', '115%'], ['1.3', '130%'], ['1.5', '150%'], ['1.75', '175%'], ['2', '200%']];
   const THEMES = [['', 'System'], ['light', 'Light'], ['dark', 'Dark']];
   const load = (key) => { try { return localStorage.getItem(key); } catch (e) { return null; } };
-  const save = (key, v) => { try { localStorage.setItem(key, v); } catch (e) { /* storage blocked */ } };
+  const save = (key, v) => { try { localStorage.setItem(key, v); } catch (e) { } };
 
   const size = (v) => (SIZES.some(([s]) => s === String(v)) ? String(v) : '1');
   const theme = (t) => (t === 'light' || t === 'dark' ? t : '');
-  const applySize = (v) => { root.style.zoom = v === '1' ? '' : v; }; // viewer.js redraws its canvases on this change
-  const applyTheme = (t) => { if (t) root.dataset.theme = t; else delete root.dataset.theme; }; // '': prefers-color-scheme
+  const applySize = (v) => { root.style.zoom = v === '1' ? '' : v; };
+  const applyTheme = (t) => { if (t) root.dataset.theme = t; else delete root.dataset.theme; };
   applySize(size(load('bb-text-size')));
   applyTheme(theme(load('bb-theme')));
 
@@ -461,7 +426,6 @@ button.warn { background: var(--warn-bg); color: var(--warn); border-color: var(
       </div>
     </div>
   </header>
-  <!-- Features drawer (viewer.js): opened by the Features button in the header -->
   <aside id="featuresDrawer" class="drawer" role="dialog" aria-labelledby="featuresTitle" hidden>
     <div class="drawer-head">
       <strong id="featuresTitle">Features</strong>
@@ -470,7 +434,6 @@ button.warn { background: var(--warn-bg); color: var(--warn); border-color: var(
     <div id="features" class="drawer-body features"></div>
   </aside>
 
-  <!-- Extension only (replay.js) -->
   <div id="folderAccess" class="rec-status" hidden>
     <button id="allowFolder">Allow access</button> This recording is in the linked folder; Chrome needs your OK to read it again.
   </div>
@@ -540,16 +503,9 @@ button.warn { background: var(--warn-bg); color: var(--warn); border-color: var(
   </main>
 
   <script>
-// Reads a recording ZIP (Download ZIP on the server) without any library: the central directory gives each file's
-// place, and DecompressionStream inflates deflated files. Plain ZIPs only (no ZIP64, no encryption).
-// Used by the viewer (Open files…, also in the standalone file) and the Recordings and Replay pages (Import ZIP…,
-// Download ZIP: makeZip below).
-
-// Resolves to a Map of file name -> Blob, for files at the top level of the ZIP
 async function readZip(blob) {
   const u32 = (v, o) => v.getUint32(o, true);
   const u16 = (v, o) => v.getUint16(o, true);
-  // End of central directory record: in the last 64 KB + 22 bytes (after an optional comment)
   const tailSize = Math.min(blob.size, 65557);
   const tail = new DataView(await blob.slice(blob.size - tailSize).arrayBuffer());
   let eocd = -1;
@@ -574,9 +530,8 @@ async function readZip(blob) {
     const local = u32(dir, p + 42);
     const name = new TextDecoder().decode(new Uint8Array(dir.buffer, dir.byteOffset + p + 46, nameLen));
     p += 46 + nameLen + extraLen + commentLen;
-    if (name.includes('/')) continue; // only the top level
+    if (name.includes('/')) continue;
 
-    // The data starts after the local header, whose name/extra lengths can differ from the central ones
     const head = new DataView(await blob.slice(local, local + 30).arrayBuffer());
     const start = local + 30 + u16(head, 26) + u16(head, 28);
     const data = blob.slice(start, start + size);
@@ -587,9 +542,6 @@ async function readZip(blob) {
   return files;
 }
 
-// Makes a ZIP Blob from [{ name, blob, deflate }], the same layout a BlackBox server's Download ZIP uses.
-// The video is stored as is (WebM is compressed already); JSON is deflated with CompressionStream.
-// The parts are not copied: the result is a Blob made of headers and the original Blobs.
 async function makeZip(files) {
   const enc = new TextEncoder();
   const parts = [];
@@ -602,7 +554,6 @@ async function makeZip(files) {
     const data = f.deflate ? await new Response(f.blob.stream().pipeThrough(new CompressionStream('deflate-raw'))).blob() : f.blob;
     const method = f.deflate ? 8 : 0;
     const local = new DataView(new ArrayBuffer(30));
-    // signature, version 2.0, flags (bit 11: UTF-8 names), method, time, date, crc, sizes, name length, extra length
     [[0, 0x04034b50, 4], [4, 20, 2], [6, 0x0800, 2], [8, method, 2], [10, time, 2], [12, date, 2], [14, crc, 4],
       [18, data.size, 4], [22, f.blob.size, 4], [26, name.length, 2], [28, 0, 2]].forEach(([o, v, n]) => set(local, o, v, n));
     parts.push(local.buffer, name, data);
@@ -631,7 +582,6 @@ function dosTime(d) {
 }
 
 let crcTable = null;
-// CRC-32 of a Blob, read in chunks so a large video is never in memory at once
 async function crc32(blob) {
   if (!crcTable) {
     crcTable = new Uint32Array(256);
@@ -652,33 +602,28 @@ async function crc32(blob) {
 }
 </script>
   <script>
-// Replay viewer: plays recording.webm and keeps the console/network lists in sync with the playhead.
-// Every recorded entry has t = ms since start = position in the video.
-// All recorded text is shown with textContent, never innerHTML: it comes from untrusted pages.
-
 const $ = (id) => document.getElementById(id);
 const video = $('video');
 
-let current = { video: null, report: null, systemLog: null }; // what the user has loaded so far
+let current = { video: null, report: null, systemLog: null };
 let report = null;
 let durationMs = 0;
 let hasVideo = false;
-let manualMs = 0;          // playhead position when there is no video
+let manualMs = 0;
 let fixingDuration = false;
 let tab = 'console';
-let rows = [];             // { t, el, item } for the visible list, sorted by t
-let pastCount = 0;         // rows[0 .. pastCount-1] have t <= playhead
+let rows = [];
+let pastCount = 0;
 let selectedEl = null;
 let videoUrl = null;
-let issues = [];           // sorted t of console errors, failed requests and server errors
-let serverItems = [];      // system log entries with t (server replay page only, see prepareSystemLog)
-let serverOffset = 0;      // ms the server clock is ahead of the browser's (0 when too small to matter)
-let traceItems = [];       // Glowroot traces with t (server replay page only, see prepareTraces)
-let traceLink = null;      // (trace) => URL of its full trace page, or null (see blackboxOpen)
-let traceRetry = null;     // async (keys) => asks the server to look for failed traces again, or null
-const GLOWROOT_KEEP_MS = 14 * 24 * 3600 * 1000; // Glowroot's default trace retention
+let issues = [];
+let serverItems = [];
+let serverOffset = 0;
+let traceItems = [];
+let traceLink = null;
+let traceRetry = null;
+const GLOWROOT_KEEP_MS = 14 * 24 * 3600 * 1000;
 
-// Filter list per tab (none on the System logs tab). Console levels are picked with checkboxes (LEVEL_BOXES).
 const FILTERS = {
   console: [
     ['all', 'All sources'],
@@ -693,7 +638,7 @@ const FILTERS = {
     ['other', 'Other (scripts, images…)'],
   ],
 };
-const TRACE_FILTERS = [ // the recording's own traces; 'others' is added when there are other users' traces
+const TRACE_FILTERS = [
   ['all', 'All traces'],
   ['saved', 'Saved'],
   ['pending', 'Still being collected'],
@@ -703,18 +648,12 @@ FILTERS.traces = TRACE_FILTERS;
 
 const TRACE_STATES = { saved: '✓ saved', pending: '⏳ waiting', none: '– none', failed: '✕ failed' };
 
-// Level checkboxes per tab: [value, label]. All are ticked at first.
-// Server: the request entries the BlackBox plugin adds (not in Joget's log) are not listed; a network request's
-// details show its own.
 const LEVEL_BOXES = {
   console: [['DEBUG', 'DEBUG'], ['LOG', 'LOG'], ['INFO', 'INFO'], ['WARN', 'WARN'], ['ERROR', 'ERROR'], ['NAV', 'Navigations']],
   server: [['DEBUG', 'DEBUG'], ['INFO', 'INFO'], ['WARN', 'WARN'], ['ERROR', 'ERROR'], ['FATAL', 'FATAL']],
 };
 const pickedLevels = Object.fromEntries(Object.entries(LEVEL_BOXES).map(([t, list]) => [t, new Set(list.map(([v]) => v))]));
 
-// ---------- loading ----------
-
-// The extension's recordings list is a separate page (recordings.html); replay.js loads one recording here.
 $('files').onchange = (e) => { loadFiles([...e.target.files]).catch(showError); e.target.value = ''; };
 $('videoFile').onchange = (e) => { loadFiles([...e.target.files]).catch(showError); e.target.value = ''; };
 
@@ -726,17 +665,6 @@ document.addEventListener('drop', (e) => {
   loadFiles([...e.dataTransfer.files]).catch(showError);
 });
 
-// Lets a host page (e.g. a server that shows uploaded recordings) open a recording: video = URL or Blob (or null),
-// report = parsed session.json, extra.systemLog = parsed system-log.json (shows the System logs tab),
-// extra.title = the title in the header (default: the recorded tab's title),
-// extra.info = { label: value } shown first in the Info tab (e.g. who uploaded it),
-// extra.traces = Glowroot traces of the recorded requests (shows the Traces tab; see blackboxSetTraces),
-// extra.traceUrl = (trace) => URL of a saved trace's full page, or null when the page is not available,
-// extra.retryTraces = async (keys) => asks the server to look again for failed traces ([] = all failed ones),
-// extra.gauges = { nodes: { name: [samples] } }: the server load during the recording (shows the Server load strip),
-// extra.serverInfo = { license, system, blackbox }: System Info at recording start (shown in the Info tab),
-// extra.apps = parsed app/apps.json: the apps exported at upload (shows the App tab),
-// extra.appFileUrl = (file) => URL of an exported .jwa, or null when the files are not available here.
 window.blackboxOpen = (videoSrc, sessionReport, extra) => {
   current = {
     video: videoSrc || null, report: sessionReport, systemLog: extra?.systemLog || null, traces: extra?.traces || null,
@@ -751,7 +679,6 @@ window.blackboxOpen = (videoSrc, sessionReport, extra) => {
   openRecording();
 };
 
-// New trace states (the server page polls while some are still being collected)
 window.blackboxSetTraces = (list) => {
   current.traces = list;
   if (!report) return;
@@ -762,8 +689,6 @@ window.blackboxSetTraces = (list) => {
 
 window.blackboxShowError = (e) => showError(e);
 
-// Older / Newer in the header, set by the page that knows the list (extension: Recordings page rows, newest
-// first; server: the user's list). Each is { href, title } or null; pos and total give "3 / 10".
 window.blackboxSetNeighbours = ({ older, newer, pos, total }) => {
   const link = (a, target, word) => {
     a.classList.toggle('disabled', !target);
@@ -778,7 +703,6 @@ window.blackboxSetNeighbours = ({ older, newer, pos, total }) => {
   $('recNav').hidden = !total;
 };
 
-// Unloads the open recording and goes back to the empty screen (nothing is deleted).
 window.blackboxClose = () => {
   video.pause();
   video.removeAttribute('src');
@@ -797,15 +721,12 @@ window.blackboxClose = () => {
   $('empty').hidden = false;
 };
 
-// The loaded recording, for the extension's Upload and Download.
 window.blackboxCurrent = () => current;
 
 async function loadFiles(files) {
   const name = (f) => f.name.toLowerCase();
   const zip = files.find((f) => name(f).endsWith('.zip'));
   if (zip) {
-    // A recording ZIP (Download ZIP on the server) is a whole recording: it replaces what is open.
-    // Its system-log.json is not shown here; system logs are shown on the server's replay page.
     const parts = await readZip(zip);
     if (!parts.has('session.json')) throw new Error(`${zip.name} has no session.json: it is not a BlackBox recording ZIP.`);
     current = { video: null, report: null, systemLog: null };
@@ -814,7 +735,6 @@ async function loadFiles(files) {
   }
   const json = files.find((f) => name(f).endsWith('.json'));
   const webm = files.find((f) => name(f).endsWith('.webm') || f.type.startsWith('video/'));
-  // Files picked here are not named by the page's address: no ?t= for them
   window.blackboxTimeInUrl = false;
   if (!json && !webm) throw new Error(`Not a recording file: ${files.map((f) => f.name).join(', ')}. Pick recording.webm and session.json.`);
   if (webm && webm.size === 0) throw new Error(`${webm.name} is empty (0 bytes): the video was not recorded.`);
@@ -845,7 +765,6 @@ function openRecording() {
   video.hidden = !hasVideo;
   $('noVideo').hidden = hasVideo;
   if (hasVideo) {
-    // A string is a URL (a server streams the video); a Blob/File is local
     if (typeof current.video === 'string') {
       video.src = current.video;
     } else {
@@ -858,16 +777,13 @@ function openRecording() {
 
   const rec = r.recording || {};
   const tabInfo = rec.tab || {};
-  // Start time, length, surface and the tab's URL are in the Info tab; the header only names the recording
   $('recTitle').textContent = current.title || tabInfo.title || tabInfo.url || 'BlackBox replay';
-  // The same browser tab title on every replay page
   document.title = 'BlackBox Replay · ' + $('recTitle').textContent;
   $('recTitle').title = tabInfo.url || '';
 
   $('consoleCount').textContent = r.console.length;
   $('networkCount').textContent = r.network.length;
   serverItems = prepareSystemLog(current.systemLog, r);
-  // All-server captures add other threads' lines: a filter, the tab's own lines first
   if (serverItems.some((e) => e.other)) {
     FILTERS.server = [['tab', 'This tab only'], ['all', 'This tab + other server threads'], ['other', 'Other server threads only']];
   } else {
@@ -903,7 +819,7 @@ function openRecording() {
   renderApps();
   setTab(tab);
   startMs = Math.min(timeFromUrl(), durationMs);
-  if (startMs) seek(startMs); // before the video loads, this sets where it starts
+  if (startMs) seek(startMs);
   else onTime();
 }
 
@@ -913,24 +829,17 @@ video.addEventListener('error', () => {
   showError(`The video can't be played (${e?.message || 'media error ' + e?.code}). Is it the recording.webm from the same folder?`);
 });
 
-// MediaRecorder WebM files have no duration, so the browser reports Infinity and can't seek.
-// Seeking far past the end makes it scan the file and find the real duration.
 video.addEventListener('loadedmetadata', () => {
   if (video.duration !== Infinity) return;
   fixingDuration = true;
   video.addEventListener('durationchange', () => {
-    video.currentTime = startMs / 1000; // back to the start, or to ?t=
+    video.currentTime = startMs / 1000;
     fixingDuration = false;
   }, { once: true });
   video.currentTime = 1e101;
 });
 
-// ---------- time in the address ----------
-
-// Pages whose address names one recording (extension ?id= / ?disk=, server ?id=, the downloaded file) set
-// window.blackboxTimeInUrl: then ?t=<seconds> opens it at that moment, and the address follows the playhead
-// (replaceState: no new Back step per seek), so it can be copied as a link to that moment.
-let startMs = 0;           // where the open recording starts (from ?t=)
+let startMs = 0;
 let urlTimer = null;
 
 function timeFromUrl() {
@@ -948,13 +857,11 @@ function saveTimeInUrl() {
     const q = params.toString();
     try {
       history.replaceState(history.state, '', location.pathname + (q ? '?' + q : '') + location.hash);
-    } catch (e) { /* a file:// page may refuse: the time just isn't in the address */ }
+    } catch (e) { }
   }, 250);
 }
 video.addEventListener('seeked', saveTimeInUrl);
 video.addEventListener('pause', saveTimeInUrl);
-
-// ---------- playhead ----------
 
 function nowMs() {
   return hasVideo ? video.currentTime * 1000 : manualMs;
@@ -998,7 +905,6 @@ function onTime() {
   }
 }
 
-// Number of rows with t <= ms.
 function upperBound(list, ms) {
   let lo = 0, hi = list.length;
   while (lo < hi) {
@@ -1046,12 +952,7 @@ function renderMarkers() {
   for (const e of serverItems.filter(isServerError)) add(e.t, 'server', `Server: ${serverText(e)}`, () => openRow('server', e));
 }
 
-// ---------- network overview ----------
-
-// Like the DevTools Network overview, on the Network tab only: one bar per request, from its start (t) to its end
-// (t + durationMs), on the same time axis as the timeline under the video. Drag across it to list only the requests active in that range; a click
-// seeks, a double-click or ✕ shows all requests again.
-let netRange = null;       // [fromMs, toMs] picked on the overview, or null
+let netRange = null;
 const ov = buildOverview();
 
 function buildOverview() {
@@ -1084,7 +985,6 @@ function buildOverview() {
   return { box, strip, canvas, sel, playhead, range, rangeText };
 }
 
-// Bar colour group of a request
 function netKind(n) {
   if (isBad(n)) return 'failed';
   if (n.type === 'Document') return 'doc';
@@ -1109,18 +1009,16 @@ function drawOverview() {
     .map((p) => p.split(':')).map(([k, v]) => [k, css.getPropertyValue(v).trim()]));
   const x = (ms) => (ms / durationMs) * w;
 
-  // Page navigations: full-height lines, like DevTools' load lines
   g.globalAlpha = 0.5;
   g.fillStyle = colors.doc;
   for (const n of report.navigations || []) g.fillRect(Math.round(x(n.t)), 0, 1, h);
 
-  // Requests: each goes in the first lane free at its start, so parallel requests stack
   const BAR = 3, GAP = 1;
   const laneEnd = new Array(Math.max(1, Math.floor((h - 2) / (BAR + GAP)))).fill(-Infinity);
   for (const n of [...report.network].sort((a, b) => a.t - b.t)) {
     const x0 = x(n.t), x1 = Math.max(x0 + 2, x(n.t + (n.durationMs || 0)));
     let lane = laneEnd.findIndex((end) => end < x0);
-    if (lane < 0) lane = laneEnd.indexOf(Math.min(...laneEnd)); // all busy: the lane that frees first
+    if (lane < 0) lane = laneEnd.indexOf(Math.min(...laneEnd));
     laneEnd[lane] = x1 + 1;
     const kind = netKind(n);
     g.globalAlpha = kind === 'other' ? 0.6 : 1;
@@ -1130,7 +1028,6 @@ function drawOverview() {
   g.globalAlpha = 1;
 }
 
-// Redraw when the strip is resized, the page is zoomed (Text size) or the theme changes
 new ResizeObserver(() => drawOverview()).observe(ov.strip);
 new MutationObserver(() => drawOverview()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'style'] });
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => drawOverview());
@@ -1168,7 +1065,6 @@ function showSelection(a, b) {
   ov.sel.style.width = pct(Math.abs(b - a));
 }
 
-// Only the range's look; the caller renders the list
 function showNetRange(range) {
   netRange = range;
   ov.range.hidden = !range;
@@ -1176,7 +1072,6 @@ function showNetRange(range) {
   showSelection(...(range || []));
 }
 
-// The Network list shows only the requests active in the picked range
 function setNetRange(range) {
   if (!range && !netRange) return;
   showNetRange(range);
@@ -1187,7 +1082,6 @@ function inNetRange(n) {
   return !netRange || (n.t <= netRange[1] && n.t + (n.durationMs || 0) >= netRange[0]);
 }
 
-// A request's bar in its list row: on the whole recording, or on the picked range
 function waterfall(n) {
   const [from, to] = netRange || [0, durationMs];
   const span = Math.max(1, to - from);
@@ -1202,17 +1096,13 @@ function waterfall(n) {
   return box;
 }
 
-// ---------- server load ----------
-
-// Under the Issues timeline, same time axis: one node's load sampled every second by the plugin (GaugeSampler).
-// Lines are % of their maximum (CPU, heap, busy request threads, DB connections); GC time is drawn as bars.
 const LOAD_SERIES = [
   ['cpu', 'CPU', '--g-cpu', (s) => s.cpu, (s) => `${Math.round(s.cpu * 100)}%`],
   ['heap', 'Heap', '--g-heap', (s) => s.heapMax && s.heapUsed / s.heapMax, (s) => `${gb(s.heapUsed)} / ${gb(s.heapMax)} GB`],
   ['threads', 'Busy threads', '--g-threads', (s) => s.threadsMax && s.threadsBusy / s.threadsMax, (s) => `${s.threadsBusy} / ${s.threadsMax}`],
   ['db', 'DB connections', '--g-db', (s) => s.dbMax && s.dbActive / s.dbMax, (s) => `${s.dbActive} / ${s.dbMax}${s.dbWaiting ? `, ${s.dbWaiting} waiting` : ''}`],
 ];
-let loadSamples = [];      // the shown node's samples, with t
+let loadSamples = [];
 const load = buildLoad();
 
 function gb(bytes) {
@@ -1279,7 +1169,6 @@ function drawLoad() {
   const css = getComputedStyle(document.documentElement);
   const x = (ms) => (ms / durationMs) * w;
   const y = (f) => h - 2 - Math.max(0, Math.min(1, f)) * (h - 4);
-  // GC: bars of the share of each second spent in GC
   g.fillStyle = css.getPropertyValue('--g-gc').trim();
   g.globalAlpha = 0.6;
   const barW = Math.max(2, x(1000) - 1);
@@ -1303,7 +1192,6 @@ function drawLoad() {
 new MutationObserver(() => drawLoad()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'style'] });
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => drawLoad());
 
-// The values at the mouse (or the playhead when the mouse leaves)
 function showReadout(ms) {
   if (!loadSamples.length) { load.readout.textContent = ''; return; }
   const at = ms ?? nowMs();
@@ -1315,11 +1203,6 @@ function showReadout(ms) {
   load.readout.textContent = parts.join(' · ');
 }
 
-// ---------- apps ----------
-
-// Which Joget app a URL names, by the plugin's rules (AppExport.appOf): userview, embed, form/datalist, builder and
-// JSON API paths, process definition ids (app#version#process) and appId parameters. App icons and userview
-// screenshots (App Center loads them for every app) name none.
 const APP_ID = '([A-Za-z0-9_-]+)';
 const APP_PATTERNS = [
   new RegExp(`/web/(?:embed/)?(?:userview|ulogin|mobile|mapp)/${APP_ID}(?:/|$|\\?)`),
@@ -1329,17 +1212,17 @@ const APP_PATTERNS = [
   new RegExp(`[?&]appId=${APP_ID}(?:&|$)`),
 ];
 const APP_RESOURCE = /\/web\/(?:app\/[A-Za-z0-9_-]+\/(?:\d+\/)?resources\/|userview\/screenshot\/)/;
-const APP_COLORS = 6;      // --app-0 .. --app-5 in viewer.css, by order of first appearance
+const APP_COLORS = 6;
 
-let appSegments = [];      // [{ app, from, to }]: whose page the tab showed when (null app: a page of no app)
-let appProblems = {};      // app id -> [{ t, kind, item, text }]: failed requests, console and server errors
-let appColor = {};         // app id -> colour index
+let appSegments = [];
+let appProblems = {};
+let appColor = {};
 const appOfCache = new WeakMap();
 
 function appOf(url) {
   if (!url) return null;
   let u = url;
-  try { u = decodeURIComponent(url); } catch (e) { /* keep it as it is */ }
+  try { u = decodeURIComponent(url); } catch (e) { }
   if (APP_RESOURCE.test(u)) return null;
   for (const p of APP_PATTERNS) {
     const m = p.exec(u);
@@ -1348,8 +1231,6 @@ function appOf(url) {
   return null;
 }
 
-// The page the tab showed: a document's own URL, else the request's Referer (only paths under /web/, so a Referer cut
-// to the origin says nothing). Each one says which app's page was on screen from then on.
 function buildAppSegments(r) {
   const signals = [];
   for (const n of r.network) {
@@ -1365,7 +1246,6 @@ function buildAppSegments(r) {
     if (last) last.to = s.t;
     segs.push({ app: s.app, from: segs.length ? s.t : 0, to: durationMs });
   }
-  // A late request of the page just left flips back for a moment: under half a second between the same app, merged
   for (let i = 1; i < segs.length - 1; i++) {
     if (segs[i].to - segs[i].from < 500 && segs[i - 1].app === segs[i + 1].app) {
       segs[i - 1].to = segs[i + 1].to;
@@ -1383,7 +1263,6 @@ function pageAppAt(t) {
   return appSegments.length && t >= durationMs ? appSegments[appSegments.length - 1].app : null;
 }
 
-// The app of a list row: the one its URL names, else the one on screen then. Other server threads' lines: none.
 function itemApp(item) {
   if (appOfCache.has(item)) return appOfCache.get(item);
   let app;
@@ -1412,7 +1291,6 @@ function appName(id) {
   return a?.name || (id === 'appcenter' ? 'App Center' : id);
 }
 
-// "2 server errors · 1 failed request"
 function problemText(list) {
   const n = (kind) => list.filter((p) => p.kind === kind).length;
   const part = (k, one) => (n(k) ? `${n(k)} ${one}${n(k) === 1 ? '' : 's'}` : '');
@@ -1423,8 +1301,6 @@ function inUseMs(app) {
   return appSegments.filter((sg) => sg.app === app).reduce((sum, sg) => sum + sg.to - sg.from, 0);
 }
 
-// Under the Issues timeline, same time axis: which app's page the tab showed. Click a stretch to seek there and list
-// only that app's requests and log lines.
 const lane = buildLane();
 
 function buildLane() {
@@ -1465,18 +1341,12 @@ function drawLane() {
   }));
 }
 
-// ---------- system log ----------
-
-// Entries have ts = server clock (epoch ms). t = ts - recording start, minus the server clock's offset, measured
-// from the X-BlackBox-Time header the plugin adds to the tagged responses (server time when the request arrived).
-// Small offsets are mostly network delay, so only an offset over 250 ms is corrected.
 function prepareSystemLog(log, r) {
   serverOffset = 0;
   const start = Date.parse(r.recording?.startedAt);
   if (!log || !start) return [];
   const offsets = [];
   for (const n of r.network) {
-    // A cached response keeps the header of when it was first fetched (maybe days ago): only fresh ones count
     if (n.fromCache) continue;
     const v = Number(header(n.responseHeaders, 'x-blackbox-time'));
     if (v) offsets.push(v - (start + n.t));
@@ -1489,7 +1359,6 @@ function prepareSystemLog(log, r) {
   return (log.entries || []).map((e) => ({ ...e, t: e.ts - start - serverOffset, lvl: serverLevel(e) }));
 }
 
-// Timeline markers and Prev/Next issue: error log lines (a failed request already has a network marker)
 function isServerError(e) {
   return e.kind === 'log' && e.lvl === 'error';
 }
@@ -1510,13 +1379,11 @@ function header(headers, name) {
   return undefined;
 }
 
-// The log lines written while serving a server request entry
 function requestLines(req) {
   const key = `${req.method} ${req.url}`;
   return serverItems.filter((x) => x.kind === 'log' && x.req === key && x.ts >= req.ts && x.ts <= req.ts + req.ms + 5);
 }
 
-// The server request entry of a recorded network request: same method and path, nearest in time
 function serverRequestFor(n) {
   const u = safeUrl(n.url);
   if (!u || !serverItems.length) return null;
@@ -1540,18 +1407,11 @@ function serverList(items) {
   return box;
 }
 
-// ---------- resizable panes ----------
-
-// Drag the grip left of the panel (its width) or above the detail pane (its height), or focus it and use the arrow
-// keys (Shift: bigger steps); double-click resets it. Sizes are CSS variables on #app, so the one-column layout of
-// narrow windows still wins. Remembered per browser. `edge` measures from the panel itself (not #app, which has
-// padding); `keep` is the room left for the video (or the list) plus #app's padding and gap.
 const SPLITS = {
   panel: { varName: '--panel-w', min: 320, edge: 'left', box: () => $('app'), keep: 372, label: 'Resize the video and the panel', keys: { ArrowLeft: 1, ArrowRight: -1 } },
   detail: { varName: '--detail-h', min: 80, edge: 'top', box: () => document.querySelector('.panel'), keep: 120, label: 'Resize the detail pane', keys: { ArrowUp: 1, ArrowDown: -1 } },
 };
 
-// The size to set for a wanted size in page pixels: within the splitter's minimum and the room its box leaves
 function fitSplit(name, px) {
   const sp = SPLITS[name];
   const zoom = parseFloat(document.documentElement.style.zoom) || 1;
@@ -1584,9 +1444,8 @@ function addSplitter(name, host, cls) {
     e.preventDefault();
     document.body.classList.add(`resizing-${cls}`);
     const move = (ev) => {
-      // Rects and pointer positions are in zoomed pixels; the size is set in the page's own (Text size) pixels
       const zoom = parseFloat(document.documentElement.style.zoom) || 1;
-      const edge = host.getBoundingClientRect(); // the panel's right edge / the detail pane's bottom edge
+      const edge = host.getBoundingClientRect();
       const px = sp.edge === 'left' ? edge.right - ev.clientX : edge.bottom - ev.clientY;
       setSplit(name, fitSplit(name, px / zoom));
     };
@@ -1612,7 +1471,7 @@ function setSplit(name, px) {
 
 function saveSplits() {
   const sizes = Object.fromEntries(Object.entries(SPLITS).map(([n, sp]) => [n, parseInt($('app').style.getPropertyValue(sp.varName)) || 0]));
-  try { localStorage.setItem('bb-splits', JSON.stringify(sizes)); } catch (e) { /* not remembered */ }
+  try { localStorage.setItem('bb-splits', JSON.stringify(sizes)); } catch (e) { }
 }
 
 addSplitter('panel', document.querySelector('.panel'), 'split-x');
@@ -1620,9 +1479,7 @@ addSplitter('detail', $('detail'), 'split-y');
 try {
   const sizes = JSON.parse(localStorage.getItem('bb-splits') || '{}');
   for (const n of Object.keys(SPLITS)) if (sizes[n] > 0) setSplit(n, sizes[n]);
-} catch (e) { /* storage blocked: default sizes */ }
-
-// ---------- tabs and lists ----------
+} catch (e) { }
 
 document.querySelectorAll('.tabs button[data-tab]').forEach((b) => { b.onclick = () => setTab(b.dataset.tab); });
 $('search').oninput = () => renderList();
@@ -1630,7 +1487,6 @@ $('filter').onchange = () => renderList();
 $('hideFuture').onchange = () => $('list').classList.toggle('hide-future', $('hideFuture').checked);
 $('detailClose').onclick = () => closeDetail();
 
-// Network and System logs: only one app's rows (its URLs, or made while its page was on screen)
 const appFilter = el('select', 'app-filter');
 appFilter.title = 'Only the requests and log lines of one app';
 appFilter.onchange = () => renderList();
@@ -1657,13 +1513,13 @@ function pickApp(id) {
 function setTab(name) {
   tab = name;
   document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
-  const isInfo = name === 'info' || name === 'apps'; // a page of text: no toolbar or list
+  const isInfo = name === 'info' || name === 'apps';
   $('toolbar').hidden = isInfo;
   $('list').hidden = isInfo;
   $('info').hidden = name !== 'info';
   if ($('appsPage')) $('appsPage').hidden = name !== 'apps';
   if (isInfo) tabNote.hidden = true;
-  ov.box.hidden = name !== 'network'; // shown: the ResizeObserver draws it
+  ov.box.hidden = name !== 'network';
   if (!isInfo) {
     $('filter').hidden = !FILTERS[name];
     appFilter.hidden = !(name === 'network' || name === 'server') || Number(appFilter.dataset.count || 0) < 2;
@@ -1674,14 +1530,12 @@ function setTab(name) {
   closeDetail();
 }
 
-// The filter list's options for a tab: on a tab switch from its first option; with keep (new options for the open
-// tab), only when they changed, and the chosen one stays chosen
 function fillFilter(name, keep) {
   if (!FILTERS[name]) return;
   const sel = $('filter');
   const chosen = sel.value;
   if (keep && [...sel.options].map((o) => o.value + '\n' + o.textContent).join('\n')
-    === FILTERS[name].map(([v, label]) => v + '\n' + label).join('\n')) return; // unchanged: an open list stays open
+    === FILTERS[name].map(([v, label]) => v + '\n' + label).join('\n')) return;
   sel.replaceChildren(...FILTERS[name].map(([v, label]) => {
     const o = el('option', null, label);
     o.value = v;
@@ -1690,7 +1544,6 @@ function fillFilter(name, keep) {
   if (keep && FILTERS[name].some(([v]) => v === chosen)) sel.value = chosen;
 }
 
-// A tab's level checkboxes, made on first use next to the filter list
 function levelBoxes(name) {
   let box = $('levels-' + name);
   if (box) return box;
@@ -1712,7 +1565,6 @@ function levelBoxes(name) {
   return box;
 }
 
-// Console entry level -> checkbox: console.* types, CDP Log levels (verbose, info, warn, error), exceptions (error)
 function consoleLevel(item) {
   switch (item.level) {
     case 'nav': return 'NAV';
@@ -1720,7 +1572,7 @@ function consoleLevel(item) {
     case 'warn': return 'WARN';
     case 'info': return 'INFO';
     case 'debug': case 'verbose': return 'DEBUG';
-    default: return 'LOG'; // log, dir, table, trace, count, group…
+    default: return 'LOG';
   }
 }
 
@@ -1843,9 +1695,6 @@ function traceRow(e) {
   return row;
 }
 
-// ---------- Glowroot traces ----------
-
-// Trace entries have ts = server clock, like the system log: same start and clock offset (prepareSystemLog runs first)
 function prepareTraces(list, r) {
   const start = Date.parse(r.recording?.startedAt);
   return (list || []).map((e) => ({ ...e, kind: 'trace', t: start ? e.ts - start - serverOffset : 0 }))
@@ -1853,10 +1702,9 @@ function prepareTraces(list, r) {
 }
 
 function updateTracesTab() {
-  // Other users' traces (capture option otherTraces): their own filter, never mixed into this recording's
   const others = traceItems.filter((e) => e.other && e.state === 'saved').length;
   FILTERS.traces = TRACE_FILTERS.concat(traceItems.some((e) => e.other) ? [['others', `Other users' traces (${others})`]] : []);
-  if (tab === 'traces') fillFilter('traces', true); // other traces arrive about 30 s after the stop, maybe with the tab open
+  if (tab === 'traces') fillFilter('traces', true);
   if (!$('tracesTab')) return;
   $('tracesTab').hidden = !current.traces;
   const own = traceItems.filter((e) => !e.other);
@@ -1866,13 +1714,10 @@ function updateTracesTab() {
     + (own.length < traceItems.length ? '. Other users\' traces: pick them in the list\'s filter' : '');
 }
 
-// Above the Traces list: says when traces are still coming, or why there are none
 const tabNote = el('div', 'tab-note');
 tabNote.hidden = true;
 $('list').before(tabNote);
 
-// Only this server's own entries can be looked up again (TraceCollector.retryable): not imported ones, nor ones
-// recorded before traces were matched by the capture's tag
 const canRetry = (e) => e.state === 'failed' && !e.imported && !e.other && !!e.capture;
 
 function renderTabNote() {
@@ -1903,7 +1748,6 @@ async function retryTraces(keys, button) {
   }
 }
 
-// The trace of a recorded network request: same method and path, nearest in time
 function traceFor(n) {
   const u = safeUrl(n.url);
   if (!u) return null;
@@ -1980,7 +1824,6 @@ function traceDetail(item, body, actions) {
   }
 }
 
-// Clicking a timeline marker: show its row (switching tab if needed) and its details.
 function openRow(kind, item) {
   if (tab !== kind) setTab(kind);
   const r = rows.find((x) => x.item === item);
@@ -1994,8 +1837,6 @@ function select(rowEl, item) {
   rowEl.classList.add('selected');
   showDetail(item);
 }
-
-// ---------- detail pane ----------
 
 function closeDetail() {
   $('detail').hidden = true;
@@ -2093,19 +1934,16 @@ function responseBody(n) {
   return box;
 }
 
-// Every value is single-quoted for the shell: session.json can be crafted, and this text gets pasted into a terminal
 function toCurl(n) {
   const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
   const url = String(n.url || '');
-  const parts = [`curl ${url.startsWith('-') ? '--url ' : ''}${q(url)}`]; // a URL can't pass as a curl option
-  const method = /^[A-Za-z]{1,20}$/.test(n.method || '') ? n.method.toUpperCase() : 'GET'; // HTTP methods are letters only
+  const parts = [`curl ${url.startsWith('-') ? '--url ' : ''}${q(url)}`];
+  const method = /^[A-Za-z]{1,20}$/.test(n.method || '') ? n.method.toUpperCase() : 'GET';
   if (method !== 'GET') parts.push(`-X ${q(method)}`);
   for (const [k, v] of Object.entries(n.requestHeaders || {})) parts.push(`-H ${q(`${k}: ${v}`)}`);
   if (n.postData) parts.push(`--data-raw ${q(n.postData)}`);
   return parts.join(' \\\n  ');
 }
-
-// ---------- info tab ----------
 
 function renderInfo() {
   const rec = report.recording || {};
@@ -2122,34 +1960,29 @@ function renderInfo() {
       'Console errors': s.errors,
       'Failed requests': s.failedRequests,
       'Navigations': (report.navigations || []).length,
-      // the counts are on the tabs; a capture that didn't reach the server still says why here
-      'Server data': current.systemLog ? undefined : captureInfo(rec.serverCapture || rec.systemLog), // systemLog: extension of plugin 8.2.1 and older
+      'Server data': current.systemLog ? undefined : captureInfo(rec.serverCapture || rec.systemLog),
       'Server clock offset': serverOffset ? `${serverOffset} ms (corrected)` : undefined,
       'User agent': rec.userAgent,
       'Recorded with': report.tool,
     }),
   );
-  // Server snapshot at recording start (plugin page): grouped like Glowroot's Environment page, then everything
-  // Settings > System Info shows. JVM arguments keep one per line.
   const si = current.serverInfo;
   if (si) {
     const body = $('info');
     const period = si.recentChanges?.Period;
-    // Sections whose changes we can track first: Changes, Joget (with its start); then the rest
     const groups = [['recentChanges', period ? `Changes in ${period}` : 'Changes'], ['joget', 'Joget'], ['plugins', 'Plugin'],
       ['host', 'Host'], ['cluster', 'Cluster'], ['java', 'Java'], ['database', 'Database'],
       ['connectionPool', 'DB pool'], ['license', 'License'], ['systemProperties', 'System properties']];
     const served = nodesServed(current.systemLog);
     for (const [key, title] of groups) {
       let values = key === 'cluster' && si.cluster ? clusterRows(si.cluster, served) : si[key];
-      if (key === 'joget') values = { ...si.joget, ...si.process }; // the process start is Joget's start
-      // false: recorded unmasked. Absent: made by plugin 8.2.2 or older, which masked nothing on this tab
+      if (key === 'joget') values = { ...si.joget, ...si.process };
       if (key === 'joget' && si.secretsMasked !== true) values['System Info secrets'] = si.secretsMasked === false ? 'unmasked' : 'unmasked (older recording)';
       if (key === 'joget' && si.license && si.licenseMasked !== true) values['License secrets'] = si.licenseMasked === false ? 'unmasked' : 'unmasked (older recording)';
       if (key === 'recentChanges') values = recentChanges(si.recentChanges);
       if (key === 'plugins' && values) values = pluginRows(values);
-      if (key === 'host' && values) values = renameKeys(values, { 'Physical memory': 'Total RAM' }); // older recordings
-      if (key === 'host' && values && clusterRows(si.cluster || {}).Nodes) values = withoutKeys(values, ['Node']); // in Cluster > Nodes
+      if (key === 'host' && values) values = renameKeys(values, { 'Physical memory': 'Total RAM' });
+      if (key === 'host' && values && clusterRows(si.cluster || {}).Nodes) values = withoutKeys(values, ['Node']);
       if (key === 'license' && values) values = withoutKeys(values, LICENSE_SHOWN_ELSEWHERE);
       if (key === 'systemProperties' && values) values = withoutKeys(values, [...SHOWN_ELSEWHERE, ...setByArguments(si.java?.Arguments, values)]);
       if (!values || !Object.keys(values).length) continue;
@@ -2160,27 +1993,21 @@ function renderInfo() {
   }
 }
 
-// Recent changes as shown: app versions and wflow files (Joget's start is in the Joget section); nothing left (or
-// "None found") hides the section.
 function recentChanges(c) {
   const shown = Object.fromEntries(Object.entries(c || {}).filter(([k]) => ['App versions', 'wflow files'].includes(k)));
   return Object.keys(shown).length ? shown : null;
 }
 
-// The Plugin section: each jar's date and size, " · not loaded" when it holds no loaded plugin
 function pluginRows(plugins) {
   return Object.fromEntries(Object.entries(plugins).map(([jar, v]) => [jar, String(v).replace(' (check the Joget log)', '')]));
 }
 
-// System properties also in the Joget, Host, Cluster and Java sections (Enterprise's SysInfo adds the platform.* ones)
 const SHOWN_ELSEWHERE = ['platform.jvm.total', 'platform.jvm.max', 'platform.jvm.processors', 'platform.jvm.used',
   'wflow.name', 'os.name', 'os.version', 'os.arch', 'java.version', 'java.runtime.version', 'java.vm.name',
   'java.vm.vendor', 'user.timezone'];
 
-// License keys also in the Joget and Database sections
 const LICENSE_SHOWN_ELSEWHERE = ['platform.version', 'platform.db.profile', 'platform.db.jdbc.driver'];
 
-// System properties a -D argument sets to the same value (the last -D of a name wins, as in Java)
 function setByArguments(args, props) {
   const set = {};
   for (const line of String(args || '').split('\n')) {
@@ -2198,10 +2025,6 @@ function withoutKeys(obj, keys) {
   return Object.fromEntries(Object.entries(obj).filter(([k]) => !keys.includes(k)));
 }
 
-// Cluster and Nodes from Joget's node lists: the registered nodes (servers.json) and the active ones (the license's
-// node:: entries), each "name (ip)". With neither (one node, or a license without nodes) this node alone. The
-// wflow-cluster agent alone doesn't make a cluster (it's in Java Arguments). Each node gets the recorded requests it
-// served; "this node" (where the Info snapshot was taken) only matters when there are several.
 function clusterRows(c, served) {
   const parse = (list) => String(list || '').split('\n').filter(Boolean).map((line) => {
     const m = line.match(/^(.*?)(?: \((.*)\))?$/);
@@ -2213,7 +2036,7 @@ function clusterRows(c, served) {
   const nodes = new Map();
   for (const n of [...registered, ...active]) nodes.set(n.name, { ...nodes.get(n.name), ...n });
   if (self && !nodes.has(self)) nodes.set(self, { name: self });
-  const several = nodes.size > 1; // Joget's nodes only: older recordings name served nodes by hostname
+  const several = nodes.size > 1;
   for (const name of Object.keys(served?.counts || {})) if (!nodes.has(name)) nodes.set(name, { name });
   const rows = Object.fromEntries(Object.entries(c).filter(([k]) => !['Joget node name', 'Cluster mode', 'Registered nodes',
     'Active nodes'].includes(k)));
@@ -2231,8 +2054,6 @@ function clusterRows(c, served) {
   return rows;
 }
 
-// Which node served each recorded request (system log request entries carry it), in order: the requests per node and
-// how often the next request went to another node. Switches usually mean no sticky sessions, or a node failed over.
 function nodesServed(log) {
   const reqs = (log?.entries || []).filter((e) => e.kind === 'request' && e.node);
   if (!reqs.length) return null;
@@ -2245,11 +2066,10 @@ function nodesServed(log) {
   return { counts, switches };
 }
 
-// The server's JSON keeps no key order: labels first in this order, then file and pool keys A-Z.
 const INFO_LABELS = {
   database: ['Profile', 'JDBC driver', 'JDBC URL', 'User'],
   connectionPool: ['Ignored file keys', 'Pool size', 'Active connections', 'Idle connections', 'Waiting threads'],
-  plugins: [], // jar files A-Z
+  plugins: [],
   recentChanges: ['App versions', 'wflow files'],
   host: ['OS', 'Node', 'Hostname', 'Processors', 'Total RAM', 'Free RAM'],
   joget: ['Version', 'Edition', 'Application server', 'Started', 'Uptime', 'Process id', 'Time zone', 'Glowroot', 'Glowroot version'],
@@ -2264,12 +2084,8 @@ function infoOrder(group, obj) {
   return Object.fromEntries(keys.map((k) => [k, obj[k]]));
 }
 
-// ---------- app tab ----------
-
 let appFileUrl = null;
 
-// The apps the recording used, exported at upload (plugin page and downloaded HTML; the .jwa files only on the server).
-// One folded block per app, apps with problems first; apps not exported are one grey line.
 function renderApps() {
   const page = $('appsPage');
   if (!page) return;
@@ -2287,18 +2103,16 @@ function renderApps() {
     + (appFileUrl ? '' : ' The .jwa files are in the recording ZIP, not in this file.')));
   if (!all.length) page.append(el('p', null, 'No apps were found in the recorded URLs.'));
   for (const a of [...withProblems, ...rest]) page.append(appBlock(a));
-  if (withProblems.length + rest.length === 1) page.querySelector('details.app').open = true; // the only app: no need to fold it
+  if (withProblems.length + rest.length === 1) page.querySelector('details.app').open = true;
   if (notExported.length) {
     page.append(el('p', 'note muted', 'Not exported: ' + notExported.map((a) => `${a.id} (${a.reason || a.state})`).join(', ')));
   }
 }
 
-// One app, folded to its name, requests, time in use and Download .jwa. Its errors are in the Console, Network and
-// System logs tabs (App filter).
 function appBlock(a) {
   const d = el('details', 'app');
   const summary = el('summary');
-  summary.append(el('strong', null, a.name || a.id)); // id and version are in the rows below
+  summary.append(el('strong', null, a.name || a.id));
   const ms = inUseMs(a.id);
   summary.append(el('span', 'app-badge', `${a.requests} request${a.requests === 1 ? '' : 's'}${ms ? ` · ${fmt(ms)} in use` : ''}`));
   if (a.state === 'saved' && a.file && appFileUrl) {
@@ -2319,7 +2133,6 @@ function appBlock(a) {
     'Apps data': sample?.skipped ? sample.skipped : sample?.error ? `could not be added: ${sample.error}`
       : sample ? (sample.tables?.length ? (sample.mode === 'real' ? 'real values, original ids' : 'masked, new record ids') : 'none: the app has no form rows') : undefined,
   }));
-  // The captured tables and their rows (in the .jwa: importing it imports them)
   if (sample?.tables?.length) {
     d.append(kv(Object.fromEntries(sample.tables.map((t) => [t.table, `${t.rows} row${t.rows === 1 ? '' : 's'}`]))));
   }
@@ -2327,7 +2140,6 @@ function appBlock(a) {
   return d;
 }
 
-// One process instance (read only: Joget can't import running processes)
 function processBlock(p) {
   const d = el('details', 'process');
   d.append(el('summary', null, `Process: ${p.name || p.processDefId} · ${p.state || ''} · ${p.id}`));
@@ -2345,10 +2157,9 @@ function processBlock(p) {
   }
   if (p.activities?.length) {
     d.append(el('h4', null, `Activities${p.activitiesCut ? ' (first 100)' : ''}`));
-    // One row per activity; its id is in the name's tooltip
     const table = el('table', 'act-table');
     const head = el('tr');
-    const finished = p.activities.some((x) => x.finished); // no column when none has finished
+    const finished = p.activities.some((x) => x.finished);
     for (const h of ['#', 'Activity', 'State', 'User', 'Created', ...(finished ? ['Finished'] : [])]) head.append(el('th', null, h));
     table.append(head);
     p.activities.forEach((x, i) => {
@@ -2366,10 +2177,6 @@ function processBlock(p) {
   return d;
 }
 
-// ---------- features drawer ----------
-
-// Opened by the header's Features button; it covers the panel, not the video. ✕, Esc, the button again or a click
-// outside the drawer close it.
 $('featuresBtn').onclick = () => ($('featuresDrawer').hidden ? openFeatures() : closeFeatures());
 $('featuresClose').onclick = () => closeFeatures();
 document.addEventListener('keydown', (e) => {
@@ -2387,16 +2194,12 @@ document.addEventListener('pointerdown', (e) => {
   if (!$('featuresDrawer').hidden && !e.target.closest('#featuresDrawer, #featuresBtn')) closeFeatures(false);
 });
 
-// refocus: false after a click elsewhere, so focus stays where the user clicked
 function closeFeatures(refocus = true) {
   $('featuresDrawer').hidden = true;
   $('featuresBtn').classList.remove('active');
   if (refocus) $('featuresBtn').focus();
 }
 
-// The replay pages that use this viewer. The page that loads a recording sets window.blackboxPage: replay.js
-// 'extension', the plugin's view.js 'server', its downloaded file (export.js) 'file'; dist/blackbox-viewer.html sets
-// nothing: 'viewer'.
 const PAGES = {
   extension: 'Extension',
   server: 'Joget server (plugin)',
@@ -2405,7 +2208,6 @@ const PAGES = {
 };
 const ALL = Object.keys(PAGES);
 
-// [title, what it does, the pages that have it, notes for some pages]
 const FEATURES = [
   ['Video replay', 'Plays the recorded window, screen or tab, with the page\'s sound and the microphone when they were recorded (the Info tab says which). Space plays and pauses, ← / → jump 5 seconds. The clock under the video shows where you are.', ALL],
   ['Console tab', 'Console logs, uncaught exceptions, browser messages and page navigations from the recorded tab, in time order. Tick levels to show, pick a source, or type in Filter.', ALL],
@@ -2464,7 +2266,6 @@ function renderFeatures() {
   }
 }
 
-// recording.audio = { page, pageSource?: 'tab' | 'system', mic, message? }; absent before the extension recorded sound
 function soundInfo(a) {
   if (!a) return 'not recorded (made before BlackBox recorded sound)';
   const page = a.pageSource === 'system' ? 'computer audio' : a.pageSource === 'tab' ? 'tab audio' : 'page audio';
@@ -2483,12 +2284,9 @@ function captureInfo(s) {
   }
   if (!s) return undefined;
   if (s.status === 'on') return `Captured on ${s.server}; shown on the server's replay page after upload`;
-  // Recordings made before the extension said "Could not reach" carry fetch()'s own "Failed to fetch"
   const message = s.message === 'Failed to fetch' && s.server ? `Could not reach ${s.server}` : s.message;
   return `Not captured${message ? ': ' + message : ''}`;
 }
-
-// ---------- helpers ----------
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -2543,7 +2341,7 @@ function safeUrl(u) {
 
 function shortLocation(loc) {
   if (!loc) return '';
-  return loc.split('/').pop().replace(/\?[^:]*/, ''); // "app.js?v=1:10:5" -> "app.js:10:5"
+  return loc.split('/').pop().replace(/\?[^:]*/, '');
 }
 
 function pct(ms) {
@@ -2555,8 +2353,6 @@ function fmt(ms) {
   return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
 }
 
-// One date/time format for the reporter and the investigator: UTC, whatever their timezone.
-// A missing value gives undefined (kv() skips it); a bad one is shown as it is instead of throwing.
 function utc(v) {
   if (v == null || v === '') return undefined;
   const d = new Date(v);

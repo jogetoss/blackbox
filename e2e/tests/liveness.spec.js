@@ -1,9 +1,3 @@
-// Recording liveness end to end (heartbeat, lost browser, crash recovery, hard limit): real headless
-// screen recordings against j8213, checked in the capture's meta.json on the server (read with docker exec).
-// The crash tests kill this test's own Chromium (pkill -9 on its profile folder) and start it again on the same
-// profile, as after a real crash. The spec sets the test override (liveness-test.json) itself for its run and puts
-// back what was there after; its checks (the 60 s limit, checkMs) depend on these values.
-// Every recording uploaded here is deleted at the end of its test.
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
@@ -16,11 +10,10 @@ const WFLOW = process.env.BB_WFLOW || '/opt/wflow';
 
 const sh = (args) => execFileSync('docker', ['exec', CONTAINER, ...args], { encoding: 'utf8' });
 
-// The test override (guide/storage.md): short timing for this spec. Written as this user, as joget.sh does.
 const OVERRIDE = { pingMs: 5000, lostMs: 20000, checkMs: 5000, minLimitMs: 60000 };
 const OVERRIDE_FILE = `${WFLOW}/blackbox/liveness-test.json`;
 const shAsMe = (args, input) => execFileSync('docker', ['exec', '-i', '-u', String(process.getuid()), CONTAINER, ...args], { encoding: 'utf8', input });
-let overrideBefore = null; // the file's content before this spec (null: no file)
+let overrideBefore = null;
 test.beforeAll(() => {
   overrideBefore = sh(['sh', '-c', `cat ${OVERRIDE_FILE} 2>/dev/null || true`]) || null;
   shAsMe(['sh', '-c', `cat > ${OVERRIDE_FILE}`], JSON.stringify(OVERRIDE) + '\n');
@@ -29,20 +22,15 @@ test.afterAll(() => {
   if (overrideBefore === null) shAsMe(['rm', '-f', OVERRIDE_FILE]);
   else shAsMe(['sh', '-c', `cat > ${OVERRIDE_FILE}`], overrideBefore);
 });
-// The capture's pending meta.json on the server (not in the API); kept after the upload, pointing at the recording
 const captureMeta = (id) => JSON.parse(sh(['cat', `${WFLOW}/blackbox/pending/${id}/meta.json`]));
-// The capture's log lines so far (all nodes), before the upload moves them into the recording
 function captureLines(id) {
   const out = sh(['sh', '-c', `cat ${WFLOW}/blackbox/pending/${id}/system-log.*.jsonl 2>/dev/null || true`]);
   return out.split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
 }
-// One ERROR line in Joget's log, on a thread no recording tags: a POST without a CSRF token
 function logALine() {
   execFileSync('curl', ['-s', '-o', '/dev/null', '-d', 'j_username=e2e-liveness&j_password=x', `${JOGET}/j_spring_security_check`]);
 }
 
-// The extension copied to a folder of its own with host access to Joget (as fixtures.js does). Its id depends on the
-// folder, so a browser started again on the same profile and folder finds its own IndexedDB.
 function copyExtension(from) {
   const ext = fs.mkdtempSync(path.join(os.tmpdir(), 'bb-ext-'));
   fs.cpSync(from, ext, { recursive: true });
@@ -66,8 +54,6 @@ async function workerOf(context) {
   return worker;
 }
 
-// A browser of our own (not the fixture's), so a test can kill it and start it again
-// restoreSession: Chrome's "Continue where you left off", which keeps session cookies (the Joget login) over a restart
 async function browser(from = EXTENSION, { restoreSession = false } = {}) {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'bb-profile-'));
   if (restoreSession) {
@@ -82,25 +68,22 @@ async function browser(from = EXTENSION, { restoreSession = false } = {}) {
     b.extensionId = new URL(b.worker.url()).host;
     return b;
   };
-  b.kill = () => { // the browser process and its children: everything started with this profile
+  b.kill = () => {
     execFileSync('pkill', ['-9', '-f', profile]);
   };
   b.dispose = async () => {
     await b.context?.close().catch(() => {});
-    try { execFileSync('pkill', ['-9', '-f', profile]); } catch { /* none left */ }
+    try { execFileSync('pkill', ['-9', '-f', profile]); } catch { }
     fs.rmSync(profile, { recursive: true, force: true });
     fs.rmSync(ext, { recursive: true, force: true });
   };
   return b.start();
 }
 
-// Logs in and starts a screen recording of the Joget tab (on the iService assignment, so the app export has an app).
-// Returns the Joget page and the capture from the recording state ({ id, pingMs, lostMs, maxRecordingMs, ... }).
 async function startRecording(b, { openOnServer = false, key = 'serverCapture', quick } = {}) {
   const joget = await b.context.newPage();
   await loginJoget(joget);
   await joget.goto(ASSIGNMENT);
-  // Quick settings start unticked: tick Export the apps used so the stop's app export runs
   await b.worker.evaluate(({ u, openOnServer, quick }) => chrome.storage.local.set({ uploadUrl: u, recordPageAudio: false, openOnServer,
     quick: { apps: true, ...quick } }), { u: `${JOGET}/api/blackbox`, openOnServer, quick });
   const tabId = await b.worker.evaluate((o) => chrome.tabs.query({ url: o + '/*' }).then((t) => t[0].id), new URL(JOGET).origin);
@@ -109,13 +92,12 @@ async function startRecording(b, { openOnServer = false, key = 'serverCapture', 
   await expect.poll(async () => (capture = await b.worker.evaluate((key) => getState().then((r) => r?.startedAt && r[key]), key)),
     { timeout: 20_000 }).toBeTruthy();
   expect(capture.status, capture.message).toBe('on');
-  await joget.reload(); // a tagged request with the recording running
+  await joget.reload();
   return { joget, capture };
 }
 
 const recorderOf = (b) => b.context.pages().find((p) => p.url().includes('recorder.html'));
 
-// The kept recording of a capture, in the extension's IndexedDB
 async function keptRecording(b, captureId, timeout = 30_000) {
   const page = await b.context.newPage();
   await page.goto(`chrome-extension://${b.extensionId}/recordings.html`);
@@ -125,7 +107,6 @@ async function keptRecording(b, captureId, timeout = 30_000) {
   return { page, rec };
 }
 
-// Waits for the capture's pings, then for a crash-safety save after the last ping; returns the meta
 async function waitForPings(id, pingMs, count = 2) {
   const first = await expect.poll(() => captureMeta(id).lastSeenAt || 0, { timeout: pingMs * 2 + 10_000 }).toBeGreaterThan(0)
     .then(() => captureMeta(id).lastSeenAt);
@@ -133,7 +114,6 @@ async function waitForPings(id, pingMs, count = 2) {
   return captureMeta(id);
 }
 
-// Deletes the uploaded recordings at the end (also when the test fails)
 const uploads = [];
 test.afterEach(async ({ page }) => {
   if (!uploads.length) return;
@@ -154,7 +134,7 @@ test('normal stop: the recorder stops the capture, the app export runs', async (
     const recorder = recorderOf(b);
     const before = Date.now();
     await b.worker.evaluate(() => stop('user').then(() => 'ok'));
-    await recorder.waitForEvent('close', { timeout: 170_000 }).catch(() => {}); // the stop waits for the export
+    await recorder.waitForEvent('close', { timeout: 170_000 }).catch(() => {});
     const after = Date.now();
     const meta = captureMeta(capture.id);
     expect(meta.stoppedAt, 'stopped by the recorder').toBeGreaterThanOrEqual(before - 1000);
@@ -175,7 +155,7 @@ test('crash: the server stops the capture at the last ping; recovery and upload 
   try {
     const { capture } = await startRecording(b);
     const { pingMs, lostMs } = capture;
-    const { checkMs } = OVERRIDE; // the start response doesn't carry it
+    const { checkMs } = OVERRIDE;
     await waitForPings(capture.id, pingMs);
 
     b.kill();
@@ -190,12 +170,11 @@ test('crash: the server stops the capture at the last ping; recovery and upload 
     expect(lost.stoppedAt).toBe(lastPing);
     expect(killedAt - lost.stoppedAt, 'within one pingMs of the crash').toBeLessThanOrEqual(pingMs + 1000);
 
-    // Start again on the same profile: recovery turns the partial into a recording and sends its stop
     await b.context.close().catch(() => {});
     await b.start();
     const { page, rec } = await keptRecording(b, capture.id);
     expect(rec.recovered).toBe(true);
-    await page.waitForTimeout(3000); // the recovery stop
+    await page.waitForTimeout(3000);
     expect(captureMeta(capture.id).stoppedAt, 'recovery keeps the stop time').toBe(lost.stoppedAt);
 
     const joget = await b.context.newPage();
@@ -217,11 +196,10 @@ test('crash: the server stops the capture at the last ping; recovery and upload 
 
 test('crash, started again before lostMs: the recovery stop sets stoppedAt to the last save', async () => {
   test.setTimeout(180_000);
-  // Without it the restarted browser is logged out of Joget: the recovery stop gets 401 and BB2 closes the capture
   const b = await browser(EXTENSION, { restoreSession: true });
   try {
     const { capture } = await startRecording(b);
-    await new Promise((r) => setTimeout(r, 35_000)); // Chrome writes cookies to disk about every 30 s
+    await new Promise((r) => setTimeout(r, 35_000));
     await waitForPings(capture.id, capture.pingMs, 1);
     b.kill();
     const killedAt = Date.now();
@@ -230,7 +208,7 @@ test('crash, started again before lostMs: the recovery stop sets stoppedAt to th
     const me = await b.worker.evaluate((u) => fetch(u + '?action=me', { credentials: 'include' }).then((r) => r.status), `${JOGET}/api/blackbox`);
     console.log('relaunch: logged in after the restart?', me);
     const { rec } = await keptRecording(b, capture.id);
-    const lastSavedAt = Date.parse(rec.report.recording.stoppedAt); // a recovered recording ends at its last save
+    const lastSavedAt = Date.parse(rec.report.recording.stoppedAt);
     await expect.poll(() => captureMeta(capture.id).stoppedAt || 0, { timeout: 15_000 }).toBeGreaterThan(0);
     const meta = captureMeta(capture.id);
     console.log(`relaunch: recovered ${Date.now() - killedAt} ms after the kill, lastSavedAt ${lastSavedAt}, stoppedAt ${meta.stoppedAt}, lastSeenAt ${meta.lastSeenAt}`);
@@ -254,7 +232,6 @@ test('time limit: the recorder stops itself, saves and uploads', async () => {
     await recorder.waitForEvent('close', { timeout: capture.maxRecordingMs + 170_000 });
     const { page, rec } = await keptRecording(b, capture.id);
     expect(rec.report.recording.stopReason).toBe('time-limit');
-    // openOnServer: the Replay page uploads it
     let up;
     await expect.poll(async () => (up = await page.evaluate((id) => idbList().then((all) => all.find((r) => r.id === id).uploaded), rec.id)),
       { timeout: 60_000 }).toBeTruthy();
@@ -290,8 +267,7 @@ test('all-server logs: after a crash, no new lines in the capture log once it is
   test.setTimeout(180_000);
   const b = await browser();
   try {
-    const { capture } = await startRecording(b, { quick: { allServer: true } }); // the popup's All server log lines
-    // Offered only to users in "Who can capture server data" (admin; not BB_USER=cat)
+    const { capture } = await startRecording(b, { quick: { allServer: true } });
     test.skip(!captureMeta(capture.id).allServer, 'this user may not capture all server log lines');
     await waitForPings(capture.id, capture.pingMs, 1);
     logALine();
@@ -303,7 +279,7 @@ test('all-server logs: after a crash, no new lines in the capture log once it is
     const { stoppedAt } = captureMeta(capture.id);
     const atStop = captureLines(capture.id);
     for (let i = 0; i < 5; i++) logALine();
-    await new Promise((r) => setTimeout(r, 2 * OVERRIDE.checkMs)); // two checks
+    await new Promise((r) => setTimeout(r, 2 * OVERRIDE.checkMs));
     const later = captureLines(capture.id);
     const afterStop = later.filter((e) => e.ts > stoppedAt);
     console.log(`all-server: ${atStop.length} lines when seen stopped, ${later.length} after more logging; ${afterStop.length} with ts > stoppedAt (between the last ping and the server's stop)`);

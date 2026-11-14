@@ -26,10 +26,9 @@ public class RecordingHtmlTest {
     @Test
     public void inlinesViewerAndEmbedsTheRecording() throws Exception {
         Path dir = Files.createTempDirectory("bb-export");
-        // A body with "</script>" must not end the data block
         String sessionJson = "{\"console\":[{\"t\":1,\"text\":\"</script><b>x</b> ünïcode\"}],\"network\":[]}";
         Path session = Files.write(dir.resolve("session.json"), sessionJson.getBytes(StandardCharsets.UTF_8));
-        byte[] video = new byte[100_001]; // not a multiple of 3: padding at the end
+        byte[] video = new byte[100_001];
         for (int i = 0; i < video.length; i++) {
             video[i] = (byte) i;
         }
@@ -63,8 +62,8 @@ public class RecordingHtmlTest {
         assertTrue("test name must be a valid trace file name", TraceStore.isTraceFile(name));
         java.util.Map<String, Path> files = new java.util.LinkedHashMap<>();
         files.put(name, Files.write(dir.resolve(name), page.getBytes(StandardCharsets.UTF_8)));
-        files.put("../evil.html", Files.write(dir.resolve("evil.html"), "x".getBytes(StandardCharsets.UTF_8))); // bad name: skipped
-        files.put("node1-ffffffffffffffffffffffffffffffff.html", dir.resolve("missing.html")); // no file: skipped
+        files.put("../evil.html", Files.write(dir.resolve("evil.html"), "x".getBytes(StandardCharsets.UTF_8)));
+        files.put("node1-ffffffffffffffffffffffffffffffff.html", dir.resolve("missing.html"));
 
         RecordingHtml export = new RecordingHtml(VIEW, "body{}", "var viewer=1;", "var display=1;", "var boot=1;");
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -95,7 +94,6 @@ public class RecordingHtmlTest {
         new RecordingHtml(VIEW, "body{}", "x='</script>'", "", "");
     }
 
-    /** The real viewer files can be inlined: a closing style or script tag in any of them breaks every HTML download. */
     @Test
     public void theShippedViewerFilesCanBeInlined() throws Exception {
         assertNotNull(RecordingHtml.fromResources());

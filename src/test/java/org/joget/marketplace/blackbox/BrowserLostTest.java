@@ -12,7 +12,6 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-/** BB2: the server check that stops a capture whose browser stopped pinging. */
 public class BrowserLostTest {
 
     private static final String ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
@@ -28,14 +27,14 @@ public class BrowserLostTest {
     @Before
     public void setUp() throws Exception {
         root = Files.createTempDirectory("bb-lost-browser");
-        store = new ServerCaptureStore(root.resolve("pending")); // root: one profile's blackbox folder
+        store = new ServerCaptureStore(root.resolve("pending"));
         realStores = ServerCapture.stores;
         ServerCapture.stores = () -> store;
         realDirs = ServerCapture.checkDirs;
         ServerCapture.checkDirs = () -> java.util.Collections.singletonList(root);
         realKnobs = LivenessKnobs.fileSupplier;
-        LivenessKnobs.fileSupplier = () -> root.resolve(LivenessKnobs.FILE); // missing: the defaults
-        staticMap("MISSES").clear(); // an earlier test's close() remembers the id for 10 s
+        LivenessKnobs.fileSupplier = () -> root.resolve(LivenessKnobs.FILE);
+        staticMap("MISSES").clear();
     }
 
     @After
@@ -120,7 +119,7 @@ public class BrowserLostTest {
     public void theCheckClosesACaptureAnotherNodeStopped() throws Exception {
         assertTrue(store.start(ID, "admin", 1024, DAY));
         open();
-        assertTrue(store.stop(ID, "admin")); // the stop request landed on another node
+        assertTrue(store.stop(ID, "admin"));
         ServerCapture.checkLost(System.currentTimeMillis());
         assertFalse(openIds().containsKey(ID));
         assertFalse(store.readMeta(ID).has("stopReason"));
@@ -131,7 +130,7 @@ public class BrowserLostTest {
         assertTrue(store.start(ID, "admin", 1024, DAY));
         long now = System.currentTimeMillis();
         seenAt(now - LOST - 1);
-        ServerCapture.checkLost(now); // closed when idle, or the node restarted
+        ServerCapture.checkLost(now);
         assertEquals("browser-lost", store.readMeta(ID).getString("stopReason"));
     }
 
@@ -156,7 +155,6 @@ public class BrowserLostTest {
         assertEquals("browser-lost", store.readMeta(ID).getString("stopReason"));
     }
 
-    /** Opens the capture on this node as a tagged request would (find needs the plugin running). */
     private void open() throws Exception {
         setRunning(true);
         assertNotNull(ServerCapture.find(ID));

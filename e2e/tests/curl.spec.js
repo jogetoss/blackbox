@@ -1,5 +1,3 @@
-// "Copy as cURL" (viewer.js toCurl), run in node: the command is parsed by a real bash with curl swapped for a
-// function that prints its arguments, so a crafted session.json can't run anything when the text is pasted.
 const { test, expect } = require('@playwright/test');
 const fs = require('fs');
 const path = require('path');
@@ -9,7 +7,6 @@ const src = fs.readFileSync(path.join(__dirname, '../../chrome-extension/viewer.
 const body = src.match(/\nfunction toCurl\(n\) \{[\s\S]*?\n\}\n/)[0];
 const toCurl = new Function(`${body}; return toCurl;`)();
 
-// The arguments bash would give curl, one per array item
 function shellArgs(cmd) {
   const out = execFileSync('bash', ['-c', `curl() { printf '%s\\0' "$@"; }\n${cmd}`], { encoding: 'utf8' });
   return out.split('\0').slice(0, -1);
@@ -27,7 +24,7 @@ test('a crafted method, URL, header or body stays a plain argument', () => {
   const args = shellArgs(cmd);
   expect(fs.existsSync(marker)).toBe(false);
   expect(args).toEqual(['--url', `--output=${marker}`, '-H', `X-${evil}: '; touch ${marker}; '`,
-    '--data-raw', `a=\`touch ${marker}\`&b='x'`]); // the bad method is dropped: plain GET
+    '--data-raw', `a=\`touch ${marker}\`&b='x'`]);
 });
 
 test('real methods are kept', () => {

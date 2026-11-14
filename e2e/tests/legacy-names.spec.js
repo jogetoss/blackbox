@@ -1,8 +1,3 @@
-// Names from before the "server capture" rename: plugin 8.2.1 and its extension keep the capture summary under
-// "systemLog" (meta.json, session.json's recording, the recording-start answer). This plugin and extension still read
-// them. The 8.2.1 extension itself is not supported with this plugin (UPGRADE.md: plugin 8.2.2 needs extension 1.2.0; it has
-// no manifest key, so its requests are refused unless Allowed Chrome extension IDs is emptied), so these tests feed the old
-// names to this extension.
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
@@ -11,16 +6,14 @@ const {
   test, expect, JOGET, LEGACY_EXTENSION, CAPTURE_KEY, loginJoget, api, report, keep, captureAndStop, uploaded,
 } = require('./fixtures');
 
-const CONTAINER = process.env.BB_CONTAINER || 'j8213'; // the Joget container, for meta.json as plugin 8.2.1 saved it
+const CONTAINER = process.env.BB_CONTAINER || 'j8213';
 const WFLOW = process.env.BB_WFLOW || '/opt/wflow';
 
-// Uploads a kept recording the way the extension does after a recording stops (no click on Send)
 async function uploadKept(page, extensionId, id) {
   await page.goto(`chrome-extension://${extensionId}/viewer.html?id=${id}`);
   expect(await page.evaluate(async (id) => Actions.uploadNow((await Store.allRows()).find((r) => r.id === id)), id)).toBe(true);
 }
 
-// A recording on the server with an attached server capture, uploaded with session.json's capture under key
 async function uploadWithCapture(context, extensionId, joget, prefix, key) {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/recordings.html`);
@@ -44,7 +37,6 @@ test('the extension starts a server capture; the upload attaches its requests', 
   await page.evaluate((uploadUrl) => chrome.storage.local.set({ uploadUrl }), `${JOGET}/api/blackbox`);
   const worker = context.serviceWorkers()[0];
 
-  // background.js's own start (startSystemLog in the extension of plugin 8.2.1): reads the slow threshold from the plugin's answer
   const capture = await worker.evaluate(async (origin) => {
     const [tab] = await chrome.tabs.query({ url: origin + '/*' });
     const start = typeof startServerCapture === 'function' ? startServerCapture : startSystemLog;
@@ -53,13 +45,12 @@ test('the extension starts a server capture; the upload attaches its requests', 
   expect(capture.status, capture.message).toBe('on');
   expect(typeof capture.slowMs, 'slow threshold from the recording-start answer').toBe('number');
 
-  await joget.reload(); // a tagged request: its log lines go to the capture
+  await joget.reload();
   await worker.evaluate(async (capture) => {
     const stop = typeof stopServerCapture === 'function' ? stopServerCapture : stopSystemLog;
     await stop(capture);
   }, capture);
 
-  // session.json as the extension's own buildReport writes it (its meta key is the one its recorder sets)
   const id = 'e2e-ext-' + Date.now();
   await page.evaluate(async ({ id, key, capture }) => {
     const startedAt = Date.now() - 5000;
@@ -85,7 +76,6 @@ test('a recording kept by the extension of plugin 8.2.1 (systemLog in session.js
   await loginJoget(joget);
   const { page, id } = await uploadWithCapture(context, extensionId, joget, 'e2e-old-session-', 'systemLog');
 
-  // the upload form reads the export done at stop from the old key too
   await page.goto(`chrome-extension://${extensionId}/viewer.html?id=${id}`);
   await page.evaluate(async (id) => Actions.showUpload((await Store.allRows()).find((r) => r.id === id)), id);
   await expect(page.locator('#upAtStop')).toContainText('exported when the recording stopped');
@@ -124,7 +114,7 @@ test('meta.json saved by plugin 8.2.1 (systemLog) still shows its server data', 
 });
 
 test('a ZIP made by plugin 8.2.1 (systemLog in session.json) imports on the server and in the extension', async ({ context, extensionId }) => {
-  test.setTimeout(240_000); // the ZIP waits for the Glowroot data
+  test.setTimeout(240_000);
   test.skip(LEGACY_EXTENSION, 'the extension part tests this extension only');
   const joget = await context.newPage();
   await loginJoget(joget);
@@ -134,7 +124,6 @@ test('a ZIP made by plugin 8.2.1 (systemLog in session.json) imports on the serv
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bb-zip-'));
   let imported;
   try {
-    // Download ZIP (409 while the Glowroot data is built, about a minute), then turn its session.json into the old one
     const b64 = await joget.evaluate(async (url) => {
       let res = await fetch(url);
       for (const until = Date.now() + 150_000; res.status === 409 && Date.now() < until; res = await fetch(url)) {
@@ -163,7 +152,6 @@ with zipfile.ZipFile(src) as a, zipfile.ZipFile(dst, 'w', zipfile.ZIP_DEFLATED) 
 `, fresh, old]);
     expect(fs.readFileSync(old).includes('system-log.json')).toBe(true);
 
-    // Server: Import ZIP keeps its server data
     imported = await joget.evaluate(async ({ base, b64 }) => {
       const t = await (await fetch(`${base}/web/json/directory/user/csrfToken`)).json();
       const body = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
@@ -177,7 +165,6 @@ with zipfile.ZipFile(src) as a, zipfile.ZipFile(dst, 'w', zipfile.ZIP_DEFLATED) 
     await joget.goto(`${JOGET}/blackbox/view?id=${imported.id}`);
     await expect(joget.locator('#serverTab')).toBeVisible({ timeout: 30_000 });
 
-    // Extension: Recordings > Import ZIP drops the other server's capture id under the old key too
     await page.goto(`chrome-extension://${extensionId}/recordings.html`);
     await page.setInputFiles('#importZip', old);
     const oldCapture = () => page.evaluate(async () => {

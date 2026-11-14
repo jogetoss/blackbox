@@ -25,24 +25,17 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * Keeps each recording in its own folder: {root}/{id}/meta.json, session.json, recording.webm.
- * No database: the folder is the record, so a shared wflow folder works for clustered nodes too.
- */
 public class RecordingStore {
 
     public static final String META = "meta.json";
     public static final String SESSION = "session.json";
     public static final String VIDEO = "recording.webm";
     public static final String SYSTEM_LOG = ServerCaptureStore.FILE;
-    /** meta.json and session.json's recording: the server capture's summary (status, id, entries, errors...). */
     public static final String CAPTURE = "serverCapture";
-    /** CAPTURE's name in recordings and ZIPs made by plugin 8.2.1 and older or their extension: read, never written. */
     static final String LEGACY_CAPTURE = "systemLog";
 
-    // yyyyMMdd-HHmmss-<8 hex>: sorts by upload time and can never contain a path separator
     private static final Pattern ID = Pattern.compile("^[0-9]{8}-[0-9]{6}-[0-9a-f]{8}$");
-    private static final byte[] WEBM_MAGIC = {0x1A, 0x45, (byte) 0xDF, (byte) 0xA3}; // EBML header
+    private static final byte[] WEBM_MAGIC = {0x1A, 0x45, (byte) 0xDF, (byte) 0xA3};
     private static final int MAX_TITLE = 200;
     private static final int MAX_NOTES = 5000;
     private static final SecureRandom RANDOM = new SecureRandom();
@@ -57,37 +50,27 @@ public class RecordingStore {
         return id != null && ID.matcher(id).matches();
     }
 
-    /** Thrown for bad client input; the message is safe to show to the user. */
     public static class InvalidUpload extends Exception {
         public InvalidUpload(String message) {
             super(message);
         }
     }
 
-    /** Too many uploads are being read at once: try again later (HTTP 503). */
     public static class Busy extends InvalidUpload {
         public Busy(String message) {
             super(message);
         }
     }
 
-    /** A change to a recording's meta.json, made by {@link #modifyMeta} on the latest copy under its lock. */
     public interface MetaChange {
         void apply(JSONObject meta) throws IOException, InvalidUpload, JSONException;
     }
 
-    /**
-     * session.json is read as a stream (SessionFile), so the file limit is its only size limit. Checking one still
-     * reads the whole file: at most a few at once, so many big uploads can't keep every thread busy.
-     */
     private static final Semaphore PARSING = new Semaphore(2);
     private static final long PARSE_WAIT_S = 30;
     private static final String META_LOCK = ".meta.lock";
     private static final ConcurrentHashMap<String, Object> META_LOCKS = new ConcurrentHashMap<>();
 
-    /**
-     * Saves session.json and creates the recording. The video is added later with {@link #writeVideo}.
-     */
     public JSONObject create(InputStream session, long maxBytes, String owner, String ownerName, String title, String notes)
             throws IOException, InvalidUpload {
         String id = newId();
@@ -97,7 +80,7 @@ public class RecordingStore {
         boolean ok = false;
         try {
             Path tmp = dir.resolve(SESSION + ".part");
-            SessionFile.copy(session, tmp, maxBytes, "session.json"); // to disk first: never whole in memory
+            SessionFile.copy(session, tmp, maxBytes, "session.json");
             acquireParsing();
             try {
                 head = SessionFile.check(tmp);
@@ -152,7 +135,6 @@ public class RecordingStore {
             throw new IOException(e);
         }
         writeMeta(id, meta);
-        // Not saved in meta.json: the caller attaches the server data captured under this id (session.json has it)
         JSONObject capture = rec == null ? null
                 : rec.has(CAPTURE) ? rec.optJSONObject(CAPTURE) : rec.optJSONObject(LEGACY_CAPTURE);
         if (capture != null && ServerCaptureStore.isValidId(capture.optString("id"))) {
@@ -165,7 +147,6 @@ public class RecordingStore {
         return meta;
     }
 
-    /** Stores recording.webm for a recording that has none yet. Returns the updated meta. */
     public JSONObject writeVideo(String id, InputStream in, long maxBytes) throws IOException, InvalidUpload {
         JSONObject meta = readMeta(id);
         if (meta == null) {
@@ -180,7 +161,6 @@ public class RecordingStore {
         try {
             byte[] buf = new byte[64 * 1024];
             try (OutputStream out = Files.newOutputStream(tmp)) {
-                // A network stream may return fewer bytes per read, so collect the header first
                 int head = 0;
                 int n;
                 while (head < WEBM_MAGIC.length && (n = in.read(buf, head, buf.length - head)) != -1) {
@@ -202,7 +182,6 @@ public class RecordingStore {
                 } while ((n = in.read(buf)) != -1);
             }
             long videoSize = size;
-            // Checked again on the latest meta, under its lock: two uploads at once keep one video
             return modifyMeta(id, m -> {
                 if (m.optLong("videoSize") > 0) {
                     throw new InvalidUpload("This recording already has a video.");
@@ -215,7 +194,6 @@ public class RecordingStore {
         }
     }
 
-    /** Waits for one of the few session.json parse slots. */
     static void acquireParsing() throws Busy {
         try {
             if (!PARSING.tryAcquire(PARSE_WAIT_S, TimeUnit.SECONDS)) {
@@ -231,11 +209,6 @@ public class RecordingStore {
         PARSING.release();
     }
 
-    /**
-     * Applies a change to the latest meta.json and saves it, so writers on other threads (traces, Glowroot data, the
-     * video upload) never put back an older copy. Locked per recording in this JVM, and with a file lock for nodes
-     * sharing the folder (where the file system supports it). Returns the saved meta.
-     */
     public JSONObject modifyMeta(String id, MetaChange change) throws IOException, InvalidUpload {
         if (!isValidId(id)) {
             throw new IllegalArgumentException("Invalid recording id");
@@ -262,7 +235,6 @@ public class RecordingStore {
         }
     }
 
-    /** A meta.json written by plugin 8.2.1 or older: its capture summary under CAPTURE (saved so on the next change). */
     static JSONObject renameLegacy(JSONObject meta) throws JSONException {
         Object old = meta.remove(LEGACY_CAPTURE);
         if (old != null && !meta.has(CAPTURE)) {
@@ -286,7 +258,6 @@ public class RecordingStore {
         }
     }
 
-    /** Bytes on disk of all of owner's recordings (every file in their folders). */
     public long usedBytes(String owner) throws IOException {
         long total = 0;
         for (JSONObject meta : list()) {
@@ -306,7 +277,6 @@ public class RecordingStore {
         return total;
     }
 
-    /** All recordings, newest first. Folders without a readable meta.json are skipped. */
     public List<JSONObject> list() throws IOException {
         List<JSONObject> result = new ArrayList<>();
         if (!Files.isDirectory(root)) {
@@ -324,7 +294,6 @@ public class RecordingStore {
         return result;
     }
 
-    /** Path of a stored file, or null when the id is invalid or the file is missing. */
     public Path file(String id, String name) {
         if (!isValidId(id) || !(SESSION.equals(name) || VIDEO.equals(name) || SYSTEM_LOG.equals(name) || ServerInfo.FILE.equals(name))) {
             return null;
@@ -333,7 +302,6 @@ public class RecordingStore {
         return Files.isRegularFile(file) ? file : null;
     }
 
-    /** A recording's folder, or null when the id is invalid or it does not exist. */
     public Path dir(String id) {
         if (!isValidId(id)) {
             return null;
@@ -342,7 +310,6 @@ public class RecordingStore {
         return Files.isDirectory(dir) ? dir : null;
     }
 
-    /** A Glowroot trace file of a recording (see {@link TraceStore}), or null when the name is invalid or it is missing. */
     public Path traceFile(String id, String name) {
         Path dir = dir(id);
         if (dir == null || !TraceStore.isTraceFile(name)) {
@@ -352,7 +319,6 @@ public class RecordingStore {
         return Files.isRegularFile(file) ? file : null;
     }
 
-    /** Where a recording's file goes (it may not exist yet). id must be valid. */
     public Path path(String id, String name) {
         if (!isValidId(id)) {
             throw new IllegalArgumentException("Invalid recording id");
@@ -360,7 +326,6 @@ public class RecordingStore {
         return root.resolve(id).resolve(name);
     }
 
-    /** Replaces the given keys of the latest meta.json (null removes the key), under its lock. */
     public JSONObject updateMeta(String id, JSONObject changes) throws IOException {
         try {
             return modifyMeta(id, m -> {
@@ -391,7 +356,6 @@ public class RecordingStore {
         return true;
     }
 
-    /** Deletes a folder and everything in it (traces/ too). Links are deleted, never followed. */
     static void deleteTree(Path dir) throws IOException {
         if (!Files.isDirectory(dir, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
             return;

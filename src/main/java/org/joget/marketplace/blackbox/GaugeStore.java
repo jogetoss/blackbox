@@ -15,14 +15,10 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * Server load samples ({@link GaugeSampler}) in a gauges/ folder next to traces/: gauges/{node}.jsonl, one sample per
- * line, appended only by that node. Moved into the recording on upload like the traces.
- */
 final class GaugeStore {
 
     static final String DIR = "gauges";
-    static final String MERGED = "gauges.json"; // in a recording ZIP
+    static final String MERGED = "gauges.json";
     private static final Object LOCK = new Object();
 
     private GaugeStore() {
@@ -39,7 +35,6 @@ final class GaugeStore {
         }
     }
 
-    /** {"nodes": {"node-a": [samples sorted by ts], ...}}, or null when there are none. */
     static JSONObject merge(Path outer) throws IOException {
         Path dir = outer == null ? null : outer.resolve(DIR);
         if (dir == null || !Files.isDirectory(dir)) {
@@ -58,7 +53,6 @@ final class GaugeStore {
                         try {
                             samples.add(new JSONObject(line));
                         } catch (JSONException e) {
-                            // cut short by a crash
                         }
                     }
                 }
@@ -84,11 +78,6 @@ final class GaugeStore {
         TraceStore.moveFolder(fromOuter, toOuter, DIR, name -> false);
     }
 
-    /** A ZIP's gauges.json back into gauges/{node}.jsonl files. */
-    /**
-     * As {@link #write(Path, JSONObject)} from a gauges.json file read as a stream ({nodes: {node: [samples]}}): each
-     * sample becomes a line of gauges/{node}.jsonl, one at a time. Invalid JSON: JsonStream.Malformed.
-     */
     static void write(Path outer, Path merged) throws IOException {
         Path dir = Files.createDirectories(outer.resolve(DIR));
         try (JsonStream js = new JsonStream(new java.io.BufferedReader(new java.io.InputStreamReader(Files.newInputStream(merged),

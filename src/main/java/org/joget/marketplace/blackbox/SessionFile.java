@@ -10,18 +10,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import org.json.JSONObject;
 
-/**
- * session.json (and system-log.json) read as a stream ({@link JsonStream}): checked and walked entry by entry, never
- * held whole in memory, so the file limit is the only size limit.
- */
 final class SessionFile {
 
-    /** One console or network entry (a response body is kept up to 1 MB by the extension). */
     static final long MAX_ENTRY_CHARS = 16L * 1024 * 1024;
-    /** recording, summary, tool: small objects kept in meta.json. */
     static final long MAX_HEAD_CHARS = 1024L * 1024;
 
-    /** What meta.json takes from a checked session.json. */
     static final class Head {
         JSONObject recording;
         JSONObject summary;
@@ -29,7 +22,6 @@ final class SessionFile {
         long bytes;
     }
 
-    /** One entry of a top-level array. */
     interface Each {
         void accept(JSONObject entry) throws IOException;
     }
@@ -37,7 +29,6 @@ final class SessionFile {
     private SessionFile() {
     }
 
-    /** Copies in to target, at most maxBytes (else InvalidUpload, and target is deleted). Returns the size. */
     static long copy(InputStream in, Path target, long maxBytes, String what) throws IOException, RecordingStore.InvalidUpload {
         long size = 0;
         boolean ok = false;
@@ -63,10 +54,6 @@ final class SessionFile {
         }
     }
 
-    /**
-     * Checks a session.json file without loading it: one JSON object with console and network lists, each entry at
-     * most {@link #MAX_ENTRY_CHARS}, valid JSON throughout. Returns what meta.json takes from it.
-     */
     static Head check(Path file) throws IOException, RecordingStore.InvalidUpload {
         Head head = new Head();
         head.bytes = Files.size(file);
@@ -119,18 +106,10 @@ final class SessionFile {
         return head;
     }
 
-    /**
-     * Calls each with every object entry of the top-level list key (e.g. network, console, entries), built one at a
-     * time. A missing or unreadable file, or a missing list, gives none; reading stops at a broken or oversized entry.
-     */
     static void each(Path file, String key, Each each) throws IOException {
         each(file, key, null, each);
     }
 
-    /**
-     * As {@link #each(Path, String, Each)}, building only the given fields of each entry (null: all); the others, such
-     * as response bodies, are skipped without being kept.
-     */
     static void each(Path file, String key, java.util.Set<String> fields, Each each) throws IOException {
         if (file == null || !Files.isRegularFile(file)) {
             return;
@@ -169,21 +148,16 @@ final class SessionFile {
                         js.endObject();
                         each.accept(e);
                     }
-                    return; // the rest of the file isn't needed
+                    return;
                 }
                 js.skipValue();
             }
         } catch (JsonStream.Malformed | JsonStream.TooLarge e) {
-            // written before entries were checked, or damaged: what was read so far
         }
     }
 
-    /**
-     * Checks a system-log.json file as a stream (an object with an entries list) and returns its summary for meta.json,
-     * like {@link ServerCaptureStore#summary}, counting one entry at a time.
-     */
     static JSONObject systemLogSummary(Path file) throws IOException, RecordingStore.InvalidUpload {
-        int[] n = new int[4]; // entries, requests, other, errors
+        int[] n = new int[4];
         boolean truncated = false;
         boolean entries = false;
         try (JsonStream js = open(file)) {

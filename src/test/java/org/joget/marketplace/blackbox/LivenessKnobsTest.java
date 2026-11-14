@@ -39,7 +39,7 @@ public class LivenessKnobsTest {
         assertEquals(6000L, LivenessKnobs.lostMs());
         assertEquals(1500L, LivenessKnobs.checkMs());
         assertEquals(90000L, LivenessKnobs.minLimitMs());
-        write("{\"pingMs\":4000}"); // changed without a restart; the rest falls back
+        write("{\"pingMs\":4000}");
         assertEquals(4000L, LivenessKnobs.pingMs());
         assertEquals(180_000L, LivenessKnobs.lostMs());
         Files.delete(file);
@@ -50,12 +50,12 @@ public class LivenessKnobsTest {
     public void invalidFileOrValuesUseDefaults() throws Exception {
         write("not json");
         assertEquals(30_000L, LivenessKnobs.pingMs());
-        write("{\"pingMs\":999,\"lostMs\":0,\"checkMs\":-5,\"minLimitMs\":\"abc\"}"); // below 1000 ms is refused
+        write("{\"pingMs\":999,\"lostMs\":0,\"checkMs\":-5,\"minLimitMs\":\"abc\"}");
         assertEquals(30_000L, LivenessKnobs.pingMs());
         assertEquals(180_000L, LivenessKnobs.lostMs());
         assertEquals(30_000L, LivenessKnobs.checkMs());
         assertEquals(Long.MAX_VALUE, LivenessKnobs.minLimitMs());
-        write("{\"pingMs\":1000}"); // exactly 1000 is fine
+        write("{\"pingMs\":1000}");
         assertEquals(1000L, LivenessKnobs.pingMs());
     }
 
@@ -77,11 +77,9 @@ public class LivenessKnobsTest {
     @Test
     public void captureSweepKeepsTheFile() throws Exception {
         write("{\"pingMs\":2000}");
-        // the file is next to pending/, the sweep only looks inside the pending folder
         Path pending = Files.createDirectory(root.resolve("pending"));
         assertEquals(0, new ServerCaptureStore(pending).sweep(Long.MAX_VALUE));
         assertTrue(Files.exists(file));
-        // and even when it sits in the swept folder itself, it is no capture and stays
         Files.copy(file, pending.resolve(LivenessKnobs.FILE));
         assertEquals(0, new ServerCaptureStore(pending).sweep(Long.MAX_VALUE));
         assertTrue(Files.exists(pending.resolve(LivenessKnobs.FILE)));

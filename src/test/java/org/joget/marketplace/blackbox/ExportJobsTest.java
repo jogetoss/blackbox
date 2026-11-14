@@ -14,7 +14,7 @@ public class ExportJobsTest {
             JSONObject now = ExportJobs.exporting();
             assertFalse("queued since the start: still running", ExportJobs.lost(now));
             long jvmStart = java.lang.management.ManagementFactory.getRuntimeMXBean().getStartTime();
-            JSONObject before = new JSONObject(now.toString()).put("at", jvmStart - 1000); // within MAX_EXPORT_MS
+            JSONObject before = new JSONObject(now.toString()).put("at", jvmStart - 1000);
             assertTrue("queued before a restart", ExportJobs.lost(before));
             ExportJobs.stop();
             ExportJobs.start();
@@ -49,14 +49,14 @@ public class ExportJobsTest {
     @Test
     public void stopDropsQueuedJobsOnAThreadOfItsOwnAndLetsTheRunningOneFinish() throws Exception {
         java.util.function.UnaryOperator<Runnable> real = ExportJobs.withRequest;
-        ExportJobs.withRequest = r -> r; // PluginThread needs a running Joget
+        ExportJobs.withRequest = r -> r;
         ExportJobs.start();
         java.util.concurrent.CountDownLatch running = new java.util.concurrent.CountDownLatch(1);
         java.util.concurrent.CountDownLatch release = new java.util.concurrent.CountDownLatch(1);
         java.util.concurrent.atomic.AtomicBoolean interrupted = new java.util.concurrent.atomic.AtomicBoolean();
         java.util.concurrent.atomic.AtomicInteger ran = new java.util.concurrent.atomic.AtomicInteger();
         java.util.List<Thread> droppedOn = new java.util.concurrent.CopyOnWriteArrayList<>();
-        ThreadLocal<String> callerState = new ThreadLocal<>(); // stands for the stopping request's attributes and user
+        ThreadLocal<String> callerState = new ThreadLocal<>();
         callerState.set("request");
         try {
             ExportJobs.submit(() -> {
@@ -70,7 +70,7 @@ public class ExportJobsTest {
                 ran.incrementAndGet();
             }, () -> droppedOn.add(Thread.currentThread()));
             ExportJobs.submit(ran::incrementAndGet, () -> {
-                callerState.remove(); // what PluginThread.run() does to its thread when it ends
+                callerState.remove();
                 droppedOn.add(Thread.currentThread());
             });
             assertTrue(running.await(5, java.util.concurrent.TimeUnit.SECONDS));

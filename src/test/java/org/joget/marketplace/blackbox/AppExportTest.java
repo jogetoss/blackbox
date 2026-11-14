@@ -63,7 +63,6 @@ public class AppExportTest {
 
     private static final String PAGE = "http://h/jw/web/userview/exp/v/_/claims";
 
-    /** session.json with these network entries and console errors (JSON objects), and a system log with these entries. */
     private static List<AppExport.Hit> hits(String network, String console, String log) throws Exception {
         Path dir = Files.createTempDirectory("rec");
         Path session = dir.resolve("session.json");
@@ -108,13 +107,11 @@ public class AppExportTest {
 
     @Test
     public void theSystemLogNamesNoNewAppsWhenTheBrowserDid() throws Exception {
-        // Service worker fetches of other tabs reach the system log too: App Center icons, other apps
         List<AppExport.Seen> apps = AppExport.find(hits(req(0, PAGE, 200, null), "",
                 "{\"kind\":\"request\",\"url\":\"/jw/web/userview/crm/v/_/home\",\"status\":500},"
                         + "{\"kind\":\"request\",\"url\":\"/jw/web/userview/exp/v/_/claims\",\"status\":200}"));
         assertEquals(Arrays.asList("exp"), ids(apps));
         assertEquals(2, apps.get(0).count);
-        // No app in the browser's requests: the system log names them
         assertEquals(Arrays.asList("crm"), ids(AppExport.find(hits(req(0, "http://h/jw/web/console/home", 200, null), "",
                 "{\"kind\":\"request\",\"url\":\"/jw/web/userview/crm/v/_/home\",\"status\":200}"))));
     }
@@ -134,7 +131,7 @@ public class AppExportTest {
         Path rec = Files.createTempDirectory("rec");
         List<AppExport.Seen> apps = AppExport.find(Arrays.asList("/jw/web/app/hr/3/x", "/jw/web/app/hr/3/y", "/jw/web/userview/gone/v",
                 "/jw/web/userview/bad/v", "/jw/web/userview/a1/v", "/jw/web/userview/a2/v", "/jw/web/userview/a3/v"));
-        apps.get(1).problems = 2; // gone
+        apps.get(1).problems = 2;
         JSONArray summary = AppExport.save(rec, apps, (appId, version, out) -> {
             if (appId.equals("gone")) {
                 return null;
@@ -149,7 +146,7 @@ public class AppExportTest {
             d.setVersion(version != null ? Long.valueOf(version) : 1L);
             d.setPublished(version == null);
             return d;
-        }, null, 5); // limit 5 (not the default): gone, hr, bad, a1, a2 tried; a3 skipped
+        }, null, 5);
         assertEquals("hr, a1, a2 exported; a3 is the 6th app", 3, summary.length());
         assertEquals("App hr", summary.getJSONObject(0).getString("name"));
         assertEquals(3, summary.getJSONObject(0).getLong("version"));

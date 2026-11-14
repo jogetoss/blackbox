@@ -1,10 +1,5 @@
-// Builds session.json, and recovers recordings that a crash interrupted (see "crash safety" in idb.js).
-// Used by the recorder, the background service worker and the Recordings page.
-
-// meta: { startedAt (ms), settings: { displaySurface }, tab: { url, title } }
 function buildReport(meta, consoleEntries, navigations, network, stoppedAt, reason) {
-  // "Slow" = Glowroot's slow threshold, sent by the plugin at recording start; 2 s without a server
-  const capture = meta.serverCapture || meta.systemLog; // systemLog: a crashed recording of the extension of plugin 8.2.1 and older
+  const capture = meta.serverCapture || meta.systemLog;
   const slowMs = capture?.slowMs || 2000;
   return {
     tool: 'blackbox ' + (chrome.runtime.getManifest().version_name || chrome.runtime.getManifest().version),
@@ -14,13 +9,13 @@ function buildReport(meta, consoleEntries, navigations, network, stoppedAt, reas
       stoppedAt: new Date(stoppedAt).toISOString(),
       durationMs: stoppedAt - meta.startedAt,
       stopReason: reason,
-      capturedSurface: meta.settings?.displaySurface, // "window", "monitor" or "browser" (tab)
-      audio: meta.audio, // { page, pageSource?: 'tab' | 'system', mic, message? }: which sound recording.webm has (absent: made before sound support)
+      capturedSurface: meta.settings?.displaySurface,
+      audio: meta.audio,
       tab: meta.tab,
       userAgent: meta.userAgent || navigator.userAgent,
       serverCapture: capture ? { status: capture.status, id: capture.id, server: capture.server, message: capture.message } : undefined,
-      options: meta.options, // { apps, sampleData: none | masked | real }: the popup's app export choices
-      credentialsMasked: meta.credentialsMasked, // mask.js ran on the network and console data (absent: made before masking)
+      options: meta.options,
+      credentialsMasked: meta.credentialsMasked,
     },
     summary: {
       console: consoleEntries.length,
@@ -40,12 +35,8 @@ function recordingId(startedAtMs) {
   return new Date(startedAtMs).toISOString().replace(/[:.]/g, '-').slice(0, 19);
 }
 
-// The recording in progress, in chrome.storage.session. Incognito runs its own copy of the extension ("incognito":
-// "split") but shares chrome.storage.session with the normal one, so each copy keeps its own key.
 const REC_KEY = chrome.extension.inIncognitoContext ? 'recIncognito' : 'rec';
 
-// Turns every partial recording that is not running right now into a normal recording, marked recovered.
-// Returns the recovered ids.
 async function recoverPartials() {
   const keys = await idbPartialKeys();
   const ids = [...new Set(keys.filter((k) => k.endsWith(':meta')).map((k) => k.slice(0, -5)))];
@@ -76,13 +67,11 @@ async function recoverPartials() {
   return recovered;
 }
 
-// Tells the server that a recovered recording's capture is over, at its last save (the server checks that time
-// against the capture's last ping). Not retried: offline or logged out, the server's lost-browser check closes it.
 async function stopRecoveredCapture(meta) {
-  const capture = meta?.serverCapture || meta?.systemLog; // systemLog: a crashed recording of the extension of plugin 8.2.1 and older
+  const capture = meta?.serverCapture || meta?.systemLog;
   if (capture?.status !== 'on' || !capture.id || !capture.uploadUrl) return;
   const params = { action: 'recording-stop', id: capture.id };
-  if (meta.lastSavedAt > 0) params.stoppedAt = meta.lastSavedAt; // older meta without it: a plain stop (now)
+  if (meta.lastSavedAt > 0) params.stoppedAt = meta.lastSavedAt;
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), 10_000);
   try {

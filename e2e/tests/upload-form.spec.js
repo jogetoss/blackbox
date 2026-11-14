@@ -1,7 +1,5 @@
-// The upload form's sample data choice: offered as the server allows, sent with the upload, used by the server.
 const { test, expect, JOGET, loginJoget, api, appsWhenExported } = require('./fixtures');
 
-// A recording that opened an iService assignment (j8213's test data); no video
 function report(now, title) {
   return {
     tool: 'BlackBox e2e',
@@ -23,7 +21,6 @@ test('upload form offers masked sample data and the server builds it', async ({ 
   const joget = await context.newPage();
   await loginJoget(joget);
 
-  // The extension's settings and one kept recording, written with its own storage code
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/recordings.html`);
   const id = 'e2e-' + Date.now();
@@ -32,14 +29,13 @@ test('upload form offers masked sample data and the server builds it', async ({ 
     await idbAddRecording({ id, savedAt: new Date().toISOString(), video: null, report, uploaded: null });
   }, { id, uploadUrl: `${JOGET}/api/blackbox`, report: report(Date.now(), id) });
 
-  // The replay page's upload form (what Upload opens once the server check passes)
   await page.goto(`chrome-extension://${extensionId}/viewer.html?id=${id}`);
   await page.evaluate(async (id) => {
     const row = (await Store.allRows()).find((r) => r.id === id);
     Actions.showUpload(row);
   }, id);
   await expect(page.locator('#upSampleRow')).toBeVisible();
-  await expect(page.locator('#upSample')).not.toBeChecked(); // nothing chosen in the popup
+  await expect(page.locator('#upSample')).not.toBeChecked();
   const me = await api(joget, 'me');
   await page.check('#upApps');
   await page.check('#upSample');
@@ -54,7 +50,6 @@ test('upload form offers masked sample data and the server builds it', async ({ 
   expect(new URL(res.url()).searchParams.get('sampleData')).toBe('masked');
   expect(res.status()).toBe(200);
 
-  // The server exported iService with masked apps data and its process
   const list = await api(joget, 'list');
   const rec = list.recordings.find((r) => r.title === id);
   expect(rec, 'uploaded recording in the list').toBeTruthy();

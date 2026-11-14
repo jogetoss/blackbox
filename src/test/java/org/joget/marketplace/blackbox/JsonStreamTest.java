@@ -28,7 +28,6 @@ public class JsonStreamTest {
             parse(json);
             fail("accepted: " + json);
         } catch (JsonStream.Malformed e) {
-            // expected
         } catch (IOException e) {
             fail("wrong error for " + json + ": " + e);
         }
@@ -83,7 +82,6 @@ public class JsonStreamTest {
         } catch (JsonStream.Malformed e) {
             assertTrue(e.getMessage(), e.getMessage().contains("name is longer"));
         }
-        // A 50 M character name: refused after reading a few KB, never built in full
         long[] served = {0};
         java.io.Reader huge = new java.io.Reader() {
             private boolean opened;
@@ -127,7 +125,6 @@ public class JsonStreamTest {
                 js.nextValue(1000);
                 fail("too large");
             } catch (JsonStream.TooLarge e) {
-                // expected
             }
         }
         try (JsonStream js = new JsonStream(new StringReader("{\"skip\":{\"x\":[1,2,{\"y\":\"z\"}]},\"keep\":7}"))) {
@@ -169,7 +166,7 @@ public class JsonStreamTest {
         expectInvalid(f);
         Files.write(f, "{\"console\":[]}".getBytes(StandardCharsets.UTF_8));
         expectInvalid(f);
-        Files.write(f, "{\"console\":[],\"network\":[{\"a\":1}]".getBytes(StandardCharsets.UTF_8)); // cut short
+        Files.write(f, "{\"console\":[],\"network\":[{\"a\":1}]".getBytes(StandardCharsets.UTF_8));
         expectInvalid(f);
         Files.write(f, ("{\"console\":[],\"network\":[{\"body\":\"" + new String(new char[(int) SessionFile.MAX_ENTRY_CHARS + 10]).replace('\0', 'x')
                 + "\"}]}").getBytes(StandardCharsets.UTF_8));
@@ -193,7 +190,6 @@ public class JsonStreamTest {
             SessionFile.systemLogSummary(f);
             fail("no entries");
         } catch (RecordingStore.InvalidUpload e) {
-            // expected
         }
         Files.delete(f);
     }
@@ -203,7 +199,6 @@ public class JsonStreamTest {
             SessionFile.check(f);
             fail("accepted " + new String(Files.readAllBytes(f), StandardCharsets.UTF_8).substring(0, 30));
         } catch (RecordingStore.InvalidUpload e) {
-            // expected
         }
     }
 }

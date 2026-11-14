@@ -1,5 +1,3 @@
-// Popup quick settings and the app export at recording stop: the choices made before recording reach the server
-// at stop (recording-stop) or, without a server data capture, at the upload, also when nobody clicks Send.
 const { test, expect, JOGET, CAPTURE_KEY, loginJoget, api, appsWhenExported, report, keep, captureAndStop, uploaded } = require('./fixtures');
 
 test('popup shows the server options and keeps the choices', async ({ context, extensionId }) => {
@@ -11,7 +9,7 @@ test('popup shows the server options and keeps the choices', async ({ context, e
   await page.evaluate((uploadUrl) => chrome.storage.local.set({ uploadUrl }), `${JOGET}/api/blackbox`);
   await page.goto(`chrome-extension://${extensionId}/popup.html`);
 
-  await expect(page.locator('#qPage')).not.toBeChecked(); // every box starts unticked
+  await expect(page.locator('#qPage')).not.toBeChecked();
   await expect(page.locator('#qAppsRow')).toBeVisible({ visible: !!me.options.apps });
   await expect(page.locator('#qSampleRow')).toBeVisible({ visible: !!me.options.sample });
   await expect(page.locator('#qMaskRow')).toBeVisible({ visible: !!me.options.mask });
@@ -20,7 +18,7 @@ test('popup shows the server options and keeps the choices', async ({ context, e
     await page.check('#qApps');
     await expect(page.locator('#qSample')).not.toBeChecked();
     await page.check('#qSample');
-    await expect(page.locator('#qRealWarn')).toBeVisible(); // apps data is real unless masked
+    await expect(page.locator('#qRealWarn')).toBeVisible();
     if (me.options.mask) {
       await expect(page.locator('#qMask')).not.toBeChecked();
       await page.check('#qMask');
@@ -36,7 +34,7 @@ test('popup shows the server options and keeps the choices', async ({ context, e
   await expect(page.locator('#qGaugesRow')).toBeVisible({ visible: !!me.options.gauges });
   await expect(page.locator('#qTracesRow')).toBeVisible({ visible: !!me.options.traces });
   await expect(page.locator('#qOtherTracesRow')).toBeVisible({ visible: !!me.options.otherTraces });
-  if (me.options.otherTraces) { // other users' traces: only with traces, unticked
+  if (me.options.otherTraces) {
     await expect(page.locator('#qOtherTraces')).not.toBeChecked();
     await expect(page.locator('#qOtherTraces')).toBeDisabled();
     await page.check('#qTraces');
@@ -52,7 +50,6 @@ test('popup shows the server options and keeps the choices', async ({ context, e
   const kept = await page.evaluate(() => Quick.get());
   expect(kept.apps).toBe(false);
   expect(await page.evaluate(() => Quick.options({ ...Quick.DEFAULTS, apps: false }))).toEqual({ apps: false, sampleData: 'none' });
-  // the server's options are remembered for the next time the popup opens
   expect(await page.evaluate(async () => (await chrome.storage.local.get('quickOffer')).quickOffer)).toEqual(me.options);
 });
 
@@ -120,7 +117,6 @@ test('apps turned off at stop: the upload exports nothing', async ({ context, ex
     [CAPTURE_KEY]: { status: 'on', id: logId, appExport: { state: 'off' } }, options: { apps: false, sampleData: 'masked' },
   }));
   await page.goto(`chrome-extension://${extensionId}/viewer.html?id=${id}`);
-  // The auto-upload after a recording stops: no click on Send
   const ok = await page.evaluate(async (id) => Actions.uploadNow((await Store.allRows()).find((r) => r.id === id)), id);
   expect(ok).toBe(true);
   const rec = await uploaded(joget, id);

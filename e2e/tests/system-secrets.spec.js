@@ -1,6 +1,3 @@
-// "Record System Info secrets unmasked" and "Record license secrets unmasked": three short headless
-// recordings (blank video) as BB_USER (an admin, so both are offered): both boxes unticked, only System Info ticked,
-// only license ticked. Each part of the Info tab's snapshot is unmasked only when its own box was ticked. The recordings stay on the server (set BB_CLEANUP=1 to delete them).
 const { test, expect, JOGET, loginJoget, api } = require('./fixtures');
 
 async function record(context, extensionId, joget, quick) {
@@ -11,7 +8,7 @@ async function record(context, extensionId, joget, quick) {
     .then((t) => t.find((x) => !x.url.includes('/web/login'))?.id), new URL(JOGET).origin);
   await sw.evaluate((t) => start(t, 'screen').then(() => 'ok'), tabId);
   await expect.poll(() => sw.evaluate(() => getState().then((r) => r?.serverCapture?.status || 'none')), { timeout: 20_000 }).toBe('on');
-  await joget.reload(); // something to record
+  await joget.reload();
   await new Promise((r) => setTimeout(r, 3000));
   const stopped = await sw.evaluate(() => stop('user'));
   let mark;
@@ -43,8 +40,8 @@ test('System Info secrets and the license system key / MAC address are masked un
     }
     expect([si.none.secretsMasked, si.info.secretsMasked, si.license.secretsMasked]).toEqual([true, false, true]);
     expect([si.none.licenseMasked, si.info.licenseMasked, si.license.licenseMasked]).toEqual([true, true, false]);
-    if (si.none.license?.['platform.systemKey'] !== undefined) { // Enterprise only
-      const sig = si.license.license['platform.license.signature']; // empty on a Free license
+    if (si.none.license?.['platform.systemKey'] !== undefined) {
+      const sig = si.license.license['platform.license.signature'];
       if (sig) {
         expect(sig, 'the signature unmasked with the license box').not.toBe('****');
         expect(si.none.license['platform.license.signature']).toBe('****');

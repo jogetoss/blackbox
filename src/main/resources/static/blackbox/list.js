@@ -1,9 +1,7 @@
-// The server's recordings list: backend first (server issues, server data), a short browser summary, and batch
-// Download ZIP / Delete for the ticked rows. Single-recording actions are on the replay page.
 (function () {
   const { el, fmtDate, fmtDuration, fmtSize } = BB;
   const $ = (id) => document.getElementById(id);
-  const PEAK = 0.8; // a resource at 80% or more of its limit is worth a badge
+  const PEAK = 0.8;
   let recordings = [];
   let shown = [];
   const selected = new Set();
@@ -22,7 +20,6 @@
   $('batchZip').onclick = downloadSelected;
   $('batchDelete').onclick = deleteSelected;
 
-  // A ZIP from Download ZIP (here or on another Joget) becomes a new recording owned by the user
   async function importZip(file) {
     const label = $('importLabel');
     const text = label.firstChild;
@@ -37,7 +34,6 @@
         location.href = url;
         return;
       }
-      // Stay here to say why the copy has no server data; the ZIP may hold other users' data
       const open = document.createElement('a');
       open.href = url;
       open.textContent = 'Open it';
@@ -71,7 +67,6 @@
     shown = recordings.filter((r) => !q || [r.title, r.ownerName, r.owner, r.notes, r.recording?.tab?.url]
       .some((v) => (v || '').toLowerCase().includes(q)));
     for (const id of [...selected]) if (!recordings.some((r) => r.id === id)) selected.delete(id);
-    // The server columns only when the user may see server data of at least one recording
     const server = recordings.some((r) => r.canViewServerData);
     document.querySelectorAll('.server-col').forEach((th) => { th.hidden = !server; });
     $('rows').replaceChildren(...shown.map((r) => row(r, server)));
@@ -87,7 +82,6 @@
     const rows = recordings.filter((r) => selected.has(r.id));
     const deletable = rows.filter((r) => r.canDelete).length;
     $('selCount').textContent = rows.length ? `${rows.length} selected` : 'Tick recordings to download or delete several at once';
-    // A ZIP carries the Glowroot data for users who see server data: wait until it is built
     const building = rows.filter((r) => r.canViewServerData && r.serverData?.glowroot === 'building').length;
     $('batchZip').disabled = !rows.length || building > 0;
     $('batchZip').title = building ? `${building} of the selected ${building === 1 ? 'is' : 'are'} still building Glowroot data: reload in a minute` : '';
@@ -116,7 +110,6 @@
     if (r.recording?.tab?.url) title.append(el('div', 'muted small', r.recording.tab.url));
     if (r.notes) title.append(el('div', 'muted small', r.notes.length > 140 ? r.notes.slice(0, 140) + '…' : r.notes));
     if (r.canViewServerData && r.apps?.length) {
-      // Apps with problems first (the server lists them so), marked ⚠; at most 3 named
       const names = r.apps.map((x) => `${x.problems ? '⚠ ' : ''}${x.name || x.id} v${x.version}`);
       const apps = el('div', 'muted small', 'App: ' + names.slice(0, 3).join(', ') + (names.length > 3 ? ` +${names.length - 3}` : ''));
       apps.title = names.join('\n') + '\n\n⚠ = had failed requests, server errors or console errors. Exported at upload: '
@@ -129,7 +122,7 @@
     owner.title = r.owner;
     tr.append(owner);
     const uploaded = el('td', 'nowrap', fmtDate(r.uploadedAt));
-    if (r.uploadedAt) uploaded.title = new Date(r.uploadedAt).toLocaleString(); // the viewer's own clock time
+    if (r.uploadedAt) uploaded.title = new Date(r.uploadedAt).toLocaleString();
     tr.append(uploaded);
     tr.append(el('td', 'nowrap hide-sm', fmtDuration(r.recording?.durationMs)));
 
@@ -144,7 +137,6 @@
     return tr;
   }
 
-  // System log errors, slow requests and peak load (rows with canViewServerData)
   function serverIssues(r) {
     const td = el('td');
     if (!r.canViewServerData) return td;
@@ -164,7 +156,6 @@
     return td;
   }
 
-  // The resource that came closest to its limit, when it reached 80%; or DB connections that had to wait
   function peakLoad(load) {
     if (!load) return null;
     const items = [['CPU', load.cpu], ['Heap', load.heap], ['Threads', load.threads], ['DB', load.db]]
@@ -200,7 +191,6 @@
     return ms >= 1000 ? `${ms / 1000} s` : `${ms} ms`;
   }
 
-  // One download per recording; the browser may ask once to allow several downloads
   async function downloadSelected() {
     const rows = recordings.filter((r) => selected.has(r.id));
     for (const r of rows) {

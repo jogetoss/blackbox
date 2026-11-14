@@ -27,7 +27,7 @@ public class GaugeStoreTest {
         Path from = Files.createTempDirectory("bb-gauges-from");
         Path to = Files.createTempDirectory("bb-gauges-to");
         GaugeStore.append(from, "n", new JSONObject().put("ts", 1));
-        GaugeStore.append(to, "n", new JSONObject().put("ts", 2)); // written to the recording meanwhile
+        GaugeStore.append(to, "n", new JSONObject().put("ts", 2));
         GaugeStore.moveAll(from, to);
         assertFalse(Files.exists(from.resolve(GaugeStore.DIR)));
         JSONObject merged = GaugeStore.merge(to);

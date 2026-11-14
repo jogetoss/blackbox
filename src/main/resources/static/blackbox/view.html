@@ -7,7 +7,6 @@
   <link rel="stylesheet" href="assets/viewer.css">
 </head>
 <body>
-  <!-- Same frame as the extension's replay page (viewer.html): header, then the status bar -->
   <header class="replay-head">
     <div class="header-left">
       <h1><a id="back" href="./">← Recordings</a> <span id="recTitle">BlackBox replay</span></h1>
@@ -22,17 +21,16 @@
         <span id="where" class="where"></span>
         <a id="dlZip" class="button" href="#" title="The recording as one ZIP, to import it into another Joget or open it in the BlackBox viewer">Download ZIP</a>
         <a id="dlHtml" class="button" href="#" title="One file that replays this recording in any browser, without BlackBox">Download HTML</a>
-        <span id="dlGlowroot" hidden></span><!-- view.js: one button per node's Glowroot data -->
+        <span id="dlGlowroot" hidden></span>
         <span id="appsPending" class="muted" hidden title="The apps the recording used are exported in the background">Exporting apps…</span>
         <button id="delete" hidden>Delete</button>
       </div>
       <div class="actions">
         <button id="featuresBtn" title="What this replay page can do">Features</button>
       </div>
-      <input type="file" id="files" hidden><!-- viewer.js expects it; recordings come from the server here -->
+      <input type="file" id="files" hidden>
     </div>
   </header>
-  <!-- Features drawer (viewer.js): opened by the Features button in the header -->
   <aside id="featuresDrawer" class="drawer" role="dialog" aria-labelledby="featuresTitle" hidden>
     <div class="drawer-head">
       <strong id="featuresTitle">Features</strong>

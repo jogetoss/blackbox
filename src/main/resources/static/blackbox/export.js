@@ -1,6 +1,4 @@
-// Start-up code of a downloaded recording (one .html file, see RecordingHtml.java): the recording is inside this file,
-// in <script> data blocks written before this one. No server, no extension, no network.
-window.blackboxPage = 'file'; // for the Features list
+window.blackboxPage = 'file';
 (async function () {
   const $ = (id) => document.getElementById(id);
   const text = (id) => ($(id) ? $(id).textContent : '');
@@ -8,12 +6,11 @@ window.blackboxPage = 'file'; // for the Features list
     const meta = JSON.parse(text('bb-meta'));
     const report = JSON.parse(text('bb-session'));
     const systemLog = text('bb-systemlog') ? JSON.parse(text('bb-systemlog')) : null;
-    const traces = text('bb-traces') ? JSON.parse(text('bb-traces')) : null; // summaries; full pages: tracePages()
+    const traces = text('bb-traces') ? JSON.parse(text('bb-traces')) : null;
     const gauges = text('bb-gauges') ? JSON.parse(text('bb-gauges')) : null;
     const serverInfo = text('bb-serverinfo') ? JSON.parse(text('bb-serverinfo')) : null;
-    const apps = text('bb-apps') ? JSON.parse(text('bb-apps')) : null; // the list; the .jwa files are in the ZIP
+    const apps = text('bb-apps') ? JSON.parse(text('bb-apps')) : null;
 
-    // Nothing here talks to a server: no downloads, no delete, no link to the recordings list
     for (const id of ['dlZip', 'dlHtml', 'dlGlowroot', 'delete', 'back']) if ($(id)) $(id).hidden = true;
     $('where').textContent = 'Downloaded file';
     $('where').title = 'Everything is inside this file. Opening it sends nothing anywhere.';
@@ -24,15 +21,14 @@ window.blackboxPage = 'file'; // for the Features list
       $('notes').hidden = false;
     }
 
-    // Base64 in the page -> Blob; fetch() of a data: URL decodes large videos without blocking the page
     const b64 = text('bb-video').trim();
     const video = b64 ? await (await fetch('data:video/webm;base64,' + b64)).blob() : null;
     $('serverLegend').hidden = !systemLog;
-    window.blackboxTimeInUrl = true; // blackbox-….html?t=… opens at that moment
+    window.blackboxTimeInUrl = true;
     const pages = await tracePages(meta.tracesSandboxed === true);
     window.blackboxOpen(video, report, {
       systemLog, traces, gauges, serverInfo, apps, title: meta.title, info: uploadInfo(meta),
-      traceUrl: (t) => pages.get(t.file) || null, // Open full trace: the page from this file, in a new tab
+      traceUrl: (t) => pages.get(t.file) || null,
     });
     $('recStatus').hidden = false;
   } catch (e) {
@@ -40,10 +36,6 @@ window.blackboxPage = 'file'; // for the Features list
     window.blackboxShowError('This file could not be opened: ' + (e.message || e));
   }
 
-  // The full trace pages (bb-trace-N blocks, gzipped Glowroot export pages as base64) as blob: URLs by file name.
-  // A browser without DecompressionStream, or a damaged block, gets no link: the Traces tab then says so.
-  // sandboxed ("Allow unsandboxed trace pages in HTML exports" off): each page runs inside a sandboxed iframe, in an
-  // origin of its own, so a crafted trace can't reach whatever site hosts this file.
   async function tracePages(sandboxed) {
     const pages = new Map();
     if (typeof DecompressionStream !== 'function') return pages;
@@ -53,21 +45,18 @@ window.blackboxPage = 'file'; // for the Features list
         const html = await new Response(gz.stream().pipeThrough(new DecompressionStream('gzip'))).blob();
         const page = sandboxed ? await sandbox(await html.text()) : html;
         pages.set(block.dataset.file, URL.createObjectURL(new Blob([page], { type: 'text/html' })));
-      } catch (e) { /* skip this one */ }
+      } catch (e) { }
     }
     return pages;
   }
 
-  // A page that shows html in a full-size iframe with the same sandbox the server's trace endpoint uses
   function sandbox(html) {
     const attr = html.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-    // "<\/": this file is inlined in a <script> block, where a closing tag would end it
     return '<!doctype html><meta charset="utf-8"><title>Trace<\/title>'
       + '<style>html,body,iframe{margin:0;border:0;width:100%;height:100%;display:block}<\/style>'
       + '<iframe sandbox="allow-scripts allow-popups" srcdoc="' + attr + '"><\/iframe>';
   }
 
-  // "Uploaded by" rows for the Info tab; the same as BB.uploadInfo on the server (common.js is not in this file)
   function uploadInfo(meta) {
     const who = (o) => (o.ownerName && o.ownerName !== o.owner ? o.ownerName + ' (' + o.owner + ')' : o.owner);
     const date = (iso) => {

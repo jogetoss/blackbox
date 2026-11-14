@@ -32,42 +32,24 @@ import org.joget.commons.util.SetupManager;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * Captures the log events of requests the extension tags with X-BlackBox-Id while a recording runs.
- *
- * {@link ServerCaptureFilter} marks the request thread; an appender on the root logger keeps only the events of marked
- * threads and appends them to the capture's pending file ({@link ServerCaptureStore}).
- *
- * Log4j 2 is not visible to plugin bundles (OSGi exports neither org.apache.logging.log4j nor org.apache.log4j), so
- * {@link RootAppender} reaches it through Joget's own classloader by reflection, and the appender is a
- * java.lang.reflect.Proxy of log4j's Appender interface.
- *
- * Not captured: work a request hands to other threads, and log levels below the root logger's level (info). A capture
- * started with allServer also keeps every other thread's lines (marked "other": scheduler, email, other users) on the
- * nodes where it is open: the node that started it and those that served one of its requests. With virtual hosts, only
- * the lines of HTTP requests of the capture's own profile ({@link #PROFILE}, {@link #enterRequest}): Joget's shared
- * background threads keep whichever profile they inherited while they work for every tenant, so their lines are left
- * out.
- */
 final class ServerCapture {
 
     static final String HEADER = "X-BlackBox-Id";
     static final String TIME_HEADER = "X-BlackBox-Time";
-    /** meta.json: the Joget profile of the request that started the capture. */
     static final String PROFILE = "profile";
 
     private static final long FLUSH_MS = 2000;
-    private static final long IDLE_MS = 30 * 60 * 1000L; // close a capture's file after this long without events
-    private static final long MISS_MS = 10 * 1000L;      // remember unknown ids this long, to skip the disk check
+    private static final long IDLE_MS = 30 * 60 * 1000L;
+    private static final long MISS_MS = 10 * 1000L;
     private static final long SWEEP_MS = 60 * 60 * 1000L;
     private static final String NODE = nodeName();
 
     private static final ThreadLocal<Request> CURRENT = new ThreadLocal<>();
     private static final ThreadLocal<Boolean> APPENDING = new ThreadLocal<>();
-    private static final ThreadLocal<String> REQUEST_PROFILE = new ThreadLocal<>(); // set by enterRequest (virtual hosts)
+    private static final ThreadLocal<String> REQUEST_PROFILE = new ThreadLocal<>();
     private static final Map<String, Capture> OPEN = new ConcurrentHashMap<>();
     private static final Map<String, Long> MISSES = new ConcurrentHashMap<>();
-    private static volatile Capture[] allServer = new Capture[0]; // open captures that keep every thread's lines
+    private static volatile Capture[] allServer = new Capture[0];
 
     private static volatile boolean running;
     private static ScheduledExecutorService timer;
@@ -76,21 +58,15 @@ final class ServerCapture {
     private ServerCapture() {
     }
 
-    /** Makes the store; tests (no Joget running) swap it. */
     static java.util.function.Supplier<ServerCaptureStore> stores = () -> new ServerCaptureStore(ProfileDir.current().resolve("pending"));
 
     static ServerCaptureStore store() {
         return stores.get();
     }
 
-    /**
-     * The blackbox folders the timer checks and sweeps; tests swap it. The timer thread only has the profile it inherited
-     * at plugin start, so with virtual hosts it goes through every profile's folder by path instead of store().
-     */
     static Supplier<List<Path>> checkDirs = () -> blackboxDirs(HostManager.isVirtualHostEnabled(),
             SetupManager.getBaseDirectory(), SetupManager.getBaseSharedDirectory());
 
-    /** With virtual hosts: <shared>/app_profiles/<each profile>/blackbox (as SetupManager.getBaseDirectory). Else <base>/blackbox. */
     static List<Path> blackboxDirs(boolean virtualHosts, String base, String shared) {
         if (!virtualHosts) {
             return Collections.singletonList(Paths.get(base, "blackbox"));
@@ -108,7 +84,6 @@ final class ServerCapture {
         return dirs;
     }
 
-    /** Called by the bundle activator. */
     static synchronized void start() {
         if (running) {
             return;
@@ -134,7 +109,6 @@ final class ServerCapture {
         running = true;
     }
 
-    /** Called by the bundle activator. The filter may still run after this (cached chain); it then does nothing. */
     static synchronized void stop() {
         running = false;
         TraceCollector.stop();
@@ -156,7 +130,6 @@ final class ServerCapture {
         MISSES.clear();
     }
 
-    /** The open capture for a tagged request, or null when the id is unknown, stopped or expired. */
     static Capture find(String id) {
         if (!running || !ServerCaptureStore.isValidId(id)) {
             return null;
@@ -170,7 +143,6 @@ final class ServerCapture {
         if (missedAt != null && now - missedAt < MISS_MS) {
             return null;
         }
-        // Started on this node or another one (shared wflow folder)
         ServerCaptureStore store = store();
         JSONObject meta = store.readMeta(id);
         if (meta == null || meta.has("stoppedAt") || meta.optLong("expiresAt") < now) {
@@ -186,7 +158,6 @@ final class ServerCapture {
         return opened;
     }
 
-    /** Closes this node's file of a capture (stop or upload). Later requests with the id are no longer captured. */
     static void close(String id) {
         Capture capture = OPEN.remove(id);
         if (capture != null) {
@@ -200,10 +171,6 @@ final class ServerCapture {
         allServer = OPEN.values().stream().filter(c -> c.allServer).toArray(Capture[]::new);
     }
 
-    /**
-     * With virtual hosts: the current thread now serves an HTTP request (ServerCaptureFilter, every request), whose
-     * profile Joget resolved for this request. Returns what to pass to {@link #leaveRequest}.
-     */
     static String enterRequest() {
         String prev = REQUEST_PROFILE.get();
         if (BlackBoxPlugin.virtualHosts()) {
@@ -211,7 +178,6 @@ final class ServerCapture {
             try {
                 profile = requestProfiles.get();
             } catch (RuntimeException e) {
-                // unknown: its lines stay out of other recordings
             }
             if (profile == null) {
                 REQUEST_PROFILE.remove();
@@ -222,10 +188,8 @@ final class ServerCapture {
         return prev;
     }
 
-    /** Joget's profile of the current request (a seam for tests). */
     static Supplier<String> requestProfiles = DynamicDataSourceManager::getCurrentProfile;
 
-    /** The profile enterRequest set on this thread: null outside an HTTP request or without virtual hosts. */
     static String requestProfile() {
         return REQUEST_PROFILE.get();
     }
@@ -238,14 +202,12 @@ final class ServerCapture {
         }
     }
 
-    /** Marks the current thread as serving a tagged request. Returns what to pass to {@link #end}. */
     static Object begin(Capture capture, String request) {
         Request prev = CURRENT.get();
         CURRENT.set(new Request(capture, request));
         return prev;
     }
 
-    /** Whether the current request (begin) has logged an ERROR or FATAL line so far. Call before {@link #end}. */
     static boolean loggedError() {
         Request r = CURRENT.get();
         return r != null && r.loggedError;
@@ -263,7 +225,7 @@ final class ServerCapture {
         long now = System.currentTimeMillis();
         RootAppender a = appender;
         if (a != null && !OPEN.isEmpty()) {
-            a.ensureAttached(); // a log4j reconfiguration replaces the root logger config and drops it
+            a.ensureAttached();
         }
         for (Map.Entry<String, Capture> e : OPEN.entrySet()) {
             Capture c = e.getValue();
@@ -276,10 +238,6 @@ final class ServerCapture {
         MISSES.entrySet().removeIf(e -> now - e.getValue() > MISS_MS);
     }
 
-    /**
-     * Runs {@link #checkLost} every checkMs (the shortest any profile's test override sets), read again each time so the
-     * override applies without a restart.
-     */
     private static void scheduleCheck(ScheduledExecutorService t) {
         long delay;
         try {
@@ -297,7 +255,6 @@ final class ServerCapture {
                 scheduleCheck(t);
             }, delay, TimeUnit.MILLISECONDS);
         } catch (RejectedExecutionException e) {
-            // the plugin stopped
         }
     }
 
@@ -309,20 +266,12 @@ final class ServerCapture {
         return ms;
     }
 
-    /** {@link #checkLost(long, ServerCaptureStore, long)} for every profile's captures, each with its own lostMs. */
     static void checkLost(long now) {
         for (Path dir : checkDirs.get()) {
             checkLost(now, new ServerCaptureStore(dir.resolve("pending")), LivenessKnobs.lostMs(dir.resolve(LivenessKnobs.FILE)));
         }
     }
 
-    /**
-     * The lost-browser check of one profile's captures, on every node. Reads each capture's meta from disk (a ping can
-     * land on any node): a capture not seen for lostMs is stopped at its last ping ({@link ServerCaptureStore#stopIfLost},
-     * once, under the lock), and this node closes its copy of every stopped capture, whichever node stopped it. The same
-     * run is the hard limit's backup: a capture past maxUntil + 2 min is stopped at maxUntil
-     * ({@link ServerCaptureStore#stopIfOverLimit}).
-     */
     static void checkLost(long now, ServerCaptureStore store, long lostMs) {
         Set<String> ids = new HashSet<>();
         for (Capture c : OPEN.values()) {
@@ -331,7 +280,7 @@ final class ServerCapture {
             }
         }
         try {
-            ids.addAll(store.ids()); // also captures no node has open (closed when idle, node restarted)
+            ids.addAll(store.ids());
         } catch (IOException e) {
             LogUtil.warn(ServerCapture.class.getName(), "Could not list server captures: " + e.getMessage());
         }
@@ -381,7 +330,6 @@ final class ServerCapture {
         }
     }
 
-    /** Joget's node name (wflow.name, as in the Info tab's Nodes), else the hostname. */
     static String nodeName() {
         String host;
         try {
@@ -400,8 +348,8 @@ final class ServerCapture {
 
     private static final class Request {
         final Capture capture;
-        final String request; // "GET /jw/web/..." for the log lines
-        boolean loggedError;  // an ERROR or FATAL line was logged on this request's thread (only that thread touches it)
+        final String request;
+        boolean loggedError;
 
         Request(Capture capture, String request) {
             this.capture = capture;
@@ -409,24 +357,19 @@ final class ServerCapture {
         }
     }
 
-    /**
-     * With virtual hosts, whether a line of a request in profile here may go into a capture of profile capture: only the
-     * same, known profile (here is null outside an HTTP request).
-     */
     static boolean sameProfile(String capture, String here) {
         return capture != null && !capture.isEmpty() && capture.equals(here);
     }
 
-    /** One capture's file on this node. Lines are JSON objects; the file is closed when idle, stopped or attached. */
     static final class Capture {
         final String id;
-        final boolean traces;      // copy the Glowroot traces of slow, failed and error-logging requests (TraceCollector)
-        final String glowrootUrl;  // "" = find the local agent
-        final boolean gauges;      // sample this node's load while the capture is open (GaugeSampler)
-        final boolean glowrootData; // cut the recording out of this node's Glowroot data after the stop (GlowrootPackager)
-        final boolean allServer;   // keep every thread's log lines too, marked "other"
-        final boolean otherTraces; // after the stop, copy the traces of every other request too (TraceCollector.watchOthers)
-        final String profile;      // the profile that started it (null: unknown, e.g. started by plugin 8.2.2)
+        final boolean traces;
+        final String glowrootUrl;
+        final boolean gauges;
+        final boolean glowrootData;
+        final boolean allServer;
+        final boolean otherTraces;
+        final String profile;
         private final Path file;
         private final long maxBytes;
         private Writer out;
@@ -447,13 +390,12 @@ final class ServerCapture {
             this.file = file;
             this.maxBytes = meta.optLong("maxBytes");
             try {
-                bytes = Files.exists(file) ? Files.size(file) : 0; // this node may have written before (reopened after idle)
+                bytes = Files.exists(file) ? Files.size(file) : 0;
             } catch (IOException e) {
                 bytes = 0;
             }
         }
 
-        /** The tagged request has finished. */
         void request(long ts, String method, String url, int status, long ms, Throwable failure) {
             try {
                 JSONObject e = new JSONObject()
@@ -468,7 +410,6 @@ final class ServerCapture {
                 }
                 write(e);
             } catch (JSONException e) {
-                // not reachable: keys and values are plain
             }
         }
 
@@ -490,8 +431,6 @@ final class ServerCapture {
                 bytes += size;
                 lastWrite = System.currentTimeMillis();
             } catch (IOException | JSONException e) {
-                // The pending folder is gone (attached or swept) or the disk is full: stop writing.
-                // Not logged: this runs inside the logging call of the request.
                 full = true;
             }
         }
@@ -513,22 +452,17 @@ final class ServerCapture {
                     out.close();
                 }
             } catch (IOException e) {
-                // nothing more to write
             }
             out = null;
         }
     }
 
-    /**
-     * Keeps the events of threads marked by {@link #begin}. Added to log4j's root logger config, so it sees what
-     * joget.log sees. Not synchronized: most events are from unmarked threads and return at once.
-     */
     private static final class RootAppender implements InvocationHandler {
         private static final String NAME = "BlackBoxSystemLog";
 
-        private final Object context;      // org.apache.logging.log4j.core.LoggerContext of the Joget webapp
-        private final Object proxy;        // implements org.apache.logging.log4j.core.Appender
-        private final Object startedState; // LifeCycle.State.STARTED
+        private final Object context;
+        private final Object proxy;
+        private final Object startedState;
         private final Method getConfiguration;
         private final Method getRootLogger;
         private final Method addAppender;
@@ -556,7 +490,6 @@ final class ServerCapture {
             Class<?> messageType = Class.forName("org.apache.logging.log4j.message.Message", true, cl);
             Class state = Class.forName("org.apache.logging.log4j.core.LifeCycle$State", true, cl);
 
-            // The context of Joget's classloader, not a new one for this bundle
             context = logManager.getMethod("getContext", ClassLoader.class, boolean.class).invoke(null, cl, false);
             if (!loggerContext.isInstance(context)) {
                 throw new ClassNotFoundException("log4j-core is not the log4j implementation");
@@ -592,7 +525,6 @@ final class ServerCapture {
                     updateLoggers.invoke(context);
                 }
             } catch (ReflectiveOperationException e) {
-                // try again on the next flush
             }
         }
 
@@ -606,7 +538,6 @@ final class ServerCapture {
             }
         }
 
-        /** The Appender and LifeCycle methods log4j calls on the proxy. */
         @Override
         public Object invoke(Object self, Method method, Object[] args) {
             switch (method.getName()) {
@@ -631,7 +562,7 @@ final class ServerCapture {
                 case "toString":
                     return NAME;
                 default:
-                    return null; // getLayout, getHandler, setHandler, initialize, start
+                    return null;
             }
         }
 
@@ -662,18 +593,17 @@ final class ServerCapture {
                     String lvl = e.getString("level");
                     if (!r.loggedError && ("ERROR".equals(lvl) || "FATAL".equals(lvl))) {
                         r.loggedError = true;
-                        GlowrootTag.keep(); // its trace shows what led to the error, though the request "succeeded"
+                        GlowrootTag.keep();
                     }
                 }
                 boolean virtualHosts = all.length > 0 && BlackBoxPlugin.virtualHosts();
-                String here = virtualHosts ? requestProfile() : null; // null: not an HTTP request
+                String here = virtualHosts ? requestProfile() : null;
                 for (Capture c : all) {
                     if ((r == null || c != r.capture) && (!virtualHosts || sameProfile(c.profile, here))) {
-                        c.write(new JSONObject(e.toString()).put("other", true)); // not this recording's tab
+                        c.write(new JSONObject(e.toString()).put("other", true));
                     }
                 }
             } catch (Throwable t) {
-                // never break the application's logging call
             } finally {
                 APPENDING.remove();
             }

@@ -1,5 +1,3 @@
-/* Green theme: palette from the Joget DX 9 graphic. --bg is the page ground, --surface the cards, header and fields.
-   Issue colours (error, failed, nav, server, api) and the load lines stay clear of the brand green. */
 :root {
   --bg: #f6f7f6;
   --surface: #ffffff;
@@ -9,7 +7,7 @@
   --fg-2: #5d6c66;
   --line: #e1e7e4;
   --field-line: #c9d4cf;
-  --accent: #087c5e; /* buttons and links: 5.2:1 with white text */
+  --accent: #087c5e;
   --on-accent: #ffffff;
   --brand: #105045;
   --error: #c62f22;
@@ -19,7 +17,6 @@
   --nav: #2f6fd6;
   --failed: #d86a00;
   --api: #b0458a;
-  /* Server load lines: Okabe-Ito colours, distinct for colour-blind viewers too; threads moved off green */
   --g-cpu: #0072b2;
   --g-heap: #cc79a7;
   --g-threads: #d55e00;
@@ -30,11 +27,8 @@
   --shadow: 0 1px 2px rgba(11, 42, 33, .06), 0 4px 14px rgba(11, 42, 33, .05);
   --radius: 10px;
   --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  /* Headings use Poppins only if it is installed: no web font, so downloaded HTML looks the same offline */
   --display: Poppins, system-ui, sans-serif;
 }
-/* Theme: System follows the OS; Light/Dark come from the extension settings (theme.js) or the standalone pages'
-   own pickers (display.js), which set data-theme */
 :root { color-scheme: light dark; }
 :root[data-theme="light"] { color-scheme: light; }
 @media (prefers-color-scheme: dark) {
@@ -69,7 +63,6 @@ body {
 a { color: var(--accent); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 body.drag { outline: 3px dashed var(--accent); outline-offset: -6px; }
-/* Pill buttons; hover outlines them in the accent */
 button, .button {
   font: inherit; font-weight: 600; color: var(--fg); background: var(--surface);
   border: 1px solid var(--field-line); border-radius: 999px; padding: 4px 12px; cursor: pointer;
@@ -90,7 +83,6 @@ header h1 {
   font: 600 17px/1.3 var(--display); letter-spacing: -.01em; margin: 0; flex: 1; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-/* Brand mark: a dark green tile with the red "recording" dot */
 header h1::before {
   content: ""; display: inline-block; width: 22px; height: 22px; margin-right: 10px; vertical-align: -5px; border-radius: 7px;
   background: radial-gradient(circle, var(--error) 0 4px, color-mix(in srgb, var(--error) 35%, var(--brand)) 4.5px 6.5px, var(--brand) 7px);
@@ -106,14 +98,12 @@ body.page-recordings .library {
   border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: auto;
 }
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
-/* Theme and Text size pickers of the downloaded HTML and the standalone viewer (display.js) */
 .display-settings { display: flex; gap: 8px; align-items: center; }
 .display-pick { color: var(--fg-2); font-size: 12px; white-space: nowrap; }
 #error { background: var(--error-bg); color: var(--error); padding: 8px 14px; margin: 12px 20px 0; border-radius: 8px; }
 .incognito-note { margin: 12px 20px 0; background: var(--warn-bg); color: var(--warn); padding: 8px 14px; border-radius: 8px; }
 .empty { flex: 1; display: grid; place-items: center; color: var(--fg-2); padding: 16px; text-align: center; }
 
-/* Video and panel as two cards across the full window; the 12px gap holds the column splitter */
 #app {
   flex: 1; min-height: 0; padding: 12px 20px 16px; gap: 12px;
   display: grid; grid-template-columns: minmax(0, 3fr) var(--panel-w, minmax(380px, 2fr));
@@ -124,14 +114,12 @@ body.page-recordings .library {
   .splitter.split-x { display: none; }
 }
 
-/* ---- player ---- */
 .player { display: flex; flex-direction: column; gap: 10px; padding: 14px; min-height: 0; }
 video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 8px; object-fit: contain; }
 .no-video { flex: 1; display: grid; place-items: center; text-align: center; background: var(--bg-2); border-radius: 8px; color: var(--fg-2); padding: 16px; }
 .clock-row { display: flex; justify-content: space-between; align-items: center; }
 #clock { font: 600 14px var(--mono); font-variant-numeric: tabular-nums; }
 .jump { display: flex; gap: 6px; white-space: nowrap; }
-/* One lane per issue kind, in the legend's order, so issues at the same moment don't cover each other */
 .timeline { position: relative; height: 38px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
 .marker { position: absolute; height: 6px; width: 3px; margin-left: -1px; border-radius: 2px; }
 .marker.error { background: var(--error); top: 4px; }
@@ -148,7 +136,6 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 8p
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
 .dot.error { background: var(--error); } .dot.failed { background: var(--failed); } .dot.nav { background: var(--nav); }
 
-/* Network overview on the Network tab, under the toolbar (viewer.js builds it) */
 .net-overview { display: flex; flex-direction: column; gap: 3px; padding: 6px 8px; border-bottom: 1px solid var(--line); }
 .ov-head { display: flex; align-items: center; gap: 4px 14px; flex-wrap: wrap; color: var(--fg-2); font-size: 12px; }
 .ov-head .dot { border-radius: 2px; }
@@ -164,7 +151,6 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 8p
   position: absolute; top: 0; bottom: 0; pointer-events: none;
   background: color-mix(in srgb, var(--accent) 18%, transparent); border: 1px solid var(--accent); border-width: 0 1px;
 }
-/* Apps lane under the timeline (viewer.js): one colour per app, by order of first appearance */
 :root { --app-0: #0072b2; --app-1: #e69f00; --app-2: #009e73; --app-3: #cc79a7; --app-4: #56b4e9; --app-5: #d55e00; }
 .lane { display: flex; flex-direction: column; gap: 3px; }
 .app-lane { position: relative; height: 22px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }
@@ -179,7 +165,6 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 8p
 .app-3 { --c: var(--app-3); } .app-4 { --c: var(--app-4); } .app-5 { --c: var(--app-5); }
 .dot.app-0, .dot.app-1, .dot.app-2, .dot.app-3, .dot.app-4, .dot.app-5 { background: var(--c); border-radius: 2px; }
 .app-filter[hidden] { display: none; }
-/* App tab: one folded block per app, Download .jwa in its header */
 .info .apps-head { font-weight: 600; margin: 0 0 4px; }
 .info details.app { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; margin: 8px 0; }
 .info details.app > summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
@@ -191,7 +176,6 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 8p
 .act-table th { color: var(--fg-2); font-weight: 600; }
 .act-table td.num { color: var(--fg-2); }
 .act-table td.date { white-space: nowrap; font-family: var(--mono); }
-/* Server load strip under the timeline (viewer.js) */
 .load { display: flex; flex-direction: column; gap: 3px; }
 .load-strip { height: 48px; cursor: pointer; }
 .load-node { padding: 0 4px; font-size: 12px; }
@@ -199,13 +183,10 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 8p
 .dot.g-cpu { background: var(--g-cpu); } .dot.g-heap { background: var(--g-heap); } .dot.g-threads { background: var(--g-threads); }
 .dot.g-db { background: var(--g-db); } .dot.g-gc { background: var(--g-gc); border-radius: 1px; }
 
-/* Waterfall column of a network row */
 .row .wf { position: relative; align-self: center; height: 8px; background: var(--bg-2); border-radius: 2px; }
 .wf-bar { position: absolute; top: 0; bottom: 0; border-radius: 2px; background: var(--fg-2); }
 .wf-bar.doc { background: var(--nav); } .wf-bar.api { background: var(--api); } .wf-bar.failed { background: var(--failed); }
 
-/* Resize handles (viewer.js): in the gap between video and panel, and above the detail pane. A grip shows where;
-   it turns green on hover, while dragging and on keyboard focus (arrow keys resize) */
 .splitter { position: absolute; z-index: 5; touch-action: none; }
 .splitter.split-x { top: 0; bottom: 0; left: -13px; width: 12px; cursor: col-resize; }
 .splitter.split-y { left: 0; right: 0; top: -7px; height: 14px; cursor: row-resize; }
@@ -217,7 +198,6 @@ video { width: 100%; flex: 1; min-height: 0; background: #000; border-radius: 8p
 body.resizing-split-x { cursor: col-resize; user-select: none; }
 body.resizing-split-y { cursor: row-resize; user-select: none; }
 
-/* ---- panel ---- */
 .panel { position: relative; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .tabs { display: flex; flex: none; gap: 2px; padding: 0 8px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
 .tabs button { flex: none; border: 0; border-radius: 0; background: none; color: var(--fg-2); padding: 11px 10px 9px; border-bottom: 3px solid transparent; }
@@ -246,7 +226,6 @@ body.resizing-split-y { cursor: row-resize; user-select: none; }
 .tab-note { padding: 6px 10px; border-bottom: 1px solid var(--line); background: var(--warn-bg); color: var(--warn); font-size: 12px; }
 .row.network { grid-template-columns: 64px 52px 44px minmax(0, 1fr) 64px 56px 72px; }
 .row:hover { background: var(--bg-2); }
-/* Not reached yet: grey at full contrast (faded red was hard to read); errors keep a faint red edge */
 .row.future, .row.future.lvl-error, .row.future.lvl-warn, .row.future.lvl-nav, .row.future.bad { color: var(--fg-2); background: none; }
 .row.future.lvl-error, .row.future.bad { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--error) 45%, transparent); }
 .row.future .t { opacity: 1; }
@@ -269,7 +248,7 @@ body.resizing-split-y { cursor: row-resize; user-select: none; }
 .kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 16px; }
 .kv dt { color: var(--fg-2); }
 .kv dd { margin: 0; word-break: break-all; font-family: var(--mono); font-size: 12px; }
-.kv.multiline dd { white-space: pre-wrap; } /* JVM arguments: one per line */
+.kv.multiline dd { white-space: pre-wrap; }
 
 .detail { position: relative; flex: 0 0 var(--detail-h, 45%); min-height: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line); background: var(--bg-2); border-radius: 0 0 var(--radius) var(--radius); }
 .detail-head { display: flex; align-items: center; gap: 6px 8px; padding: 8px 10px; flex-wrap: wrap; border-bottom: 1px solid var(--line); }
@@ -284,7 +263,6 @@ body.resizing-split-y { cursor: row-resize; user-select: none; }
   font: 12px/1.45 var(--mono); white-space: pre-wrap; word-break: break-all; max-height: 400px; overflow: auto;
 }
 
-/* Extension only: Recordings page (recordings.js) and Replay page status (replay.js) */
 button.primary, button.primary:hover { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 button.primary:hover { filter: brightness(1.08); }
 button:disabled:hover, .button.disabled:hover { border-color: var(--field-line); color: var(--fg); }
@@ -306,7 +284,6 @@ button:disabled { opacity: .5; cursor: default; }
 .badge.yes { background: var(--current); color: var(--accent); }
 .badge.err { background: var(--error-bg); color: var(--error); }
 .badge.warn { background: var(--warn-bg); color: var(--warn); }
-/* Recordings lists (extension and server): select column, batch bar, title link, small second lines */
 .library th.sel, .library td.sel { width: 32px; padding-right: 0; }
 .library-bar input[type=search] { flex: 1; min-width: 160px; max-width: 420px; border-radius: 999px; padding: 6px 14px; background: var(--bg-2); border-color: transparent; }
 .library-bar .batch { display: flex; gap: 8px; align-items: center; margin-left: auto; flex-wrap: wrap; }
@@ -328,11 +305,8 @@ header > .muted { white-space: nowrap; }
 .upload-box label.check input { padding: 0; }
 .upload-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; flex-wrap: wrap; }
 .upload-box progress { width: 100%; }
-/* Status bar under the header, the same on every replay page: where this copy is, then its actions */
 .rec-status { padding: 6px 20px; font-size: 13px; color: var(--fg-2); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 header .rec-status { padding: 0; }
-/* Replay pages, two rows: [title (shrinks with "…" first) + Older / Newer], then [where … actions].
-   Each row wraps on its own when the window is too narrow. */
 header.replay-head { flex-direction: column; align-items: stretch; gap: 8px; }
 .header-left { display: flex; align-items: center; gap: 8px 20px; min-width: 0; }
 .header-left h1 { flex: 1 1 auto; }
@@ -342,7 +316,7 @@ header.replay-head { flex-direction: column; align-items: stretch; gap: 8px; }
 .rec-nav { display: flex; align-items: center; gap: 6px; white-space: nowrap; color: var(--fg-2); font-size: 12.5px; }
 .rec-nav[hidden] { display: none !important; }
 .button.disabled { opacity: .45; pointer-events: none; }
-.button.busy { opacity: .45; cursor: not-allowed; } /* waiting for something; the title says what */
+.button.busy { opacity: .45; cursor: not-allowed; }
 .where { font-weight: 600; color: var(--fg); background: var(--bg-2); border-radius: 999px; padding: 2px 10px; margin-right: 4px; cursor: help; white-space: nowrap; }
 .where::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: var(--accent); vertical-align: 1px; }
 .notes {
@@ -354,7 +328,6 @@ header.replay-head { flex-direction: column; align-items: stretch; gap: 8px; }
 .rec-status a, .upload-box a { color: var(--accent); }
 .muted { color: var(--fg-2); }
 
-/* Features drawer: slides over the panel on the right, the video stays visible */
 .drawer {
   position: fixed; top: 0; right: 0; bottom: 0; z-index: 20; width: min(440px, 100vw);
   display: flex; flex-direction: column; background: var(--surface); border-left: 1px solid var(--line);
@@ -365,10 +338,8 @@ header.replay-head { flex-direction: column; align-items: stretch; gap: 8px; }
 .drawer-body { flex: 1; overflow: auto; padding: 4px 16px 16px; }
 #featuresBtn.active { background: var(--current); color: var(--accent); border-color: var(--accent); }
 
-/* Upload button after a failed automatic upload; the reason is in its tooltip */
 button.warn { background: var(--warn-bg); color: var(--warn); border-color: var(--warn); }
 
-/* Short confirmations (replay.js toast) */
 .toast {
   position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 30; max-width: calc(100vw - 32px);
   padding: 8px 14px; border-radius: 999px; background: var(--fg); color: var(--surface); font-size: 13px;
@@ -376,7 +347,6 @@ button.warn { background: var(--warn-bg); color: var(--warn); border-color: var(
 }
 .toast[hidden] { display: none; }
 
-/* Upload URL field in the fix box: full width of the box, like the upload form's fields */
 .fix-url { display: grid; gap: 4px; }
 .fix-url[hidden] { display: none; }
 .fix-url input { width: 100%; box-sizing: border-box; font-family: var(--mono); }
@@ -385,4 +355,4 @@ button.warn { background: var(--warn-bg); color: var(--warn); border-color: var(
 .info details.process summary { cursor: pointer; font-weight: 600; }
 .info details.process h4 { font-size: 12px; margin: 8px 0 2px; color: var(--fg-2); }
 .row.server.other { opacity: .6; font-style: italic; }
-.row.trace.other .state { font-style: italic; } /* other users' traces: the user in place of the state */
+.row.trace.other .state { font-style: italic; }

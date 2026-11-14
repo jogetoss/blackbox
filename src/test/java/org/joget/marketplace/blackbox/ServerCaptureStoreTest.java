@@ -38,7 +38,7 @@ public class ServerCaptureStoreTest {
         lines("node-b",
                 "{\"ts\":200,\"kind\":\"log\",\"level\":\"INFO\",\"message\":\"hi\"}",
                 "{\"ts\":210,\"kind\":\"log\",\"level\":\"ERROR\",\"message\":\"scheduler\",\"other\":true}",
-                "{\"ts\":250,\"kind\":\"log\",\"le", // cut short by a crash
+                "{\"ts\":250,\"kind\":\"log\",\"le",
                 "{\"kind\":\"truncated\",\"ts\":260}");
         assertTrue(store.stop(ID, "admin"));
 
@@ -93,7 +93,6 @@ public class ServerCaptureStoreTest {
                 "{\"ts\":100,\"kind\":\"request\",\"method\":\"GET\",\"url\":\"/jw/web/x\",\"status\":200}");
         assertTrue(store.stop(ID, "admin"));
 
-        // What the export at stop reads: the lines so far, nothing moved
         Path lines = root.resolve("lines.json");
         store.writeLines(ID, lines);
         JSONArray entries = new JSONObject(new String(Files.readAllBytes(lines), StandardCharsets.UTF_8)).getJSONArray("entries");
@@ -119,7 +118,7 @@ public class ServerCaptureStoreTest {
     public void attachLeavesAnUnusedStopExportBehind() throws Exception {
         assertTrue(store.start(ID, "admin", 1024, DAY));
         Path app = Files.createDirectories(store.dir(ID).resolve(AppExport.DIR));
-        Files.write(app.resolve("crm-3.jwa"), new byte[] {1}); // a stop export still running when the upload gave up
+        Files.write(app.resolve("crm-3.jwa"), new byte[] {1});
         Path rec = Files.createDirectories(root.resolve("rec"));
         assertNotNull(store.attach(ID, "admin", rec.resolve(ServerCaptureStore.FILE), false));
         assertFalse("the upload exports the apps itself", Files.exists(rec.resolve(AppExport.DIR)));
@@ -172,7 +171,6 @@ public class ServerCaptureStoreTest {
     @Test
     public void putWaitsForALockHeldByAnotherPluginCopy() throws Exception {
         assertTrue(store.start(ID, "admin", 1024, DAY));
-        // Another bundle copy in this JVM (plugin reload) holding the file lock: put waits instead of failing
         try (java.nio.channels.FileChannel ch = java.nio.channels.FileChannel.open(root.resolve(ID).resolve(".meta.lock"),
                 java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE)) {
             java.nio.channels.FileLock held = ch.lock();
@@ -198,7 +196,6 @@ public class ServerCaptureStoreTest {
                 store.put(ID, "k", true);
                 fail("written without the lock");
             } catch (java.io.IOException expected) {
-                // locked by another copy for over waitMs
             }
         } finally {
             FileLocks.waitMs = wait;
@@ -213,10 +210,9 @@ public class ServerCaptureStoreTest {
         java.util.concurrent.atomic.AtomicBoolean stillInterrupted = new java.util.concurrent.atomic.AtomicBoolean();
         java.util.concurrent.atomic.AtomicReference<Exception> failed = new java.util.concurrent.atomic.AtomicReference<>();
         Thread t = new Thread(() -> {
-            Thread.currentThread().interrupt(); // as an old job interrupted by a stopping executor would be
+            Thread.currentThread().interrupt();
             try {
                 FileLocks.locked(root.resolve(ID).resolve(".meta.lock"), () -> {
-                    // The lock is held: a second lock in this JVM overlaps
                     try (java.nio.channels.FileChannel other = java.nio.channels.FileChannel.open(root.resolve(ID).resolve(".meta.lock"),
                             java.nio.file.StandardOpenOption.WRITE)) {
                         other.tryLock();
@@ -252,7 +248,7 @@ public class ServerCaptureStoreTest {
     @Test
     public void rejectsBadIds() throws Exception {
         assertFalse(ServerCaptureStore.isValidId("../x"));
-        assertFalse(ServerCaptureStore.isValidId("0F8FAD5B-D9CB-469F-A165-70867728950E")); // the extension sends lower case
+        assertFalse(ServerCaptureStore.isValidId("0F8FAD5B-D9CB-469F-A165-70867728950E"));
         assertNull(store.readMeta("../../etc"));
     }
 
@@ -260,7 +256,7 @@ public class ServerCaptureStoreTest {
     public void nodeNameIsJogetsNameElseTheHost() {
         assertEquals("n1", ServerCapture.nodeName("n1", "host-a"));
         assertEquals("host-a", ServerCapture.nodeName("", "host-a"));
-        assertEquals("my-node", ServerCapture.nodeName("my node", null)); // safe for the file name
+        assertEquals("my-node", ServerCapture.nodeName("my node", null));
         assertEquals("node", ServerCapture.nodeName(null, null));
     }
 }

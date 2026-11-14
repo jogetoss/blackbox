@@ -8,7 +8,6 @@ import org.json.JSONObject;
 import org.junit.Before;
 import org.junit.Test;
 
-/** BB3: the stop the extension sends after recovering a crashed recording, with the client's stop time (lastSavedAt). */
 public class RecoveryStopTest {
 
     private static final String ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
@@ -23,7 +22,7 @@ public class RecoveryStopTest {
         Path root = Files.createTempDirectory("bb-recovery-stop");
         store = new ServerCaptureStore(root);
         assertTrue(store.start(ID, "admin", 1024, DAY));
-        startedAt = System.currentTimeMillis() - 60 * 60 * 1000L; // an hour ago
+        startedAt = System.currentTimeMillis() - 60 * 60 * 1000L;
         assertTrue(store.put(ID, "startedAt", startedAt));
     }
 
@@ -35,7 +34,7 @@ public class RecoveryStopTest {
     public void aClientStopTimeWithinTheBoundsIsTaken() throws Exception {
         long seen = startedAt + 20 * 60 * 1000L;
         assertTrue(store.put(ID, "lastSeenAt", seen));
-        long saved = seen + 10 * 1000L; // the last save can come after the last ping
+        long saved = seen + 10 * 1000L;
         assertTrue(store.stop(ID, "admin", saved, LOST));
         assertEquals(saved, meta().getLong("stoppedAt"));
     }
@@ -81,7 +80,7 @@ public class RecoveryStopTest {
 
     @Test
     public void withoutLastSeenAtATimeBetweenStartAndNowIsTaken() throws Exception {
-        long saved = startedAt + 15 * 1000L; // crashed before the first ping
+        long saved = startedAt + 15 * 1000L;
         assertTrue(store.stop(ID, "admin", saved, LOST));
         assertEquals(saved, meta().getLong("stoppedAt"));
     }

@@ -38,20 +38,12 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * Stores recordings made by the BlackBox Chrome extension (recording.webm + session.json).
- *
- * Settings: Settings > Manage Plugins > BlackBox > Configure (SystemConfigurablePlugin).
- * API:      /api/blackbox?action=... (served by {@link BlackBoxApiFilter}, used by the extension and the pages)
- * Pages:    /blackbox/ (served by {@link BlackBoxPageFilter})
- */
 public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurablePlugin {
 
     static final String VERSION = "8.2-SNAPSHOT";
     private static final long DEFAULT_MAX_MB = 500;
     private static final long DEFAULT_SYSTEM_LOG_MB = 20;
     private static final long DEFAULT_KEEP_DAYS = 7;
-    // maxRecordingMinutes: the hard limit; at most GaugeSampler's 2 h
     static final long DEFAULT_MAX_RECORDING_MIN = 30;
     static final long MIN_RECORDING_MIN = 5;
     static final long MAX_RECORDING_MIN = 120;
@@ -89,16 +81,12 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         return AppUtil.readPluginResource(getClassName(), "/properties/blackboxPlugin.json", null, true, null);
     }
 
-    /** Makes the store; tests (no Joget running) swap it. */
     static java.util.function.Supplier<RecordingStore> stores = () -> new RecordingStore(ProfileDir.current());
 
     static RecordingStore store() {
         return stores.get();
     }
 
-    // ---------- API ----------
-
-    /** Handles /api/blackbox. Spring Security has run, so the current user is known. */
     public void handle(HttpServletRequest request, HttpServletResponse response) throws ServletException, IOException {
         String action = request.getParameter("action");
         boolean post = "POST".equalsIgnoreCase(request.getMethod());
@@ -111,9 +99,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             error(response, HttpServletResponse.SC_UNAUTHORIZED, "Log in first.");
             return;
         }
-        // POSTs come from the extension (an Origin no web page can send) or from the pages (CSRF token)
         String origin = request.getHeader("Origin");
-        Object allowedIds = getProperty("allowedExtensionIds"); // null: never saved (getPropertyString would say "")
+        Object allowedIds = getProperty("allowedExtensionIds");
         boolean fromExtension = fromAllowedExtension(origin, allowedIds == null ? null : allowedIds.toString());
         if (post && !fromExtension && !validCsrfToken(request)) {
             error(response, HttpServletResponse.SC_FORBIDDEN, "Invalid or missing CSRF token. Reload the page and try again.");
@@ -135,7 +122,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                         .put("user", new JSONObject().put("username", user.getUsername()).put("name", fullName(user)))
                         .put("canUpload", access.canUpload())
                         .put("maxSizeMb", maxSizeMb())
-                        .put("sampleData", new JSONObject() // the 8.2.1 extension's upload form: real values allowed wherever apps data is
+                        .put("sampleData", new JSONObject()
                                 .put("enabled", options.getBoolean("sample"))
                                 .put("real", options.getBoolean("sample")))
                         .put("options", options));
@@ -167,7 +154,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                     }
                 }
             } else if ("download".equals(action) && !post) {
-                // The whole recording as one file: format=zip (to import elsewhere) or html (replays anywhere)
                 String format = request.getParameter("format");
                 if (!"zip".equals(format) && !"html".equals(format)) {
                     error(response, HttpServletResponse.SC_BAD_REQUEST, "Unknown format: use zip or html.");
@@ -188,7 +174,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             } else if ("recording-ping".equals(action) && post) {
                 pingServerCapture(request, response, access, id);
             } else if ("app-export".equals(action) && !post) {
-                // The recorder polls this while the app export at stop runs on (recording-stop answered "exporting")
                 JSONObject pending = ServerCaptureStore.isValidId(id) ? captureMeta(id) : null;
                 if (pending == null || !access.user.getUsername().equals(pending.optString("owner"))) {
                     error(response, HttpServletResponse.SC_NOT_FOUND, "Server capture not found.");
@@ -252,9 +237,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
     }
 
-    /** Removes the meta keys that are server data, for users who may not see it (list, meta, HTML download). */
     static void hideServerData(JSONObject meta) {
-        meta.remove(RecordingStore.CAPTURE); // its error count is server data too
+        meta.remove(RecordingStore.CAPTURE);
         meta.remove("serverData");
         meta.remove("apps");
     }
@@ -264,14 +248,14 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         JSONArray rows = new JSONArray();
         for (JSONObject meta : store.list()) {
             if (access.canView(meta)) {
-                ServerData.listedGlowroot(store, meta); // a stale "building" turns failed
+                ServerData.listedGlowroot(store, meta);
                 meta.put("canDelete", access.canDelete(meta));
                 boolean server = access.canViewServerData(meta);
                 meta.put("canViewServerData", server);
                 if (!server) {
                     hideServerData(meta);
                 }
-                meta.put("url", request.getContextPath() + "/blackbox/view?id=" + meta.getString("id")); // the extension links to it
+                meta.put("url", request.getContextPath() + "/blackbox/view?id=" + meta.getString("id"));
                 rows.put(meta);
             }
         }
@@ -305,10 +289,9 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         String captureId = (String) meta.remove("captureId");
         JSONObject atStop = null;
         if (captureId != null) {
-            atStop = appExportAtStop(captureId, access.user.getUsername()); // before attach, which moves its app/ folder
+            atStop = appExportAtStop(captureId, access.user.getUsername());
             boolean appsAtStop = atStop != null && "done".equals(atStop.optString("state"));
             if (atStop != null && "exporting".equals(atStop.optString("state"))) {
-                // Still running: the recording gets it when it ends (deliverStopExport), no second export
                 meta.put("appExport", ExportJobs.exporting().put("capture", captureId));
                 store.updateMeta(recId, new JSONObject().put("appExport", meta.get("appExport")));
             }
@@ -334,10 +317,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 store.updateMeta(recId, new JSONObject().put("apps", saved));
             }
         } else if ("exporting".equals(done)) {
-            deliverStopExport(captureId); // in case it ended just now
+            deliverStopExport(captureId);
         } else if (!"off".equals(done) && access.allows("allowAppExport", false) && !"false".equals(request.getParameter("apps"))) {
-            // No export at stop (no server capture, or the stop's export failed): the apps as they are now, in the
-            // background; the recording lists them when it ends
             java.util.concurrent.Callable<JSONArray> job = exportJob(store.dir(recId), store.file(recId, RecordingStore.SESSION),
                     store.file(recId, RecordingStore.SYSTEM_LOG), sampleMode(request, access), recId, access);
             meta.put("appExport", ExportJobs.exporting());
@@ -351,17 +332,10 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             });
         }
         LogUtil.info(getClassName(), "Recording " + recId + " uploaded by " + access.user.getUsername());
-        // url: where the extension's "Open uploaded" link points
         meta.put("url", request.getContextPath() + "/blackbox/view?id=" + meta.getString("id"));
         json(response, meta);
     }
 
-    /**
-     * Apps data for this export, or null for none: needs "Allow capturing apps data" (admins always). The sampleData
-     * parameter picks none, masked (the popup's Mask data: values, record ids and process data) or real (the default:
-     * real values and original ids; always-masked columns stay masked). Rows only go into apps the user may have
-     * exported (Access.canExportApp, per app).
-     */
     private SampleData.Mode sampleMode(HttpServletRequest request, Access access) {
         String asked = request.getParameter("sampleData");
         if (!access.allows("allowCaptureAppsData", false) || "none".equals(asked)) {
@@ -370,10 +344,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         return "masked".equals(asked) ? SampleData.Mode.MASKED : SampleData.Mode.REAL;
     }
 
-    /**
-     * The apps the recording used, exported into dir/app/ (AppExport) with their sample and process data, now. Returns
-     * the summary meta.apps keeps for the recordings list (empty when none or on failure). label names it in the log.
-     */
     private JSONArray exportApps(Path dir, Path session, Path systemLog, SampleData.Mode sample, String label, Access access) {
         try {
             return exportJob(dir, session, systemLog, sample, label, access).call();
@@ -389,17 +359,12 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     private static final String DENIED = "Not exported: you are not an admin of this app, and \"Who can export apps they "
             + "don't administer\" doesn't allow you or Joget doesn't let you access it.";
 
-    /**
-     * Prepares an app export to run later (ExportJobs): what needs the request is done now, on the request thread:
-     * reading the recording's URLs and posts, and deciding which apps this user may have exported (Access.canExportApp
-     * reads the request and its user). The job does the heavy part. session and systemLog must stay until it runs.
-     */
     private java.util.concurrent.Callable<JSONArray> exportJob(Path dir, Path session, Path systemLog, SampleData.Mode sample,
             String label, Access access) throws IOException {
         List<String> urls = AppExport.urls(session, systemLog);
         List<AppExport.Seen> apps = AppExport.find(AppExport.hits(session, systemLog));
-        Map<String, String> decided = new java.util.HashMap<>(); // app@version -> reason it is denied, or null
-        java.util.Set<String> dataAllowed = new java.util.HashSet<>(); // app@version whose rows may go in
+        Map<String, String> decided = new java.util.HashMap<>();
+        java.util.Set<String> dataAllowed = new java.util.HashSet<>();
         boolean otherAppsData = access.allows("allowOtherAppsData", false);
         for (AppExport.Seen s : apps) {
             AppDefinition def = AppExport.resolve(s.appId, s.version);
@@ -417,7 +382,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             candidates = SampleData.candidateIds(texts);
         }
         java.util.Set<String> ids0 = candidates;
-        boolean keepIds = sample != SampleData.Mode.MASKED; // masked data gets new record ids too
+        boolean keepIds = sample != SampleData.Mode.MASKED;
         String sensitive = getPropertyString("sensitiveColumns");
         int newest = (int) Math.min(positive("sampleRows", 20), 500);
         String max = getPropertyString("maxApps");
@@ -442,7 +407,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                     SampleData.addTo(jwa, tables);
                     try {
                         JSONObject extra = new JSONObject().put("sample", SampleData.summary(tables, sample));
-                        // Processes: recorded process / activity ids, and those in the sample rows (record ids, links)
                         java.util.Set<String> refs = new java.util.LinkedHashSet<>(ids0);
                         refs.addAll(ids.all().keySet());
                         refs.addAll(SampleData.valuesIn(tables));
@@ -457,7 +421,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                     }
                 };
             }
-            // Only apps decided above may be exported; a version that changed meanwhile was never checked: denied
             AppExport.Exporter exporter = AppExport.joget(def -> decided.containsKey(AppExport.key(def))
                     ? decided.get(AppExport.key(def)) : "Not exported: the app changed while it was being exported. Upload again.");
             JSONArray saved = AppExport.save(dir, apps, exporter, after, maxApps);
@@ -469,7 +432,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     private void uploadVideo(HttpServletRequest request, HttpServletResponse response, RecordingStore store, Access access, String id)
             throws IOException, RecordingStore.InvalidUpload {
         JSONObject meta = store.readMeta(id);
-        // Only the uploader adds the video to their own recording
         if (meta == null || !access.user.getUsername().equals(meta.optString("owner"))) {
             error(response, HttpServletResponse.SC_NOT_FOUND, "Recording not found.");
             return;
@@ -502,10 +464,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         json(response, new JSONObject().put("deleted", id));
     }
 
-    /**
-     * One .html file that replays the recording in any browser (see {@link RecordingHtml}). The system log is included
-     * only for users allowed to view it.
-     */
     private void downloadHtml(HttpServletResponse response, RecordingStore store, Access access, String id, JSONObject meta)
             throws IOException {
         Path session = store.file(id, RecordingStore.SESSION);
@@ -515,16 +473,16 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
         Path systemLog = access.canViewServerData(meta) ? store.file(id, RecordingStore.SYSTEM_LOG) : null;
         if (!access.canViewServerData(meta)) {
-            hideServerData(meta); // the file carries meta as JSON, read or not
+            hideServerData(meta);
         } else if (systemLog == null) {
-            meta.remove(RecordingStore.CAPTURE); // the summary would point at data that is not in the file
+            meta.remove(RecordingStore.CAPTURE);
         }
-        meta.put("tracesSandboxed", !flag("allowUnsandboxedTraces", true)); // export.js opens trace pages in a sandbox
+        meta.put("tracesSandboxed", !flag("allowUnsandboxedTraces", true));
         RecordingHtml export = RecordingHtml.fromResources();
         response.setContentType("text/html;charset=UTF-8");
         response.setHeader("Content-Disposition", "attachment; filename=\"blackbox-" + id + ".html\"");
         String traces = null;
-        java.util.Map<String, Path> traceFiles = new java.util.LinkedHashMap<>(); // full pages, so Open full trace works in the file
+        java.util.Map<String, Path> traceFiles = new java.util.LinkedHashMap<>();
         if (systemLog != null) {
             JSONArray list = TraceStore.merge(store.dir(id), System.currentTimeMillis());
             traces = list.length() > 0 ? list.toString() : null;
@@ -545,7 +503,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         LogUtil.info(getClassName(), "Recording " + id + " downloaded as HTML by " + access.user.getUsername());
     }
 
-    /** The recording as one ZIP for {@link #importZip} on another server. The system log only for users allowed to view it. */
     private void downloadZip(HttpServletResponse response, RecordingStore store, Access access, String id, JSONObject meta)
             throws IOException {
         Path session = store.file(id, RecordingStore.SESSION);
@@ -555,14 +512,12 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
         Path systemLog = access.canViewServerData(meta) ? store.file(id, RecordingStore.SYSTEM_LOG) : null;
         try {
-            // the ZIP carries the Glowroot data for these users: wait until every node has built it
             if (systemLog != null && "building".equals(GlowrootData.overall(GlowrootData.statuses(store.dir(id))))) {
                 error(response, HttpServletResponse.SC_CONFLICT, "The Glowroot data is still being built (about a minute after the"
                         + " recording stopped). Download the ZIP once it is ready.");
                 return;
             }
         } catch (IOException e) {
-            // unreadable statuses: the ZIP has whatever packages are there
         }
         response.setContentType("application/zip");
         response.setHeader("Content-Disposition", "attachment; filename=\"blackbox-" + id + ".zip\"");
@@ -570,7 +525,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 systemLog != null ? store.dir(id) : null, access.canViewServerData(meta) ? store.dir(id) : null);
     }
 
-    /** A ZIP from {@link #downloadZip} (raw request body) becomes a new recording owned by the user. */
     private void importZip(HttpServletRequest request, HttpServletResponse response, RecordingStore store, Access access)
             throws IOException, JSONException, RecordingStore.InvalidUpload {
         if (!access.canUpload()) {
@@ -578,7 +532,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             return;
         }
         long max = maxSizeMb() * 1024 * 1024;
-        long maxZip = 2 * max + 64 * 1024 * 1024; // video + session.json + system log and meta
+        long maxZip = 2 * max + 64 * 1024 * 1024;
         if (request.getContentLengthLong() > maxZip) {
             throw new RecordingStore.InvalidUpload("The ZIP is larger than the limit.");
         }
@@ -603,7 +557,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                     access.user.getUsername(), fullName(access.user), importMaxTotalBytes(max),
                     limit("importMaxEntries", RecordingZip.DEFAULT_MAX_ENTRIES));
             if (meta.has(RecordingStore.CAPTURE)) {
-                // the list's server data tags (traces, load, info, Glowroot data), as after an upload
                 meta.put("serverData", ServerData.of(store.dir(meta.getString("id")), slowMs()));
                 store.updateMeta(meta.getString("id"), new JSONObject().put("serverData", meta.get("serverData")));
             }
@@ -615,17 +568,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
     }
 
-    /**
-     * A checkbox setting: on only when saved as "true" (an unticked box saves ""). Never saved (not in the settings at
-     * all): dflt.
-     */
-    /** The BlackBox extension's id: fixed by the "key" in its manifest.json. */
     static final String OFFICIAL_EXTENSION_ID = "anmfmkacddnmmgdcnkgkfjhagnilmkmp";
 
-    /**
-     * An Origin of an extension in "Allowed Chrome extension IDs" (comma-separated; empty = any extension). Never saved:
-     * the official extension only. Such a POST needs no CSRF token: web pages can't send a chrome-extension Origin.
-     */
     static boolean fromAllowedExtension(String origin, String allowed) {
         if (origin == null || !origin.startsWith("chrome-extension://")) {
             return false;
@@ -645,28 +589,19 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
     static final int DEFAULT_STARTS_PER_MINUTE = 10;
     static final int DEFAULT_MAX_OPEN_CAPTURES = 3;
-    /** "Allow capturing other users' traces": a recording may copy every trace on the nodes it reaches (opt-in per recording). */
     static final String OTHER_TRACES = "allowCaptureOtherUsersTraces";
-    /**
-     * JVM option: with virtual hosts, lets every profile use other users' traces and Glowroot data. Glowroot is one agent
-     * per JVM, so both hold every profile's requests; only whoever runs the server can allow that. Only the server's
-     * start command counts (-Dblackbox.sharedGlowroot=true): a tenant's script may call System.setProperty, so the live
-     * property is ignored.
-     */
     static final String SHARED_GLOWROOT = "blackbox.sharedGlowroot";
-    /** The -D options the JVM was started with (can't change after); empty when they can't be read. */
     private static final List<String> START_ARGS = startArgs();
 
     private static List<String> startArgs() {
         try {
             return java.lang.management.ManagementFactory.getRuntimeMXBean().getInputArguments();
-        } catch (RuntimeException | LinkageError e) { // e.g. a security manager refusing ManagementPermission("monitor")
+        } catch (RuntimeException | LinkageError e) {
             LogUtil.warn(BlackBoxPlugin.class.getName(), "Could not read the server's start options: " + e);
             return Collections.emptyList();
         }
     }
 
-    /** The value of -Dkey=... in args (the last one wins, as in the JVM), else null. */
     static String startArg(List<String> args, String key) {
         String value = null;
         for (String a : args) {
@@ -683,17 +618,12 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         return value != null && "true".equalsIgnoreCase(value.trim());
     }
 
-    /**
-     * Virtual hosts on (wflow.virtualhost): Joget's live property, or the start command's, so a tenant can't turn the
-     * profile checks off by clearing the property.
-     */
     static boolean virtualHosts() {
         return VIRTUAL_HOSTS_STARTED || HostManager.isVirtualHostEnabled();
     }
 
     private static final boolean VIRTUAL_HOSTS_STARTED = isTrue(startArg(START_ARGS, HostManager.SYSTEM_PROPERTY_VIRTUALHOST));
 
-    /** Whether Glowroot's data may go into a recording: no virtual hosts, or the server allows it (SHARED_GLOWROOT). */
     static java.util.function.BooleanSupplier glowrootShared = () -> glowrootShared(virtualHosts(),
             startArg(START_ARGS, SHARED_GLOWROOT));
 
@@ -703,9 +633,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     static final long DEFAULT_USER_QUOTA_MB = 10240;
     static final StartLimiter STARTS = new StartLimiter();
 
-    /**
-     * A limit setting: empty or not a number = dflt; 0 = no limit; negative = dflt. Admins can set any value.
-     */
     int limit(String property, int dflt) {
         return (int) Math.min(Integer.MAX_VALUE, limitValue(getPropertyString(property), dflt));
     }
@@ -719,16 +646,11 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
     }
 
-    /** "Max total size of a ZIP import (MB)": empty = 3 × the file limit; 0 = no limit. */
     long importMaxTotalBytes(long maxFileBytes) {
         long mb = limitValue(getPropertyString("importMaxTotalMb"), -1);
         return mb < 0 ? RecordingZip.DEFAULT_TOTAL_FACTOR * maxFileBytes : mb * 1024 * 1024;
     }
 
-    /**
-     * "Storage per user (MB)": refuses an upload (413) that would take a non-admin past it, counting what their
-     * recordings use now plus this upload's size. Returns true when refused.
-     */
     private boolean overQuota(HttpServletResponse response, RecordingStore store, Access access, long incoming) throws IOException {
         long quotaMb = limitValue(getPropertyString("userQuotaMb"), DEFAULT_USER_QUOTA_MB);
         if (access.admin || quotaMb == 0) {
@@ -743,7 +665,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         return true;
     }
 
-    /** Recording starts per user in the last minute, on this node (in memory). */
     static final class StartLimiter {
         private final Map<String, java.util.ArrayDeque<Long>> starts = new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -762,11 +683,9 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
     }
 
-    /** POSTs that send recorded data to the server: refused over plain HTTP when "Allow uploads over HTTP" is off. */
     static final java.util.Set<String> UPLOAD_ACTIONS = new java.util.HashSet<>(java.util.Arrays.asList(
             "create", "video", "import", "recording-start", "recording-stop", "recording-ping"));
 
-    /** HTTPS (directly or behind a proxy that says so), or a server reached as localhost, where nothing crosses a network. */
     static boolean secureOrLocal(HttpServletRequest request) {
         if (request.isSecure() || "https".equalsIgnoreCase(request.getHeader("X-Forwarded-Proto"))) {
             return true;
@@ -783,14 +702,9 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         return saved == null ? dflt : "true".equals(saved.toString());
     }
 
-    // ---------- server capture ----------
-
-    /** The extension starts capturing when a recording starts; id is its random UUID, sent on the tab's requests. */
     private void startServerCapture(HttpServletRequest request, HttpServletResponse response, Access access, String id)
             throws IOException, JSONException {
         long maxRecordingMs = maxRecordingMs(getPropertyString("maxRecordingMinutes"));
-        // Every recording gets a capture: the tab's log lines and System Info; the other parts by their own settings.
-        // Not tied to the upload permission, which is checked only when the browser uploads (create, video, import)
         if (!ServerCaptureStore.isValidId(id)) {
             error(response, HttpServletResponse.SC_BAD_REQUEST, "Invalid server capture id.");
             return;
@@ -811,16 +725,11 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
         long maxBytes = positive("systemLogMaxMb", DEFAULT_SYSTEM_LOG_MB) * 1024 * 1024;
         long keepMs = positive("serverDataKeepDays", DEFAULT_KEEP_DAYS) * 24 * 3600 * 1000;
-        // The popup's quick settings can turn each part off for this recording (traces=false, gauges=false,
-        // glowrootData=false)
         boolean traces = access.mayCapture("allowCaptureTraces") && !"false".equals(request.getParameter("traces"));
         boolean gauges = access.mayCapture("allowCaptureGauges") && !"false".equals(request.getParameter("gauges"));
         boolean glowrootData = access.mayCapture("allowCaptureGlowrootData") && glowrootShared.getAsBoolean()
                 && !"false".equals(request.getParameter("glowrootData"));
-        // Log lines not from this recording: the recorder's choice (allServer=true), only for users with
-        // "Who can capture server data", since the lines hold other users' data
         boolean allServer = access.canCaptureServerData() && "true".equals(request.getParameter("allServer"));
-        // Other users' traces: opt-in per recording (otherTraces=true), with traces, when the admin allows it
         boolean otherTraces = traces && access.mayCapture(OTHER_TRACES) && glowrootShared.getAsBoolean()
                 && "true".equals(request.getParameter("otherTraces"));
         if (!ServerCapture.store().start(id, access.user.getUsername(), maxBytes, keepMs, traces, getPropertyString("glowrootUrl"), gauges,
@@ -828,10 +737,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             error(response, HttpServletResponse.SC_CONFLICT, "This server capture id is already in use.");
             return;
         }
-        // The capture's profile: with virtual hosts, All server log lines keeps only this profile's threads
         ServerCapture.store().put(id, ServerCapture.PROFILE, DynamicDataSourceManager.getCurrentProfile());
-        ServerCapture.find(id); // this node samples the server load from now (GaugeSampler)
-        // System Info as it is now, secrets masked unless the recorder asks (systemSecrets=true) and may
+        ServerCapture.find(id);
         boolean unmaskedInfo = access.allows("allowUnmaskedSystemInfo", false) && "true".equals(request.getParameter("systemSecrets"));
         boolean unmaskedLicense = access.allows("allowUnmaskedLicense", false) && "true".equals(request.getParameter("license"));
         ServerInfo.save(ServerCapture.store().dir(id), request, (int) Math.min(positive("recentChangesDays", 7), 365),
@@ -840,44 +747,31 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 .put("traces", traces).put("gauges", gauges).put("glowrootData", glowrootData).put("allServer", allServer)
                 .put("otherTraces", otherTraces).put("slowThresholdMs", slowMs());
         withLiveness(started, maxRecordingMs, maxSizeMb());
-        // RecordingStore.LEGACY_CAPTURE: the extension of plugin 8.2.1 and older reads the slow threshold from there
         json(response, new JSONObject().put(RecordingStore.CAPTURE, started).put(RecordingStore.LEGACY_CAPTURE, started));
     }
 
-    /** The recorder's heartbeat timing for the start response, so the extension needs no constants of its own. */
     static JSONObject withLiveness(JSONObject started) throws JSONException {
         return started.put("pingMs", LivenessKnobs.pingMs()).put("lostMs", LivenessKnobs.lostMs());
     }
 
-    /** The same, with the hard limit: the recorder stops itself after maxRecordingMs. */
     static JSONObject withLiveness(JSONObject started, long maxRecordingMs) throws JSONException {
         return withLiveness(started).put("maxRecordingMs", maxRecordingMs);
     }
 
-    /** The same, with the upload size limit: the recorder stops itself at 90% of it (reason size-limit). */
     static JSONObject withLiveness(JSONObject started, long maxRecordingMs, long maxSizeMb) throws JSONException {
         return withLiveness(started, maxRecordingMs).put("maxSizeMb", maxSizeMb);
     }
 
-    /**
-     * The maxRecordingMinutes setting in ms: 5 to 120 (outside: the nearest), 30 when empty or not a number. The test
-     * override's minLimitMs may lower it.
-     */
     static long maxRecordingMs(String setting) {
         long min = DEFAULT_MAX_RECORDING_MIN;
         try {
             min = Long.parseLong(setting == null ? "" : setting.trim());
         } catch (NumberFormatException e) {
-            // the default
         }
         min = Math.max(MIN_RECORDING_MIN, Math.min(MAX_RECORDING_MIN, min));
         return Math.min(min * 60_000L, LivenessKnobs.minLimitMs());
     }
 
-    /**
-     * The recorder's heartbeat, every pingMs while it records: marks the capture seen (lastSeenAt) and answers its state,
-     * {state: on | stopped, reason}. lastSavedAt and videoBytes are the recorder's last crash-safety save and video size.
-     */
     private void pingServerCapture(HttpServletRequest request, HttpServletResponse response, Access access, String id)
             throws IOException, JSONException {
         JSONObject state = ServerCaptureStore.isValidId(id)
@@ -890,7 +784,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         json(response, state);
     }
 
-    /** A whole number parameter, or -1 when missing or invalid. */
     private static long longParam(HttpServletRequest request, String name) {
         try {
             return Math.max(-1, Long.parseLong(request.getParameter(name)));
@@ -899,7 +792,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
     }
 
-    /** "Slow" for the recordings lists: Glowroot's slow threshold (ServerData.slowMs), or 2 s without Glowroot. */
     private long slowMs() {
         GlowrootClient g = GlowrootClient.find(getPropertyString("glowrootUrl"));
         if (g == null) {
@@ -912,11 +804,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
     }
 
-    /**
-     * Ends a capture. stoppedAt (optional, ms): the browser's stop time, sent when the extension recovers a crashed
-     * recording (see {@link ServerCaptureStore#stop(String, String, long, long)} for the bounds). With a body (the recording's network and console entries, see {@link #exportAtStop}) it also
-     * exports the apps the recording used, with their sample and process data, as they are now.
-     */
     private void stopServerCapture(HttpServletRequest request, HttpServletResponse response, Access access, String id)
             throws IOException, JSONException {
         if (!ServerCaptureStore.isValidId(id)
@@ -932,7 +819,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         json(response, result);
     }
 
-    /** Recent changes' app versions narrowed to the apps the recording used and those sharing their form tables. */
     private void summarizeRecentApps(Path info, Path session, Path systemLog, String label) {
         try {
             List<String> ids = new java.util.ArrayList<>();
@@ -945,19 +831,9 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
     }
 
-    /**
-     * How long recording-stop and an upload wait for the app export at stop, kept well under common proxy timeouts
-     * (nginx: 60 s). Past it the export goes on in the background (ExportJobs).
-     */
     private static final long STOP_SYNC_MS = 20 * 1000L;
     private static final long STOP_EXPORT_WAIT_MS = STOP_SYNC_MS;
 
-    /**
-     * The app export at stop, into the capture's pending folder (app/), which {@link ServerCaptureStore#attach} moves into
-     * the recording at upload. The body is session.json's network and console entries; apps=false and sampleData
-     * (none, masked, real) are the popup's choices, within the settings. The state goes into the capture's meta as
-     * appExport: {state: off | exporting | done | failed, saved: [...]}, so the upload doesn't export again.
-     */
     private JSONObject exportAtStop(HttpServletRequest request, Access access, String id) throws IOException, JSONException {
         ServerCaptureStore logs = ServerCapture.store();
         JSONObject pending = captureMeta(id);
@@ -976,10 +852,10 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         logs.put(id, "appExport", ExportJobs.exporting());
         try {
             try (InputStream in = request.getInputStream()) {
-                SessionFile.copy(in, session, maxSizeMb() * 1024 * 1024, "The recording's requests"); // to disk, never whole in memory
+                SessionFile.copy(in, session, maxSizeMb() * 1024 * 1024, "The recording's requests");
                 RecordingStore.acquireParsing();
                 try {
-                    SessionFile.check(session); // only a session-shaped body goes on to AppExport
+                    SessionFile.check(session);
                 } finally {
                     RecordingStore.releaseParsing();
                 }
@@ -1005,7 +881,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                     try {
                         end = new JSONObject().put("state", "failed");
                     } catch (JSONException ignored) {
-                        // a constant key: never
                     }
                 } finally {
                     deleteQuietly(session);
@@ -1018,7 +893,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 try {
                     endStopExport(id, new JSONObject().put("state", "failed"));
                 } catch (JSONException ignored) {
-                    // a constant key: never
                 }
             });
             return waitForStopExport(id, STOP_SYNC_MS);
@@ -1034,25 +908,22 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         return state;
     }
 
-    /** Saves the end of a stop's app export and hands it to a recording uploaded meanwhile. */
     static void endStopExport(String id, JSONObject end) {
         try {
             ServerCapture.store().put(id, "appExport", end);
         } catch (IOException e) {
             LogUtil.warn(BlackBoxPlugin.class.getName(), "Could not save the app export state of server capture " + id + ": " + e);
         }
-        deliverStopExport(id); // the upload came first and is waiting for it
+        deliverStopExport(id);
     }
 
     private static void deleteQuietly(Path f) {
         try {
             Files.deleteIfExists(f);
         } catch (IOException e) {
-            // a temp file of the capture: goes with its folder
         }
     }
 
-    /** The capture's appExport state, waiting up to ms while it is exporting (it may still be exporting then). */
     private static JSONObject waitForStopExport(String id, long ms) throws JSONException {
         long until = System.currentTimeMillis() + ms;
         while (true) {
@@ -1074,11 +945,9 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     }
 
     private static final Object DELIVERING = new Object();
-    /** Runs after a reader finds an export lost and before it saves that; tests use it to end the job in between. */
     static Runnable afterLostCheck = () -> {
     };
 
-    /** The capture's meta, with an app export whose job is gone ({@link ExportJobs#lost}) saved as failed. */
     static JSONObject captureMeta(String id) {
         ServerCaptureStore logs = ServerCapture.store();
         JSONObject pending = logs.readMeta(id);
@@ -1097,11 +966,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         return pending;
     }
 
-    /**
-     * A recording still waiting for an app export whose job is gone (a restart dropped it, or its capture's pending
-     * folder was swept): saved as failed, so its page stops waiting. A recording saved as lost while its stop's export
-     * still ran gets that export once it has ended (its own delivery may have failed). Returns the latest meta.
-     */
     static JSONObject settleAppExport(RecordingStore store, String id, JSONObject meta) {
         JSONObject state = meta.optJSONObject("appExport");
         if (state == null) {
@@ -1113,7 +977,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 JSONObject pending = ServerCapture.store().readMeta(capture);
                 JSONObject end = pending != null ? pending.optJSONObject("appExport") : null;
                 String ended = end != null ? end.optString("state") : "";
-                // Only an end to deliver: a capture still saying lost would just save the same state again
                 if (!"done".equals(ended) && !("failed".equals(ended) && !ExportJobs.wasLost(end))) {
                     return meta;
                 }
@@ -1122,9 +985,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 return meta;
             } else if (!capture.isEmpty()) {
                 if (captureMeta(capture) != null) {
-                    deliverStopExport(capture); // acts only once the stop's export has ended
+                    deliverStopExport(capture);
                 } else if (!ServerCaptureStore.isValidId(capture) || !Files.isDirectory(ServerCapture.store().dir(capture))) {
-                    // Swept, not just unreadable now (that is asked again next time); checked again on the latest meta
                     store.modifyMeta(id, m -> {
                         JSONObject waiting = m.optJSONObject("appExport");
                         if (waiting != null && "exporting".equals(waiting.optString("state")) && capture.equals(waiting.optString("capture"))) {
@@ -1136,7 +998,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 }
             } else if (ExportJobs.lost(state)) {
                 afterLostCheck.run();
-                // Checked again on the latest meta: the upload's job may have saved its end since
                 store.modifyMeta(id, m -> {
                     if (ExportJobs.lost(m.optJSONObject("appExport"))) {
                         m.put("appExport", ExportJobs.lostState());
@@ -1154,13 +1015,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
     }
 
-    /**
-     * A stop export that ended after its recording was uploaded: moves its apps in and lists them. Runs from both
-     * sides (the export's end, and the upload in case it ended just before), so it acts once: only while the
-     * recording still says appExport exporting from this capture, or failed as lost (a late end replaces that).
-     * DELIVERING is per plugin copy: during a reload both copies may run it at once; the second then finds the apps
-     * moved and saves the same state again.
-     */
     static void deliverStopExport(String captureId) {
         synchronized (DELIVERING) {
             try {
@@ -1174,14 +1028,13 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 RecordingStore store = store();
                 JSONObject meta = store.readMeta(rec);
                 JSONObject waiting = meta != null ? meta.optJSONObject("appExport") : null;
-                // Still waiting for this capture's export, or saved as lost while its job still ran (a late end replaces it)
                 boolean open = waiting != null && ("exporting".equals(waiting.optString("state")) || ExportJobs.wasLost(waiting));
                 if (!open || !captureId.equals(waiting.optString("capture"))) {
                     return;
                 }
                 JSONObject end = new JSONObject().put("state", state.optString("state"));
                 if (ExportJobs.wasLost(state)) {
-                    end.put("reason", "lost").put("capture", captureId); // keeps it open for a late end
+                    end.put("reason", "lost").put("capture", captureId);
                 }
                 JSONObject changes = new JSONObject().put("appExport", end);
                 if ("done".equals(state.optString("state"))) {
@@ -1192,13 +1045,12 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                     }
                 }
                 store.updateMeta(rec, changes);
-            } catch (IOException | RuntimeException e) { // JSONException is a RuntimeException
+            } catch (IOException | RuntimeException e) {
                 LogUtil.warn(BlackBoxPlugin.class.getName(), "Could not add the late app export of server capture " + captureId + ": " + e);
             }
         }
     }
 
-    /** An export at upload, run in the background: lists the apps in the recording when it ends. */
     private void finishUploadExport(String recId, java.util.concurrent.Callable<JSONArray> job) {
         JSONArray saved = null;
         try {
@@ -1217,10 +1069,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
     }
 
-    /**
-     * The app export the recording's stop made (see {@link #exportAtStop}), waiting a while if it still runs; null
-     * when there was none (no body at stop, another user's capture). After the wait it may still say exporting.
-     */
     private JSONObject appExportAtStop(String captureId, String owner) {
         long until = System.currentTimeMillis() + STOP_EXPORT_WAIT_MS;
         while (true) {
@@ -1242,38 +1090,25 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
     }
 
-    /**
-     * What the popup's quick settings may offer this user; every box starts unticked and asks for its part. apps also
-     * needs Access.mayExportApps (the export then checks each app); sample = Capture apps data; mask = Mask data;
-     * allServer needs canCaptureServerData. None needs the upload permission, which applies only to uploads.
-     */
     private JSONObject quickSettings(Access access, User user) throws JSONException {
         boolean apps = access.allows("allowAppExport", false) && access.mayExportApps();
         boolean sample = apps && access.allows("allowCaptureAppsData", false);
         return new JSONObject()
-                .put("serverCapture", true) // every recording is captured
+                .put("serverCapture", true)
                 .put("apps", apps)
                 .put("sample", sample)
-                .put("mask", sample && access.allows("allowMaskData", false)) // Mask data: admins always, others when allowed
-                .put("allServer", access.canCaptureServerData()) // opt-in per recording (allServer=true)
+                .put("mask", sample && access.allows("allowMaskData", false))
+                .put("allServer", access.canCaptureServerData())
                 .put("gauges", access.mayCapture("allowCaptureGauges"))
                 .put("traces", access.mayCapture("allowCaptureTraces"))
-                // Glowroot's whole-JVM data: with virtual hosts only when the server allows it (SHARED_GLOWROOT)
                 .put("otherTraces", access.mayCapture("allowCaptureTraces") && access.mayCapture(OTHER_TRACES)
-                        && glowrootShared.getAsBoolean()) // opt-in
+                        && glowrootShared.getAsBoolean())
                 .put("glowrootData", access.mayCapture("allowCaptureGlowrootData") && glowrootShared.getAsBoolean())
-                // Record browser secrets unmasked: admins always, others when allowed; the box starts unticked
                 .put("credentials", access.allows("allowUnmaskedCredentials", false))
-                // Record System Info secrets unmasked: admins always, others when allowed; the box starts unticked
                 .put("systemSecrets", access.allows("allowUnmaskedSystemInfo", false))
-                // Record license secrets unmasked: admins always, others when allowed; unticked. Enterprise only
-                // (Community has no license table)
                 .put("license", access.allows("allowUnmaskedLicense", false) && ServerInfo.hasLicense());
     }
 
-    // ---------- Glowroot traces ----------
-
-    /** The recording's traces (TraceStore.merge): the Traces tab polls this while some are pending. */
     private void traces(HttpServletResponse response, RecordingStore store, Access access, String id) throws IOException, JSONException {
         if (viewable(response, store, access, id) == null) {
             return;
@@ -1286,7 +1121,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         json(response, new JSONObject().put("traces", list).put("pending", TraceStore.pending(list)));
     }
 
-    /** The server load samples of each node (GaugeStore.merge), or {} when there are none. */
     private void gauges(HttpServletResponse response, RecordingStore store, Access access, String id) throws IOException {
         if (viewable(response, store, access, id) == null) {
             return;
@@ -1299,10 +1133,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         json(response, merged != null ? merged : new JSONObject());
     }
 
-    /**
-     * The Glowroot data packages (GlowrootPackager): without node, each node's status {nodes: [...]}; with node, that
-     * node's ZIP. For the same users as the other server data.
-     */
     private void glowrootData(HttpServletRequest request, HttpServletResponse response, RecordingStore store, Access access, String id)
             throws IOException, JSONException {
         if (viewable(response, store, access, id) == null) {
@@ -1325,10 +1155,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         sendFile(request, response, zip, "application/zip", id + "-glowroot-" + node + ".zip");
     }
 
-    /**
-     * Retry button: the failed traces (keys=k1,k2 or all) go back to pending, and the nodes that served them look in
-     * their Glowroot again (TraceCollector.requestRetry). Once per 20 seconds per recording, so Glowroot isn't hammered.
-     */
     private void retryTraces(HttpServletRequest request, HttpServletResponse response, RecordingStore store, Access access, String id)
             throws IOException, JSONException {
         if (viewable(response, store, access, id) == null) {
@@ -1360,10 +1186,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         json(response, new JSONObject().put("retried", n).put("traces", list).put("pending", TraceStore.pending(list)));
     }
 
-    /**
-     * One trace file: Glowroot's export page. It runs Glowroot's own script, so it is served sandboxed (no access to
-     * this site's cookies or pages).
-     */
     private void trace(HttpServletRequest request, HttpServletResponse response, RecordingStore store, Access access, String id)
             throws IOException {
         if (viewable(response, store, access, id) == null) {
@@ -1379,11 +1201,9 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         sendFile(request, response, store.traceFile(id, name), "text/html;charset=UTF-8", name);
     }
 
-    /** Moves the server data captured under captureId into the recording. Returns the summary for meta.json. */
-    /** withApps: take the apps exported at stop (only when that export is the one the recording uses). */
     private JSONObject attachServerCapture(RecordingStore store, String recId, String captureId, String owner, boolean withApps)
             throws JSONException {
-        ServerCapture.close(captureId); // flush this node's file
+        ServerCapture.close(captureId);
         try {
             JSONObject summary = ServerCapture.store().attach(captureId, owner, store.path(recId, RecordingStore.SYSTEM_LOG), withApps);
             if (summary != null) {
@@ -1392,24 +1212,18 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         } catch (IOException e) {
             LogUtil.error(getClassName(), e, "Could not attach the server capture of recording " + recId);
         }
-        // Never started, deleted after the keep period, or another user's
         return new JSONObject().put("status", "unavailable");
     }
 
-    /** Returns the meta when the user may view the recording, otherwise sends 404 and returns null. */
     private JSONObject viewable(HttpServletResponse response, RecordingStore store, Access access, String id) throws IOException {
         JSONObject meta = store.readMeta(id);
         if (meta == null || !access.canView(meta)) {
-            // 404 for both, so ids of other people's recordings can't be probed
             error(response, HttpServletResponse.SC_NOT_FOUND, "Recording not found.");
             return null;
         }
         return meta;
     }
 
-    // ---------- files ----------
-
-    /** Streams a file, with HTTP Range support so the video can seek. */
     static void sendFile(HttpServletRequest request, HttpServletResponse response, Path file, String contentType, String downloadName)
             throws IOException {
         if (file == null) {
@@ -1462,7 +1276,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
     }
 
-    /** Parses a single "bytes=a-b", "bytes=a-" or "bytes=-n" range; null when not satisfiable. */
     static long[] parseRange(String header, long length) {
         Matcher m = RANGE.matcher(header.trim());
         if (!m.matches() || length == 0) {
@@ -1496,12 +1309,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
     }
 
-    // ---------- helpers ----------
-
-    /**
-     * CSRFGuard only covers /web/*, so POSTs from the pages check the token here.
-     * The pages send it as a header, using the name and value from /web/json/directory/user/csrfToken.
-     */
     private static boolean validCsrfToken(HttpServletRequest request) {
         try {
             String name = SecurityUtil.getCsrfTokenName();
@@ -1512,7 +1319,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             }
             return MessageDigest.isEqual(submitted.getBytes(StandardCharsets.UTF_8), expected.getBytes(StandardCharsets.UTF_8));
         } catch (Exception e) {
-            return false; // CSRFGuard not ready: fail closed
+            return false;
         }
     }
 
@@ -1540,7 +1347,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         response.getWriter().write(body.toString());
     }
 
-    /** Error body: {"error":{"code":"401","message":"..."}}. */
     static void error(HttpServletResponse response, int status, String message) throws IOException {
         response.setStatus(status);
         try {
@@ -1550,7 +1356,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
     }
 
-    /** Permission checks for one request. Admins can always do everything. */
     class Access {
         final HttpServletRequest request;
         final User user;
@@ -1562,12 +1367,10 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             this.admin = admin;
         }
 
-        /** Server load, Glowroot traces, Glowroot data: admins always; other users when the setting is ticked. */
         boolean mayCapture(String setting) {
             return allows(setting, false);
         }
 
-        /** A setting that switches a feature on for non-admins (dflt: never saved); admins always have it. */
         boolean allows(String setting, boolean dflt) {
             return admin || flag(setting, dflt);
         }
@@ -1576,17 +1379,14 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             return admin || allowed("canUpload", true);
         }
 
-        /** View, and everything an owner does with their recording (delete). Admins: every recording. */
         boolean canView(JSONObject meta) {
             return admin || isOwner(meta);
         }
 
-        /** "Who can capture server data": all server log lines, and keeping a ZIP's server data on import. */
         boolean canCaptureServerData() {
             return admin || allowed("canCaptureServerData", false);
         }
 
-        /** Server data of one recording: also its uploader, who chose to record it. */
         boolean canViewServerData(JSONObject meta) {
             return canCaptureServerData() || (meta != null && isOwner(meta));
         }
@@ -1595,27 +1395,19 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             return admin || isOwner(meta);
         }
 
-        /**
-         * May this user have the app exported (definition and sample rows)? Joget admins and the app's own admins
-         * (as App Composer decides); other users only when "Who can export apps they don't administer" allows them
-         * and Joget lets them access the app (one of its userviews authorizes them).
-         */
         boolean canExportApp(AppDefinition def) {
             return isAppAdmin(def) || (allowed("canExportOtherApps", false) && canAccessApp(def));
         }
 
-        /** A Joget admin, or an admin of this app (AppAdmins). */
         boolean isAppAdmin(AppDefinition def) {
             return admin || AppAdmins.admits(AppAdmins.read(appSrc(), SecurityUtil.normalizedFileName(def.getAppId())),
                     user.getUsername(), groupIds());
         }
 
-        /** Before the apps are known (the popup): could this user have any app exported? */
         boolean mayExportApps() {
             return admin || allowed("canExportOtherApps", false) || AppAdmins.anyAdmits(appSrc(), user.getUsername(), groupIds());
         }
 
-        /** Joget's own userview check (permission and permission_rules) for the current user, on each userview. */
         private boolean canAccessApp(AppDefinition def) {
             if (def.getUserviewDefinitionList() == null) {
                 return false;
@@ -1656,7 +1448,6 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             return user.getUsername().equals(meta.optString("owner"));
         }
 
-        /** Runs the permission plugin chosen in the settings; an empty choice gives the default. */
         private boolean allowed(String property, boolean whenNotSet) {
             Object value = getProperty(property);
             if (!(value instanceof Map)) {
@@ -1670,7 +1461,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             PluginManager pm = (PluginManager) AppUtil.getApplicationContext().getBean("pluginManager");
             Object plugin = pm.getPlugin(className.toString());
             if (!(plugin instanceof Permission)) {
-                return false; // the chosen plugin is gone: deny
+                return false;
             }
             Permission permission = (Permission) plugin;
             if (setting.get("properties") instanceof Map) {

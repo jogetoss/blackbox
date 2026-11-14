@@ -1,10 +1,3 @@
-// Download Glowroot data opened in a standalone Glowroot, as its README.txt says: a recording with one slow and one
-// failed request, its Glowroot ZIP (the same one in the recording's Download ZIP), then for each Glowroot dist
-// (BB_GLOWROOT_DISTS, default 0.14.2 and 0.14.4 in ~/Joget) its offline viewer (java -jar glowroot.jar) on the ZIP's
-// data/ in a throwaway Java container, checked through Glowroot's UI and its backend API.
-//
-// The slow request: a form load while the test holds a WRITE lock on its table for 4 s (Glowroot's slow threshold is
-// 2 s). The failed one: the same load with its waiting query killed (KILL QUERY), which Joget answers with 500.
 const { execFileSync, spawn } = require('child_process');
 const fs = require('fs');
 const os = require('os');
@@ -15,30 +8,26 @@ const DB_CONTAINER = process.env.BB_DB_CONTAINER || 'mariadb';
 const DB = process.env.BB_DB || 'jw8';
 const DISTS = (process.env.BB_GLOWROOT_DISTS
   || ['0.14.2', '0.14.4'].map((v) => path.join(os.homedir(), 'Joget', `glowroot-${v}-dist.zip`)).join(',')).split(',');
-const PORT = Number(process.env.BB_GLOWROOT_PORT || 14000); // host port of the standalone Glowroot (container: 4000)
+const PORT = Number(process.env.BB_GLOWROOT_PORT || 14000);
 const JAVA_IMAGE = process.env.BB_JAVA_IMAGE || 'eclipse-temurin:17-jdk';
-const TABLE = 'rvp_sr_req'; // j8213's iService: form srReq
-const SLOW_URL = `${JOGET}/web/json/data/list/iService/list_srReq?e2e=`; // reads the table
-const FAILED_URL = `${JOGET}/web/json/data/form/load/iService/srReq/`; // a query error here is a 500
+const TABLE = 'rvp_sr_req';
+const SLOW_URL = `${JOGET}/web/json/data/list/iService/list_srReq?e2e=`;
+const FAILED_URL = `${JOGET}/web/json/data/form/load/iService/srReq/`;
 
 test.skip(LEGACY_EXTENSION, 'tests this extension only');
 
 const DB_EXEC = ['exec', '-i', DB_CONTAINER, 'sh', '-c', `mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -N -B ${DB}`];
 const sql = (query) => execFileSync('docker', DB_EXEC, { input: query, encoding: 'utf8' });
 
-/** Holds a WRITE lock on the table for `seconds` in its own DB session; resolves once it is held, with
- * { released }, a promise of its release (wrapped: an async function returning a promise would wait for it). */
 async function lockTable(seconds) {
   const p = spawn('docker', DB_EXEC, { stdio: ['pipe', 'ignore', 'inherit'] });
   p.stdin.end(`LOCK TABLES app_fd_${TABLE} WRITE; SELECT SLEEP(${seconds}); UNLOCK TABLES;`);
   const released = new Promise((ok) => p.on('exit', ok));
-  // the lock is held once the session sleeps
   await expect.poll(() => sql("SELECT COUNT(*) FROM information_schema.processlist WHERE info LIKE 'SELECT SLEEP%'").trim(),
     { timeout: 10_000 }).not.toBe('0');
   return { released };
 }
 
-/** A GET from the recorded tab: its status and how long it took. */
 const load = (page, url) => page.evaluate(async (url) => {
   const t = Date.now();
   const r = await fetch(url);
@@ -65,11 +54,9 @@ async function fetchBytes(page, url) {
   return Buffer.from(b64, 'base64');
 }
 
-/** A recording whose tab made one slow and one failed request, uploaded; its server data built. */
 async function recordSlowAndFailed(context, extensionId, joget) {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/recordings.html`);
-  // The popup's quick settings: Capture Glowroot trace files and Capture Glowroot data (both off until ticked)
   await page.evaluate((uploadUrl) => chrome.storage.local.set({ uploadUrl, quick: { traces: true, glowrootData: true } }),
     `${JOGET}/api/blackbox`);
   const worker = context.serviceWorkers()[0];
@@ -124,7 +111,6 @@ test('Download Glowroot data opens in a standalone Glowroot (slow and failed req
     rec = r.rec;
     console.log(`recording ${rec.id}: slow ${r.slow.status} in ${r.slow.ms} ms, failed ${r.failed.status} in ${r.failed.ms} ms`);
 
-    // BlackBox's own trace collection: the slow and the failed request each have a saved trace
     let traces = [];
     const saved = (part) => traces.find((t) => t.url?.includes(part) && t.state === 'saved');
     try {
@@ -132,12 +118,11 @@ test('Download Glowroot data opens in a standalone Glowroot (slow and failed req
         traces = (await api(joget, 'traces', { id: rec.id })).traces;
         return !!saved('/data/list/') && !!saved('/form/load/');
       }, { timeout: 120_000, intervals: [5000] }).toBe(true);
-    } catch { /* checked one by one below */ }
+    } catch { }
     console.log('traces', JSON.stringify(traces.map((t) => [t.url, t.status, t.ms, t.state, t.reason])));
     expect(saved('/data/list/'), 'the slow request\'s trace saved by BlackBox').toBeTruthy();
     expect.soft(saved('/form/load/'), 'the failed request\'s trace saved by BlackBox').toBeTruthy();
 
-    // Glowroot data of the node, built 30–90 s after the stop
     let nodes;
     await expect.poll(async () => {
       nodes = (await api(joget, 'glowroot', { id: rec.id })).nodes;
@@ -148,7 +133,6 @@ test('Download Glowroot data opens in a standalone Glowroot (slow and failed req
     const zip = path.join(dir, 'glowroot.zip');
     fs.writeFileSync(zip, await fetchBytes(joget, `${JOGET}/api/blackbox?action=glowroot&id=${rec.id}&node=${node.node}`));
 
-    // The same file is in the recording's Download ZIP
     const recZip = path.join(dir, 'recording.zip');
     fs.writeFileSync(recZip, await fetchBytes(joget, `${JOGET}/api/blackbox?action=download&format=zip&id=${rec.id}`));
     unzip(recZip, path.join(dir, 'recording'));
@@ -157,7 +141,6 @@ test('Download Glowroot data opens in a standalone Glowroot (slow and failed req
 
     const data = path.join(dir, 'data');
     unzip(zip, data);
-    // only data/ and README.txt: the offline viewer writes its own admin.json and config.json
     const entries = execFileSync('unzip', ['-Z1', zip], { encoding: 'utf8' }).trim().split('\n');
     expect(entries.filter((e) => !e.startsWith('data/')), 'files besides data/').toEqual(['README.txt']);
     expect(entries, 'data/').toContain('data/data.h2.db');
@@ -166,16 +149,12 @@ test('Download Glowroot data opens in a standalone Glowroot (slow and failed req
 
     for (const dist of DISTS) {
       const version = path.basename(dist).match(/glowroot-(.+)-dist\.zip/)[1];
-      // README steps 1-2: unzip the dist, copy data/ into its glowroot folder
       const home = path.join(dir, version);
       unzip(dist, home);
       const g = path.join(home, 'glowroot');
       fs.cpSync(path.join(data, 'data'), path.join(g, 'data'), { recursive: true });
-      // The viewer listens on 127.0.0.1 by default, unreachable from outside a container: as the README says, the
-      // bindAddress is 0.0.0.0 here (an admin.json with only that), and the port is published on the host's localhost
       fs.writeFileSync(path.join(g, 'admin.json'), JSON.stringify({ web: { bindAddress: '0.0.0.0' } }));
 
-      // README step 3: java -jar glowroot.jar, the offline viewer
       const name = `bb-e2e-glowroot-${version.replace(/\W/g, '')}-${Date.now()}`;
       containers.push(name);
       execFileSync('docker', ['run', '-d', '--name', name, '--user', `${process.getuid()}:${process.getgid()}`,
@@ -186,9 +165,7 @@ test('Download Glowroot data opens in a standalone Glowroot (slow and failed req
       await expect.poll(async () => (await ui.request.get(base + '/').catch(() => null))?.status() ?? 0,
         { timeout: 120_000, intervals: [2000] }).toBe(200);
 
-      // README step 4: the recording's transactions and its traces, in the UI
       const window = `transaction-type=Web&from=${from}&to=${to}`;
-      // Glowroot lists error traces under error/points, slow ones under transaction/points
       const get = async (p) => (await ui.request.get(`${base}/backend/${p}?agent-rollup-id=&${window}&duration-millis-low=0&limit=100`)).json();
       const errorTraces = (await get('error/points')).errorPoints || [];
       const normalTraces = (await get('transaction/points')).normalPoints || [];
@@ -196,7 +173,6 @@ test('Download Glowroot data opens in a standalone Glowroot (slow and failed req
       expect(errorTraces.length, `Glowroot ${version}: the failed request's trace`).toBeGreaterThanOrEqual(1);
       expect(normalTraces.some((p) => p[1] >= 2000), `Glowroot ${version}: the slow request's trace (≥ 2 s)`).toBe(true);
 
-      // Each trace carries the BlackBox recording attribute (the capture id)
       for (const p of [errorTraces[0], normalTraces.find((x) => x[1] >= 2000)]) {
         const header = await (await ui.request.get(`${base}/backend/trace/header?agent-id=&trace-id=${p[3]}`)).json();
         expect(JSON.stringify(header.attributes || {}), `Glowroot ${version}: trace ${p[3]} tagged`).toContain(r.capture.id);

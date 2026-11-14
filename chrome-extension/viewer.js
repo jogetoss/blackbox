@@ -1,30 +1,25 @@
-// Replay viewer: plays recording.webm and keeps the console/network lists in sync with the playhead.
-// Every recorded entry has t = ms since start = position in the video.
-// All recorded text is shown with textContent, never innerHTML: it comes from untrusted pages.
-
 const $ = (id) => document.getElementById(id);
 const video = $('video');
 
-let current = { video: null, report: null, systemLog: null }; // what the user has loaded so far
+let current = { video: null, report: null, systemLog: null };
 let report = null;
 let durationMs = 0;
 let hasVideo = false;
-let manualMs = 0;          // playhead position when there is no video
+let manualMs = 0;
 let fixingDuration = false;
 let tab = 'console';
-let rows = [];             // { t, el, item } for the visible list, sorted by t
-let pastCount = 0;         // rows[0 .. pastCount-1] have t <= playhead
+let rows = [];
+let pastCount = 0;
 let selectedEl = null;
 let videoUrl = null;
-let issues = [];           // sorted t of console errors, failed requests and server errors
-let serverItems = [];      // system log entries with t (server replay page only, see prepareSystemLog)
-let serverOffset = 0;      // ms the server clock is ahead of the browser's (0 when too small to matter)
-let traceItems = [];       // Glowroot traces with t (server replay page only, see prepareTraces)
-let traceLink = null;      // (trace) => URL of its full trace page, or null (see blackboxOpen)
-let traceRetry = null;     // async (keys) => asks the server to look for failed traces again, or null
-const GLOWROOT_KEEP_MS = 14 * 24 * 3600 * 1000; // Glowroot's default trace retention
+let issues = [];
+let serverItems = [];
+let serverOffset = 0;
+let traceItems = [];
+let traceLink = null;
+let traceRetry = null;
+const GLOWROOT_KEEP_MS = 14 * 24 * 3600 * 1000;
 
-// Filter list per tab (none on the System logs tab). Console levels are picked with checkboxes (LEVEL_BOXES).
 const FILTERS = {
   console: [
     ['all', 'All sources'],
@@ -39,7 +34,7 @@ const FILTERS = {
     ['other', 'Other (scripts, images…)'],
   ],
 };
-const TRACE_FILTERS = [ // the recording's own traces; 'others' is added when there are other users' traces
+const TRACE_FILTERS = [
   ['all', 'All traces'],
   ['saved', 'Saved'],
   ['pending', 'Still being collected'],
@@ -49,18 +44,12 @@ FILTERS.traces = TRACE_FILTERS;
 
 const TRACE_STATES = { saved: '✓ saved', pending: '⏳ waiting', none: '– none', failed: '✕ failed' };
 
-// Level checkboxes per tab: [value, label]. All are ticked at first.
-// Server: the request entries the BlackBox plugin adds (not in Joget's log) are not listed; a network request's
-// details show its own.
 const LEVEL_BOXES = {
   console: [['DEBUG', 'DEBUG'], ['LOG', 'LOG'], ['INFO', 'INFO'], ['WARN', 'WARN'], ['ERROR', 'ERROR'], ['NAV', 'Navigations']],
   server: [['DEBUG', 'DEBUG'], ['INFO', 'INFO'], ['WARN', 'WARN'], ['ERROR', 'ERROR'], ['FATAL', 'FATAL']],
 };
 const pickedLevels = Object.fromEntries(Object.entries(LEVEL_BOXES).map(([t, list]) => [t, new Set(list.map(([v]) => v))]));
 
-// ---------- loading ----------
-
-// The extension's recordings list is a separate page (recordings.html); replay.js loads one recording here.
 $('files').onchange = (e) => { loadFiles([...e.target.files]).catch(showError); e.target.value = ''; };
 $('videoFile').onchange = (e) => { loadFiles([...e.target.files]).catch(showError); e.target.value = ''; };
 
@@ -72,17 +61,6 @@ document.addEventListener('drop', (e) => {
   loadFiles([...e.dataTransfer.files]).catch(showError);
 });
 
-// Lets a host page (e.g. a server that shows uploaded recordings) open a recording: video = URL or Blob (or null),
-// report = parsed session.json, extra.systemLog = parsed system-log.json (shows the System logs tab),
-// extra.title = the title in the header (default: the recorded tab's title),
-// extra.info = { label: value } shown first in the Info tab (e.g. who uploaded it),
-// extra.traces = Glowroot traces of the recorded requests (shows the Traces tab; see blackboxSetTraces),
-// extra.traceUrl = (trace) => URL of a saved trace's full page, or null when the page is not available,
-// extra.retryTraces = async (keys) => asks the server to look again for failed traces ([] = all failed ones),
-// extra.gauges = { nodes: { name: [samples] } }: the server load during the recording (shows the Server load strip),
-// extra.serverInfo = { license, system, blackbox }: System Info at recording start (shown in the Info tab),
-// extra.apps = parsed app/apps.json: the apps exported at upload (shows the App tab),
-// extra.appFileUrl = (file) => URL of an exported .jwa, or null when the files are not available here.
 window.blackboxOpen = (videoSrc, sessionReport, extra) => {
   current = {
     video: videoSrc || null, report: sessionReport, systemLog: extra?.systemLog || null, traces: extra?.traces || null,
@@ -97,7 +75,6 @@ window.blackboxOpen = (videoSrc, sessionReport, extra) => {
   openRecording();
 };
 
-// New trace states (the server page polls while some are still being collected)
 window.blackboxSetTraces = (list) => {
   current.traces = list;
   if (!report) return;
@@ -108,8 +85,6 @@ window.blackboxSetTraces = (list) => {
 
 window.blackboxShowError = (e) => showError(e);
 
-// Older / Newer in the header, set by the page that knows the list (extension: Recordings page rows, newest
-// first; server: the user's list). Each is { href, title } or null; pos and total give "3 / 10".
 window.blackboxSetNeighbours = ({ older, newer, pos, total }) => {
   const link = (a, target, word) => {
     a.classList.toggle('disabled', !target);
@@ -124,7 +99,6 @@ window.blackboxSetNeighbours = ({ older, newer, pos, total }) => {
   $('recNav').hidden = !total;
 };
 
-// Unloads the open recording and goes back to the empty screen (nothing is deleted).
 window.blackboxClose = () => {
   video.pause();
   video.removeAttribute('src');
@@ -143,15 +117,12 @@ window.blackboxClose = () => {
   $('empty').hidden = false;
 };
 
-// The loaded recording, for the extension's Upload and Download.
 window.blackboxCurrent = () => current;
 
 async function loadFiles(files) {
   const name = (f) => f.name.toLowerCase();
   const zip = files.find((f) => name(f).endsWith('.zip'));
   if (zip) {
-    // A recording ZIP (Download ZIP on the server) is a whole recording: it replaces what is open.
-    // Its system-log.json is not shown here; system logs are shown on the server's replay page.
     const parts = await readZip(zip);
     if (!parts.has('session.json')) throw new Error(`${zip.name} has no session.json: it is not a BlackBox recording ZIP.`);
     current = { video: null, report: null, systemLog: null };
@@ -160,7 +131,6 @@ async function loadFiles(files) {
   }
   const json = files.find((f) => name(f).endsWith('.json'));
   const webm = files.find((f) => name(f).endsWith('.webm') || f.type.startsWith('video/'));
-  // Files picked here are not named by the page's address: no ?t= for them
   window.blackboxTimeInUrl = false;
   if (!json && !webm) throw new Error(`Not a recording file: ${files.map((f) => f.name).join(', ')}. Pick recording.webm and session.json.`);
   if (webm && webm.size === 0) throw new Error(`${webm.name} is empty (0 bytes): the video was not recorded.`);
@@ -191,7 +161,6 @@ function openRecording() {
   video.hidden = !hasVideo;
   $('noVideo').hidden = hasVideo;
   if (hasVideo) {
-    // A string is a URL (a server streams the video); a Blob/File is local
     if (typeof current.video === 'string') {
       video.src = current.video;
     } else {
@@ -204,16 +173,13 @@ function openRecording() {
 
   const rec = r.recording || {};
   const tabInfo = rec.tab || {};
-  // Start time, length, surface and the tab's URL are in the Info tab; the header only names the recording
   $('recTitle').textContent = current.title || tabInfo.title || tabInfo.url || 'BlackBox replay';
-  // The same browser tab title on every replay page
   document.title = 'BlackBox Replay · ' + $('recTitle').textContent;
   $('recTitle').title = tabInfo.url || '';
 
   $('consoleCount').textContent = r.console.length;
   $('networkCount').textContent = r.network.length;
   serverItems = prepareSystemLog(current.systemLog, r);
-  // All-server captures add other threads' lines: a filter, the tab's own lines first
   if (serverItems.some((e) => e.other)) {
     FILTERS.server = [['tab', 'This tab only'], ['all', 'This tab + other server threads'], ['other', 'Other server threads only']];
   } else {
@@ -249,7 +215,7 @@ function openRecording() {
   renderApps();
   setTab(tab);
   startMs = Math.min(timeFromUrl(), durationMs);
-  if (startMs) seek(startMs); // before the video loads, this sets where it starts
+  if (startMs) seek(startMs);
   else onTime();
 }
 
@@ -259,24 +225,17 @@ video.addEventListener('error', () => {
   showError(`The video can't be played (${e?.message || 'media error ' + e?.code}). Is it the recording.webm from the same folder?`);
 });
 
-// MediaRecorder WebM files have no duration, so the browser reports Infinity and can't seek.
-// Seeking far past the end makes it scan the file and find the real duration.
 video.addEventListener('loadedmetadata', () => {
   if (video.duration !== Infinity) return;
   fixingDuration = true;
   video.addEventListener('durationchange', () => {
-    video.currentTime = startMs / 1000; // back to the start, or to ?t=
+    video.currentTime = startMs / 1000;
     fixingDuration = false;
   }, { once: true });
   video.currentTime = 1e101;
 });
 
-// ---------- time in the address ----------
-
-// Pages whose address names one recording (extension ?id= / ?disk=, server ?id=, the downloaded file) set
-// window.blackboxTimeInUrl: then ?t=<seconds> opens it at that moment, and the address follows the playhead
-// (replaceState: no new Back step per seek), so it can be copied as a link to that moment.
-let startMs = 0;           // where the open recording starts (from ?t=)
+let startMs = 0;
 let urlTimer = null;
 
 function timeFromUrl() {
@@ -294,13 +253,11 @@ function saveTimeInUrl() {
     const q = params.toString();
     try {
       history.replaceState(history.state, '', location.pathname + (q ? '?' + q : '') + location.hash);
-    } catch (e) { /* a file:// page may refuse: the time just isn't in the address */ }
+    } catch (e) { }
   }, 250);
 }
 video.addEventListener('seeked', saveTimeInUrl);
 video.addEventListener('pause', saveTimeInUrl);
-
-// ---------- playhead ----------
 
 function nowMs() {
   return hasVideo ? video.currentTime * 1000 : manualMs;
@@ -344,7 +301,6 @@ function onTime() {
   }
 }
 
-// Number of rows with t <= ms.
 function upperBound(list, ms) {
   let lo = 0, hi = list.length;
   while (lo < hi) {
@@ -392,12 +348,7 @@ function renderMarkers() {
   for (const e of serverItems.filter(isServerError)) add(e.t, 'server', `Server: ${serverText(e)}`, () => openRow('server', e));
 }
 
-// ---------- network overview ----------
-
-// Like the DevTools Network overview, on the Network tab only: one bar per request, from its start (t) to its end
-// (t + durationMs), on the same time axis as the timeline under the video. Drag across it to list only the requests active in that range; a click
-// seeks, a double-click or ✕ shows all requests again.
-let netRange = null;       // [fromMs, toMs] picked on the overview, or null
+let netRange = null;
 const ov = buildOverview();
 
 function buildOverview() {
@@ -430,7 +381,6 @@ function buildOverview() {
   return { box, strip, canvas, sel, playhead, range, rangeText };
 }
 
-// Bar colour group of a request
 function netKind(n) {
   if (isBad(n)) return 'failed';
   if (n.type === 'Document') return 'doc';
@@ -455,18 +405,16 @@ function drawOverview() {
     .map((p) => p.split(':')).map(([k, v]) => [k, css.getPropertyValue(v).trim()]));
   const x = (ms) => (ms / durationMs) * w;
 
-  // Page navigations: full-height lines, like DevTools' load lines
   g.globalAlpha = 0.5;
   g.fillStyle = colors.doc;
   for (const n of report.navigations || []) g.fillRect(Math.round(x(n.t)), 0, 1, h);
 
-  // Requests: each goes in the first lane free at its start, so parallel requests stack
   const BAR = 3, GAP = 1;
   const laneEnd = new Array(Math.max(1, Math.floor((h - 2) / (BAR + GAP)))).fill(-Infinity);
   for (const n of [...report.network].sort((a, b) => a.t - b.t)) {
     const x0 = x(n.t), x1 = Math.max(x0 + 2, x(n.t + (n.durationMs || 0)));
     let lane = laneEnd.findIndex((end) => end < x0);
-    if (lane < 0) lane = laneEnd.indexOf(Math.min(...laneEnd)); // all busy: the lane that frees first
+    if (lane < 0) lane = laneEnd.indexOf(Math.min(...laneEnd));
     laneEnd[lane] = x1 + 1;
     const kind = netKind(n);
     g.globalAlpha = kind === 'other' ? 0.6 : 1;
@@ -476,7 +424,6 @@ function drawOverview() {
   g.globalAlpha = 1;
 }
 
-// Redraw when the strip is resized, the page is zoomed (Text size) or the theme changes
 new ResizeObserver(() => drawOverview()).observe(ov.strip);
 new MutationObserver(() => drawOverview()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'style'] });
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => drawOverview());
@@ -514,7 +461,6 @@ function showSelection(a, b) {
   ov.sel.style.width = pct(Math.abs(b - a));
 }
 
-// Only the range's look; the caller renders the list
 function showNetRange(range) {
   netRange = range;
   ov.range.hidden = !range;
@@ -522,7 +468,6 @@ function showNetRange(range) {
   showSelection(...(range || []));
 }
 
-// The Network list shows only the requests active in the picked range
 function setNetRange(range) {
   if (!range && !netRange) return;
   showNetRange(range);
@@ -533,7 +478,6 @@ function inNetRange(n) {
   return !netRange || (n.t <= netRange[1] && n.t + (n.durationMs || 0) >= netRange[0]);
 }
 
-// A request's bar in its list row: on the whole recording, or on the picked range
 function waterfall(n) {
   const [from, to] = netRange || [0, durationMs];
   const span = Math.max(1, to - from);
@@ -548,17 +492,13 @@ function waterfall(n) {
   return box;
 }
 
-// ---------- server load ----------
-
-// Under the Issues timeline, same time axis: one node's load sampled every second by the plugin (GaugeSampler).
-// Lines are % of their maximum (CPU, heap, busy request threads, DB connections); GC time is drawn as bars.
 const LOAD_SERIES = [
   ['cpu', 'CPU', '--g-cpu', (s) => s.cpu, (s) => `${Math.round(s.cpu * 100)}%`],
   ['heap', 'Heap', '--g-heap', (s) => s.heapMax && s.heapUsed / s.heapMax, (s) => `${gb(s.heapUsed)} / ${gb(s.heapMax)} GB`],
   ['threads', 'Busy threads', '--g-threads', (s) => s.threadsMax && s.threadsBusy / s.threadsMax, (s) => `${s.threadsBusy} / ${s.threadsMax}`],
   ['db', 'DB connections', '--g-db', (s) => s.dbMax && s.dbActive / s.dbMax, (s) => `${s.dbActive} / ${s.dbMax}${s.dbWaiting ? `, ${s.dbWaiting} waiting` : ''}`],
 ];
-let loadSamples = [];      // the shown node's samples, with t
+let loadSamples = [];
 const load = buildLoad();
 
 function gb(bytes) {
@@ -625,7 +565,6 @@ function drawLoad() {
   const css = getComputedStyle(document.documentElement);
   const x = (ms) => (ms / durationMs) * w;
   const y = (f) => h - 2 - Math.max(0, Math.min(1, f)) * (h - 4);
-  // GC: bars of the share of each second spent in GC
   g.fillStyle = css.getPropertyValue('--g-gc').trim();
   g.globalAlpha = 0.6;
   const barW = Math.max(2, x(1000) - 1);
@@ -649,7 +588,6 @@ function drawLoad() {
 new MutationObserver(() => drawLoad()).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme', 'style'] });
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => drawLoad());
 
-// The values at the mouse (or the playhead when the mouse leaves)
 function showReadout(ms) {
   if (!loadSamples.length) { load.readout.textContent = ''; return; }
   const at = ms ?? nowMs();
@@ -661,11 +599,6 @@ function showReadout(ms) {
   load.readout.textContent = parts.join(' · ');
 }
 
-// ---------- apps ----------
-
-// Which Joget app a URL names, by the plugin's rules (AppExport.appOf): userview, embed, form/datalist, builder and
-// JSON API paths, process definition ids (app#version#process) and appId parameters. App icons and userview
-// screenshots (App Center loads them for every app) name none.
 const APP_ID = '([A-Za-z0-9_-]+)';
 const APP_PATTERNS = [
   new RegExp(`/web/(?:embed/)?(?:userview|ulogin|mobile|mapp)/${APP_ID}(?:/|$|\\?)`),
@@ -675,17 +608,17 @@ const APP_PATTERNS = [
   new RegExp(`[?&]appId=${APP_ID}(?:&|$)`),
 ];
 const APP_RESOURCE = /\/web\/(?:app\/[A-Za-z0-9_-]+\/(?:\d+\/)?resources\/|userview\/screenshot\/)/;
-const APP_COLORS = 6;      // --app-0 .. --app-5 in viewer.css, by order of first appearance
+const APP_COLORS = 6;
 
-let appSegments = [];      // [{ app, from, to }]: whose page the tab showed when (null app: a page of no app)
-let appProblems = {};      // app id -> [{ t, kind, item, text }]: failed requests, console and server errors
-let appColor = {};         // app id -> colour index
+let appSegments = [];
+let appProblems = {};
+let appColor = {};
 const appOfCache = new WeakMap();
 
 function appOf(url) {
   if (!url) return null;
   let u = url;
-  try { u = decodeURIComponent(url); } catch (e) { /* keep it as it is */ }
+  try { u = decodeURIComponent(url); } catch (e) { }
   if (APP_RESOURCE.test(u)) return null;
   for (const p of APP_PATTERNS) {
     const m = p.exec(u);
@@ -694,8 +627,6 @@ function appOf(url) {
   return null;
 }
 
-// The page the tab showed: a document's own URL, else the request's Referer (only paths under /web/, so a Referer cut
-// to the origin says nothing). Each one says which app's page was on screen from then on.
 function buildAppSegments(r) {
   const signals = [];
   for (const n of r.network) {
@@ -711,7 +642,6 @@ function buildAppSegments(r) {
     if (last) last.to = s.t;
     segs.push({ app: s.app, from: segs.length ? s.t : 0, to: durationMs });
   }
-  // A late request of the page just left flips back for a moment: under half a second between the same app, merged
   for (let i = 1; i < segs.length - 1; i++) {
     if (segs[i].to - segs[i].from < 500 && segs[i - 1].app === segs[i + 1].app) {
       segs[i - 1].to = segs[i + 1].to;
@@ -729,7 +659,6 @@ function pageAppAt(t) {
   return appSegments.length && t >= durationMs ? appSegments[appSegments.length - 1].app : null;
 }
 
-// The app of a list row: the one its URL names, else the one on screen then. Other server threads' lines: none.
 function itemApp(item) {
   if (appOfCache.has(item)) return appOfCache.get(item);
   let app;
@@ -758,7 +687,6 @@ function appName(id) {
   return a?.name || (id === 'appcenter' ? 'App Center' : id);
 }
 
-// "2 server errors · 1 failed request"
 function problemText(list) {
   const n = (kind) => list.filter((p) => p.kind === kind).length;
   const part = (k, one) => (n(k) ? `${n(k)} ${one}${n(k) === 1 ? '' : 's'}` : '');
@@ -769,8 +697,6 @@ function inUseMs(app) {
   return appSegments.filter((sg) => sg.app === app).reduce((sum, sg) => sum + sg.to - sg.from, 0);
 }
 
-// Under the Issues timeline, same time axis: which app's page the tab showed. Click a stretch to seek there and list
-// only that app's requests and log lines.
 const lane = buildLane();
 
 function buildLane() {
@@ -811,18 +737,12 @@ function drawLane() {
   }));
 }
 
-// ---------- system log ----------
-
-// Entries have ts = server clock (epoch ms). t = ts - recording start, minus the server clock's offset, measured
-// from the X-BlackBox-Time header the plugin adds to the tagged responses (server time when the request arrived).
-// Small offsets are mostly network delay, so only an offset over 250 ms is corrected.
 function prepareSystemLog(log, r) {
   serverOffset = 0;
   const start = Date.parse(r.recording?.startedAt);
   if (!log || !start) return [];
   const offsets = [];
   for (const n of r.network) {
-    // A cached response keeps the header of when it was first fetched (maybe days ago): only fresh ones count
     if (n.fromCache) continue;
     const v = Number(header(n.responseHeaders, 'x-blackbox-time'));
     if (v) offsets.push(v - (start + n.t));
@@ -835,7 +755,6 @@ function prepareSystemLog(log, r) {
   return (log.entries || []).map((e) => ({ ...e, t: e.ts - start - serverOffset, lvl: serverLevel(e) }));
 }
 
-// Timeline markers and Prev/Next issue: error log lines (a failed request already has a network marker)
 function isServerError(e) {
   return e.kind === 'log' && e.lvl === 'error';
 }
@@ -856,13 +775,11 @@ function header(headers, name) {
   return undefined;
 }
 
-// The log lines written while serving a server request entry
 function requestLines(req) {
   const key = `${req.method} ${req.url}`;
   return serverItems.filter((x) => x.kind === 'log' && x.req === key && x.ts >= req.ts && x.ts <= req.ts + req.ms + 5);
 }
 
-// The server request entry of a recorded network request: same method and path, nearest in time
 function serverRequestFor(n) {
   const u = safeUrl(n.url);
   if (!u || !serverItems.length) return null;
@@ -886,18 +803,11 @@ function serverList(items) {
   return box;
 }
 
-// ---------- resizable panes ----------
-
-// Drag the grip left of the panel (its width) or above the detail pane (its height), or focus it and use the arrow
-// keys (Shift: bigger steps); double-click resets it. Sizes are CSS variables on #app, so the one-column layout of
-// narrow windows still wins. Remembered per browser. `edge` measures from the panel itself (not #app, which has
-// padding); `keep` is the room left for the video (or the list) plus #app's padding and gap.
 const SPLITS = {
   panel: { varName: '--panel-w', min: 320, edge: 'left', box: () => $('app'), keep: 372, label: 'Resize the video and the panel', keys: { ArrowLeft: 1, ArrowRight: -1 } },
   detail: { varName: '--detail-h', min: 80, edge: 'top', box: () => document.querySelector('.panel'), keep: 120, label: 'Resize the detail pane', keys: { ArrowUp: 1, ArrowDown: -1 } },
 };
 
-// The size to set for a wanted size in page pixels: within the splitter's minimum and the room its box leaves
 function fitSplit(name, px) {
   const sp = SPLITS[name];
   const zoom = parseFloat(document.documentElement.style.zoom) || 1;
@@ -930,9 +840,8 @@ function addSplitter(name, host, cls) {
     e.preventDefault();
     document.body.classList.add(`resizing-${cls}`);
     const move = (ev) => {
-      // Rects and pointer positions are in zoomed pixels; the size is set in the page's own (Text size) pixels
       const zoom = parseFloat(document.documentElement.style.zoom) || 1;
-      const edge = host.getBoundingClientRect(); // the panel's right edge / the detail pane's bottom edge
+      const edge = host.getBoundingClientRect();
       const px = sp.edge === 'left' ? edge.right - ev.clientX : edge.bottom - ev.clientY;
       setSplit(name, fitSplit(name, px / zoom));
     };
@@ -958,7 +867,7 @@ function setSplit(name, px) {
 
 function saveSplits() {
   const sizes = Object.fromEntries(Object.entries(SPLITS).map(([n, sp]) => [n, parseInt($('app').style.getPropertyValue(sp.varName)) || 0]));
-  try { localStorage.setItem('bb-splits', JSON.stringify(sizes)); } catch (e) { /* not remembered */ }
+  try { localStorage.setItem('bb-splits', JSON.stringify(sizes)); } catch (e) { }
 }
 
 addSplitter('panel', document.querySelector('.panel'), 'split-x');
@@ -966,9 +875,7 @@ addSplitter('detail', $('detail'), 'split-y');
 try {
   const sizes = JSON.parse(localStorage.getItem('bb-splits') || '{}');
   for (const n of Object.keys(SPLITS)) if (sizes[n] > 0) setSplit(n, sizes[n]);
-} catch (e) { /* storage blocked: default sizes */ }
-
-// ---------- tabs and lists ----------
+} catch (e) { }
 
 document.querySelectorAll('.tabs button[data-tab]').forEach((b) => { b.onclick = () => setTab(b.dataset.tab); });
 $('search').oninput = () => renderList();
@@ -976,7 +883,6 @@ $('filter').onchange = () => renderList();
 $('hideFuture').onchange = () => $('list').classList.toggle('hide-future', $('hideFuture').checked);
 $('detailClose').onclick = () => closeDetail();
 
-// Network and System logs: only one app's rows (its URLs, or made while its page was on screen)
 const appFilter = el('select', 'app-filter');
 appFilter.title = 'Only the requests and log lines of one app';
 appFilter.onchange = () => renderList();
@@ -1003,13 +909,13 @@ function pickApp(id) {
 function setTab(name) {
   tab = name;
   document.querySelectorAll('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
-  const isInfo = name === 'info' || name === 'apps'; // a page of text: no toolbar or list
+  const isInfo = name === 'info' || name === 'apps';
   $('toolbar').hidden = isInfo;
   $('list').hidden = isInfo;
   $('info').hidden = name !== 'info';
   if ($('appsPage')) $('appsPage').hidden = name !== 'apps';
   if (isInfo) tabNote.hidden = true;
-  ov.box.hidden = name !== 'network'; // shown: the ResizeObserver draws it
+  ov.box.hidden = name !== 'network';
   if (!isInfo) {
     $('filter').hidden = !FILTERS[name];
     appFilter.hidden = !(name === 'network' || name === 'server') || Number(appFilter.dataset.count || 0) < 2;
@@ -1020,14 +926,12 @@ function setTab(name) {
   closeDetail();
 }
 
-// The filter list's options for a tab: on a tab switch from its first option; with keep (new options for the open
-// tab), only when they changed, and the chosen one stays chosen
 function fillFilter(name, keep) {
   if (!FILTERS[name]) return;
   const sel = $('filter');
   const chosen = sel.value;
   if (keep && [...sel.options].map((o) => o.value + '\n' + o.textContent).join('\n')
-    === FILTERS[name].map(([v, label]) => v + '\n' + label).join('\n')) return; // unchanged: an open list stays open
+    === FILTERS[name].map(([v, label]) => v + '\n' + label).join('\n')) return;
   sel.replaceChildren(...FILTERS[name].map(([v, label]) => {
     const o = el('option', null, label);
     o.value = v;
@@ -1036,7 +940,6 @@ function fillFilter(name, keep) {
   if (keep && FILTERS[name].some(([v]) => v === chosen)) sel.value = chosen;
 }
 
-// A tab's level checkboxes, made on first use next to the filter list
 function levelBoxes(name) {
   let box = $('levels-' + name);
   if (box) return box;
@@ -1058,7 +961,6 @@ function levelBoxes(name) {
   return box;
 }
 
-// Console entry level -> checkbox: console.* types, CDP Log levels (verbose, info, warn, error), exceptions (error)
 function consoleLevel(item) {
   switch (item.level) {
     case 'nav': return 'NAV';
@@ -1066,7 +968,7 @@ function consoleLevel(item) {
     case 'warn': return 'WARN';
     case 'info': return 'INFO';
     case 'debug': case 'verbose': return 'DEBUG';
-    default: return 'LOG'; // log, dir, table, trace, count, group…
+    default: return 'LOG';
   }
 }
 
@@ -1189,9 +1091,6 @@ function traceRow(e) {
   return row;
 }
 
-// ---------- Glowroot traces ----------
-
-// Trace entries have ts = server clock, like the system log: same start and clock offset (prepareSystemLog runs first)
 function prepareTraces(list, r) {
   const start = Date.parse(r.recording?.startedAt);
   return (list || []).map((e) => ({ ...e, kind: 'trace', t: start ? e.ts - start - serverOffset : 0 }))
@@ -1199,10 +1098,9 @@ function prepareTraces(list, r) {
 }
 
 function updateTracesTab() {
-  // Other users' traces (capture option otherTraces): their own filter, never mixed into this recording's
   const others = traceItems.filter((e) => e.other && e.state === 'saved').length;
   FILTERS.traces = TRACE_FILTERS.concat(traceItems.some((e) => e.other) ? [['others', `Other users' traces (${others})`]] : []);
-  if (tab === 'traces') fillFilter('traces', true); // other traces arrive about 30 s after the stop, maybe with the tab open
+  if (tab === 'traces') fillFilter('traces', true);
   if (!$('tracesTab')) return;
   $('tracesTab').hidden = !current.traces;
   const own = traceItems.filter((e) => !e.other);
@@ -1212,13 +1110,10 @@ function updateTracesTab() {
     + (own.length < traceItems.length ? '. Other users\' traces: pick them in the list\'s filter' : '');
 }
 
-// Above the Traces list: says when traces are still coming, or why there are none
 const tabNote = el('div', 'tab-note');
 tabNote.hidden = true;
 $('list').before(tabNote);
 
-// Only this server's own entries can be looked up again (TraceCollector.retryable): not imported ones, nor ones
-// recorded before traces were matched by the capture's tag
 const canRetry = (e) => e.state === 'failed' && !e.imported && !e.other && !!e.capture;
 
 function renderTabNote() {
@@ -1249,7 +1144,6 @@ async function retryTraces(keys, button) {
   }
 }
 
-// The trace of a recorded network request: same method and path, nearest in time
 function traceFor(n) {
   const u = safeUrl(n.url);
   if (!u) return null;
@@ -1326,7 +1220,6 @@ function traceDetail(item, body, actions) {
   }
 }
 
-// Clicking a timeline marker: show its row (switching tab if needed) and its details.
 function openRow(kind, item) {
   if (tab !== kind) setTab(kind);
   const r = rows.find((x) => x.item === item);
@@ -1340,8 +1233,6 @@ function select(rowEl, item) {
   rowEl.classList.add('selected');
   showDetail(item);
 }
-
-// ---------- detail pane ----------
 
 function closeDetail() {
   $('detail').hidden = true;
@@ -1439,19 +1330,16 @@ function responseBody(n) {
   return box;
 }
 
-// Every value is single-quoted for the shell: session.json can be crafted, and this text gets pasted into a terminal
 function toCurl(n) {
   const q = (s) => `'${String(s).replace(/'/g, `'\\''`)}'`;
   const url = String(n.url || '');
-  const parts = [`curl ${url.startsWith('-') ? '--url ' : ''}${q(url)}`]; // a URL can't pass as a curl option
-  const method = /^[A-Za-z]{1,20}$/.test(n.method || '') ? n.method.toUpperCase() : 'GET'; // HTTP methods are letters only
+  const parts = [`curl ${url.startsWith('-') ? '--url ' : ''}${q(url)}`];
+  const method = /^[A-Za-z]{1,20}$/.test(n.method || '') ? n.method.toUpperCase() : 'GET';
   if (method !== 'GET') parts.push(`-X ${q(method)}`);
   for (const [k, v] of Object.entries(n.requestHeaders || {})) parts.push(`-H ${q(`${k}: ${v}`)}`);
   if (n.postData) parts.push(`--data-raw ${q(n.postData)}`);
   return parts.join(' \\\n  ');
 }
-
-// ---------- info tab ----------
 
 function renderInfo() {
   const rec = report.recording || {};
@@ -1468,34 +1356,29 @@ function renderInfo() {
       'Console errors': s.errors,
       'Failed requests': s.failedRequests,
       'Navigations': (report.navigations || []).length,
-      // the counts are on the tabs; a capture that didn't reach the server still says why here
-      'Server data': current.systemLog ? undefined : captureInfo(rec.serverCapture || rec.systemLog), // systemLog: extension of plugin 8.2.1 and older
+      'Server data': current.systemLog ? undefined : captureInfo(rec.serverCapture || rec.systemLog),
       'Server clock offset': serverOffset ? `${serverOffset} ms (corrected)` : undefined,
       'User agent': rec.userAgent,
       'Recorded with': report.tool,
     }),
   );
-  // Server snapshot at recording start (plugin page): grouped like Glowroot's Environment page, then everything
-  // Settings > System Info shows. JVM arguments keep one per line.
   const si = current.serverInfo;
   if (si) {
     const body = $('info');
     const period = si.recentChanges?.Period;
-    // Sections whose changes we can track first: Changes, Joget (with its start); then the rest
     const groups = [['recentChanges', period ? `Changes in ${period}` : 'Changes'], ['joget', 'Joget'], ['plugins', 'Plugin'],
       ['host', 'Host'], ['cluster', 'Cluster'], ['java', 'Java'], ['database', 'Database'],
       ['connectionPool', 'DB pool'], ['license', 'License'], ['systemProperties', 'System properties']];
     const served = nodesServed(current.systemLog);
     for (const [key, title] of groups) {
       let values = key === 'cluster' && si.cluster ? clusterRows(si.cluster, served) : si[key];
-      if (key === 'joget') values = { ...si.joget, ...si.process }; // the process start is Joget's start
-      // false: recorded unmasked. Absent: made by plugin 8.2.2 or older, which masked nothing on this tab
+      if (key === 'joget') values = { ...si.joget, ...si.process };
       if (key === 'joget' && si.secretsMasked !== true) values['System Info secrets'] = si.secretsMasked === false ? 'unmasked' : 'unmasked (older recording)';
       if (key === 'joget' && si.license && si.licenseMasked !== true) values['License secrets'] = si.licenseMasked === false ? 'unmasked' : 'unmasked (older recording)';
       if (key === 'recentChanges') values = recentChanges(si.recentChanges);
       if (key === 'plugins' && values) values = pluginRows(values);
-      if (key === 'host' && values) values = renameKeys(values, { 'Physical memory': 'Total RAM' }); // older recordings
-      if (key === 'host' && values && clusterRows(si.cluster || {}).Nodes) values = withoutKeys(values, ['Node']); // in Cluster > Nodes
+      if (key === 'host' && values) values = renameKeys(values, { 'Physical memory': 'Total RAM' });
+      if (key === 'host' && values && clusterRows(si.cluster || {}).Nodes) values = withoutKeys(values, ['Node']);
       if (key === 'license' && values) values = withoutKeys(values, LICENSE_SHOWN_ELSEWHERE);
       if (key === 'systemProperties' && values) values = withoutKeys(values, [...SHOWN_ELSEWHERE, ...setByArguments(si.java?.Arguments, values)]);
       if (!values || !Object.keys(values).length) continue;
@@ -1506,27 +1389,21 @@ function renderInfo() {
   }
 }
 
-// Recent changes as shown: app versions and wflow files (Joget's start is in the Joget section); nothing left (or
-// "None found") hides the section.
 function recentChanges(c) {
   const shown = Object.fromEntries(Object.entries(c || {}).filter(([k]) => ['App versions', 'wflow files'].includes(k)));
   return Object.keys(shown).length ? shown : null;
 }
 
-// The Plugin section: each jar's date and size, " · not loaded" when it holds no loaded plugin
 function pluginRows(plugins) {
   return Object.fromEntries(Object.entries(plugins).map(([jar, v]) => [jar, String(v).replace(' (check the Joget log)', '')]));
 }
 
-// System properties also in the Joget, Host, Cluster and Java sections (Enterprise's SysInfo adds the platform.* ones)
 const SHOWN_ELSEWHERE = ['platform.jvm.total', 'platform.jvm.max', 'platform.jvm.processors', 'platform.jvm.used',
   'wflow.name', 'os.name', 'os.version', 'os.arch', 'java.version', 'java.runtime.version', 'java.vm.name',
   'java.vm.vendor', 'user.timezone'];
 
-// License keys also in the Joget and Database sections
 const LICENSE_SHOWN_ELSEWHERE = ['platform.version', 'platform.db.profile', 'platform.db.jdbc.driver'];
 
-// System properties a -D argument sets to the same value (the last -D of a name wins, as in Java)
 function setByArguments(args, props) {
   const set = {};
   for (const line of String(args || '').split('\n')) {
@@ -1544,10 +1421,6 @@ function withoutKeys(obj, keys) {
   return Object.fromEntries(Object.entries(obj).filter(([k]) => !keys.includes(k)));
 }
 
-// Cluster and Nodes from Joget's node lists: the registered nodes (servers.json) and the active ones (the license's
-// node:: entries), each "name (ip)". With neither (one node, or a license without nodes) this node alone. The
-// wflow-cluster agent alone doesn't make a cluster (it's in Java Arguments). Each node gets the recorded requests it
-// served; "this node" (where the Info snapshot was taken) only matters when there are several.
 function clusterRows(c, served) {
   const parse = (list) => String(list || '').split('\n').filter(Boolean).map((line) => {
     const m = line.match(/^(.*?)(?: \((.*)\))?$/);
@@ -1559,7 +1432,7 @@ function clusterRows(c, served) {
   const nodes = new Map();
   for (const n of [...registered, ...active]) nodes.set(n.name, { ...nodes.get(n.name), ...n });
   if (self && !nodes.has(self)) nodes.set(self, { name: self });
-  const several = nodes.size > 1; // Joget's nodes only: older recordings name served nodes by hostname
+  const several = nodes.size > 1;
   for (const name of Object.keys(served?.counts || {})) if (!nodes.has(name)) nodes.set(name, { name });
   const rows = Object.fromEntries(Object.entries(c).filter(([k]) => !['Joget node name', 'Cluster mode', 'Registered nodes',
     'Active nodes'].includes(k)));
@@ -1577,8 +1450,6 @@ function clusterRows(c, served) {
   return rows;
 }
 
-// Which node served each recorded request (system log request entries carry it), in order: the requests per node and
-// how often the next request went to another node. Switches usually mean no sticky sessions, or a node failed over.
 function nodesServed(log) {
   const reqs = (log?.entries || []).filter((e) => e.kind === 'request' && e.node);
   if (!reqs.length) return null;
@@ -1591,11 +1462,10 @@ function nodesServed(log) {
   return { counts, switches };
 }
 
-// The server's JSON keeps no key order: labels first in this order, then file and pool keys A-Z.
 const INFO_LABELS = {
   database: ['Profile', 'JDBC driver', 'JDBC URL', 'User'],
   connectionPool: ['Ignored file keys', 'Pool size', 'Active connections', 'Idle connections', 'Waiting threads'],
-  plugins: [], // jar files A-Z
+  plugins: [],
   recentChanges: ['App versions', 'wflow files'],
   host: ['OS', 'Node', 'Hostname', 'Processors', 'Total RAM', 'Free RAM'],
   joget: ['Version', 'Edition', 'Application server', 'Started', 'Uptime', 'Process id', 'Time zone', 'Glowroot', 'Glowroot version'],
@@ -1610,12 +1480,8 @@ function infoOrder(group, obj) {
   return Object.fromEntries(keys.map((k) => [k, obj[k]]));
 }
 
-// ---------- app tab ----------
-
 let appFileUrl = null;
 
-// The apps the recording used, exported at upload (plugin page and downloaded HTML; the .jwa files only on the server).
-// One folded block per app, apps with problems first; apps not exported are one grey line.
 function renderApps() {
   const page = $('appsPage');
   if (!page) return;
@@ -1633,18 +1499,16 @@ function renderApps() {
     + (appFileUrl ? '' : ' The .jwa files are in the recording ZIP, not in this file.')));
   if (!all.length) page.append(el('p', null, 'No apps were found in the recorded URLs.'));
   for (const a of [...withProblems, ...rest]) page.append(appBlock(a));
-  if (withProblems.length + rest.length === 1) page.querySelector('details.app').open = true; // the only app: no need to fold it
+  if (withProblems.length + rest.length === 1) page.querySelector('details.app').open = true;
   if (notExported.length) {
     page.append(el('p', 'note muted', 'Not exported: ' + notExported.map((a) => `${a.id} (${a.reason || a.state})`).join(', ')));
   }
 }
 
-// One app, folded to its name, requests, time in use and Download .jwa. Its errors are in the Console, Network and
-// System logs tabs (App filter).
 function appBlock(a) {
   const d = el('details', 'app');
   const summary = el('summary');
-  summary.append(el('strong', null, a.name || a.id)); // id and version are in the rows below
+  summary.append(el('strong', null, a.name || a.id));
   const ms = inUseMs(a.id);
   summary.append(el('span', 'app-badge', `${a.requests} request${a.requests === 1 ? '' : 's'}${ms ? ` · ${fmt(ms)} in use` : ''}`));
   if (a.state === 'saved' && a.file && appFileUrl) {
@@ -1665,7 +1529,6 @@ function appBlock(a) {
     'Apps data': sample?.skipped ? sample.skipped : sample?.error ? `could not be added: ${sample.error}`
       : sample ? (sample.tables?.length ? (sample.mode === 'real' ? 'real values, original ids' : 'masked, new record ids') : 'none: the app has no form rows') : undefined,
   }));
-  // The captured tables and their rows (in the .jwa: importing it imports them)
   if (sample?.tables?.length) {
     d.append(kv(Object.fromEntries(sample.tables.map((t) => [t.table, `${t.rows} row${t.rows === 1 ? '' : 's'}`]))));
   }
@@ -1673,7 +1536,6 @@ function appBlock(a) {
   return d;
 }
 
-// One process instance (read only: Joget can't import running processes)
 function processBlock(p) {
   const d = el('details', 'process');
   d.append(el('summary', null, `Process: ${p.name || p.processDefId} · ${p.state || ''} · ${p.id}`));
@@ -1691,10 +1553,9 @@ function processBlock(p) {
   }
   if (p.activities?.length) {
     d.append(el('h4', null, `Activities${p.activitiesCut ? ' (first 100)' : ''}`));
-    // One row per activity; its id is in the name's tooltip
     const table = el('table', 'act-table');
     const head = el('tr');
-    const finished = p.activities.some((x) => x.finished); // no column when none has finished
+    const finished = p.activities.some((x) => x.finished);
     for (const h of ['#', 'Activity', 'State', 'User', 'Created', ...(finished ? ['Finished'] : [])]) head.append(el('th', null, h));
     table.append(head);
     p.activities.forEach((x, i) => {
@@ -1712,10 +1573,6 @@ function processBlock(p) {
   return d;
 }
 
-// ---------- features drawer ----------
-
-// Opened by the header's Features button; it covers the panel, not the video. ✕, Esc, the button again or a click
-// outside the drawer close it.
 $('featuresBtn').onclick = () => ($('featuresDrawer').hidden ? openFeatures() : closeFeatures());
 $('featuresClose').onclick = () => closeFeatures();
 document.addEventListener('keydown', (e) => {
@@ -1733,16 +1590,12 @@ document.addEventListener('pointerdown', (e) => {
   if (!$('featuresDrawer').hidden && !e.target.closest('#featuresDrawer, #featuresBtn')) closeFeatures(false);
 });
 
-// refocus: false after a click elsewhere, so focus stays where the user clicked
 function closeFeatures(refocus = true) {
   $('featuresDrawer').hidden = true;
   $('featuresBtn').classList.remove('active');
   if (refocus) $('featuresBtn').focus();
 }
 
-// The replay pages that use this viewer. The page that loads a recording sets window.blackboxPage: replay.js
-// 'extension', the plugin's view.js 'server', its downloaded file (export.js) 'file'; dist/blackbox-viewer.html sets
-// nothing: 'viewer'.
 const PAGES = {
   extension: 'Extension',
   server: 'Joget server (plugin)',
@@ -1751,7 +1604,6 @@ const PAGES = {
 };
 const ALL = Object.keys(PAGES);
 
-// [title, what it does, the pages that have it, notes for some pages]
 const FEATURES = [
   ['Video replay', 'Plays the recorded window, screen or tab, with the page\'s sound and the microphone when they were recorded (the Info tab says which). Space plays and pauses, ← / → jump 5 seconds. The clock under the video shows where you are.', ALL],
   ['Console tab', 'Console logs, uncaught exceptions, browser messages and page navigations from the recorded tab, in time order. Tick levels to show, pick a source, or type in Filter.', ALL],
@@ -1810,7 +1662,6 @@ function renderFeatures() {
   }
 }
 
-// recording.audio = { page, pageSource?: 'tab' | 'system', mic, message? }; absent before the extension recorded sound
 function soundInfo(a) {
   if (!a) return 'not recorded (made before BlackBox recorded sound)';
   const page = a.pageSource === 'system' ? 'computer audio' : a.pageSource === 'tab' ? 'tab audio' : 'page audio';
@@ -1829,12 +1680,9 @@ function captureInfo(s) {
   }
   if (!s) return undefined;
   if (s.status === 'on') return `Captured on ${s.server}; shown on the server's replay page after upload`;
-  // Recordings made before the extension said "Could not reach" carry fetch()'s own "Failed to fetch"
   const message = s.message === 'Failed to fetch' && s.server ? `Could not reach ${s.server}` : s.message;
   return `Not captured${message ? ': ' + message : ''}`;
 }
-
-// ---------- helpers ----------
 
 function el(tag, cls, text) {
   const e = document.createElement(tag);
@@ -1889,7 +1737,7 @@ function safeUrl(u) {
 
 function shortLocation(loc) {
   if (!loc) return '';
-  return loc.split('/').pop().replace(/\?[^:]*/, ''); // "app.js?v=1:10:5" -> "app.js:10:5"
+  return loc.split('/').pop().replace(/\?[^:]*/, '');
 }
 
 function pct(ms) {
@@ -1901,8 +1749,6 @@ function fmt(ms) {
   return `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
 }
 
-// One date/time format for the reporter and the investigator: UTC, whatever their timezone.
-// A missing value gives undefined (kv() skips it); a bad one is shown as it is instead of throwing.
 function utc(v) {
   if (v == null || v === '') return undefined;
   const d = new Date(v);

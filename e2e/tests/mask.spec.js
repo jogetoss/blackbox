@@ -1,4 +1,3 @@
-// mask.js (credential masking in the recorder), run in node: no browser or server needed.
 const { test, expect } = require('@playwright/test');
 const Mask = require('../../chrome-extension/mask.js');
 
@@ -14,7 +13,7 @@ test('masks credentials in a recorded request and response', () => {
   expect(e.url).toBe('https://u:****@h/x?token=****&id=5&j_password=****#k');
   expect(e.requestHeaders).toEqual({ Authorization: '****', Cookie: '****', OWASP_CSRFTOKEN: '****',
     'Content-Type': 'x', api_id: 'A', api_key: '****' });
-  expect(e.postData).toBe('j_username=cat&j_password=****&OWASP_CSRFTOKEN=****&id=5'); // record ids stay for the app export
+  expect(e.postData).toBe('j_username=cat&j_password=****&OWASP_CSRFTOKEN=****&id=5');
   expect(e.responseHeaders['Set-Cookie']).toBe('****');
   expect(JSON.parse(e.responseBody.text)).toEqual({ user: 'cat', access_token: '****', password: '****', n: 5 });
 });
@@ -25,9 +24,9 @@ test('masks secrets in free text, not look-alike names', () => {
 });
 
 test('masks unless the server offers it and the box is ticked', () => {
-  expect(Mask.on(null, { credentials: true })).toBe(true); // no server
-  expect(Mask.on({ credentials: false }, { credentials: true })).toBe(true); // not allowed
-  expect(Mask.on({ credentials: true }, { credentials: false })).toBe(true); // allowed, not ticked (the default)
+  expect(Mask.on(null, { credentials: true })).toBe(true);
+  expect(Mask.on({ credentials: false }, { credentials: true })).toBe(true);
+  expect(Mask.on({ credentials: true }, { credentials: false })).toBe(true);
   expect(Mask.on({ credentials: true }, { credentials: true })).toBe(false);
 });
 

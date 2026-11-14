@@ -107,7 +107,7 @@ public class SecretsTest {
     @Test
     public void secretsInsideValuesAreMasked() {
         assertEquals("jdbc:oracle:thin:scott/tiger@db", "jdbc:oracle:thin:scott/tiger@db",
-                builtIn.maskValue("jdbc:oracle:thin:scott/tiger@db")); // no scheme://, left as is: covered by name masking
+                builtIn.maskValue("jdbc:oracle:thin:scott/tiger@db"));
         assertEquals("https://user:****@host/x", builtIn.maskValue("https://user:hunter22@host/x"));
         assertEquals("Authorization: Bearer ****", builtIn.maskValue("Authorization: Bearer abcdefgh12345678"));
         assertEquals("user=root;pwd=****;timeout=5", builtIn.maskValue("user=root;pwd=s3cret;timeout=5"));
@@ -163,7 +163,6 @@ public class SecretsTest {
         assertFalse(s.isSecretName("app.publicKey"));
         assertTrue(s.isSecretName("other.publicKey"));
         assertTrue("a lone ! is ignored", new Secrets("*key\n!\n!*").isSecretName("a.key"));
-        // An exception covers the whole name, not a longer one that contains it
         assertTrue(builtIn.isSecretName("wflow.systemkey.password"));
         assertTrue(new Secrets("password\n!app").isSecretName("app.password"));
         assertFalse(new Secrets("password\n!app.*").isSecretName("app.password"));

@@ -12,10 +12,6 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-/**
- * Virtual hosts: two profiles, each with its own blackbox folder. The background threads have no request (and so no
- * profile of their own); their work for a capture must run in the folder of the profile that opened it.
- */
 public class VirtualHostsTest {
 
     private Path a;
@@ -31,7 +27,7 @@ public class VirtualHostsTest {
         Files.createDirectories(b);
         realStores = ServerCapture.stores;
         realDirs = ServerCapture.checkDirs;
-        ServerCapture.stores = () -> new ServerCaptureStore(ProfileDir.current().resolve("pending")); // the real one
+        ServerCapture.stores = () -> new ServerCaptureStore(ProfileDir.current().resolve("pending"));
         ServerCapture.checkDirs = () -> Arrays.asList(a, b);
         TraceCollector.stop();
     }
@@ -73,7 +69,6 @@ public class VirtualHostsTest {
         assertEquals("the last one wins, as in the JVM", "true", BlackBoxPlugin.startArg(args, BlackBoxPlugin.SHARED_GLOWROOT));
         assertTrue(BlackBoxPlugin.glowrootShared(true, BlackBoxPlugin.startArg(args, BlackBoxPlugin.SHARED_GLOWROOT)));
         assertNull(BlackBoxPlugin.startArg(Arrays.asList("-Dblackbox.sharedGlowrootX=true"), BlackBoxPlugin.SHARED_GLOWROOT));
-        // Virtual hosts on, and a tenant's script sets the property at run time: still off (not in the start command)
         String vh = System.setProperty("wflow.virtualhost", "true");
         String shared = System.setProperty(BlackBoxPlugin.SHARED_GLOWROOT, "true");
         try {
@@ -99,7 +94,6 @@ public class VirtualHostsTest {
         assertFalse("another tenant's thread", ServerCapture.sameProfile("tenant1", "tenant2"));
         assertFalse("a thread with no profile yet", ServerCapture.sameProfile("tenant1", null));
         assertFalse("a capture started by plugin 8.2.2: no profile recorded", ServerCapture.sameProfile(null, null));
-        // Only an HTTP request's own profile counts: a background thread (no request) has none
         Supplier<String> realProfiles = ServerCapture.requestProfiles;
         String vh = System.setProperty("wflow.virtualhost", "true");
         ServerCapture.requestProfiles = () -> "tenant1";
@@ -107,7 +101,7 @@ public class VirtualHostsTest {
             String outer = ServerCapture.enterRequest();
             assertEquals("tenant1", ServerCapture.requestProfile());
             String[] onThread = new String[] {"unset"};
-            Thread job = new Thread(() -> onThread[0] = ServerCapture.requestProfile()); // inherits nothing
+            Thread job = new Thread(() -> onThread[0] = ServerCapture.requestProfile());
             job.start();
             job.join();
             assertNull("a background thread's lines stay out", onThread[0]);
@@ -130,7 +124,7 @@ public class VirtualHostsTest {
     public void withoutTheOptInACaptureStartedBeforeGetsNoGlowrootDataNorOtherTraces() throws Exception {
         String id = "00000000-0000-4000-8000-0000000000cc";
         java.util.function.BooleanSupplier real = BlackBoxPlugin.glowrootShared;
-        BlackBoxPlugin.glowrootShared = () -> false; // virtual hosts, no -Dblackbox.sharedGlowroot (e.g. removed)
+        BlackBoxPlugin.glowrootShared = () -> false;
         try {
             ProfileDir.in(b, () -> {
                 ServerCaptureStore store = ServerCapture.store();
@@ -141,7 +135,7 @@ public class VirtualHostsTest {
                 copy.invoke(null, id, store.readMeta(id));
                 java.lang.reflect.Method build = GlowrootPackager.class.getDeclaredMethod("build", String.class, long.class, long.class);
                 build.setAccessible(true);
-                GlowrootPackager.start(); // build() checks it is not stopping
+                GlowrootPackager.start();
                 build.invoke(null, id, 1L, 2L);
             });
             JSONArray notes = traces(b, id);
@@ -162,7 +156,6 @@ public class VirtualHostsTest {
             throw new SecurityException("not within profile base directory");
         }));
         assertTrue(ProfileDir.safely(getClass(), "test", a, () -> { }));
-        // A watched capture whose folder fails is no longer watched; the tick itself doesn't throw
         String id = "00000000-0000-4000-8000-0000000000dd";
         TraceCollector.start();
         ProfileDir.in(b, () -> {
@@ -215,7 +208,7 @@ public class VirtualHostsTest {
     public void aRestartWatchesTheCapturesOfEveryProfile() throws Exception {
         String inA = owed(a, "00000000-0000-4000-8000-00000000000a");
         String inB = owed(b, "00000000-0000-4000-8000-00000000000b");
-        TraceCollector.start(); // recovers after 1 s, from every profile's folder
+        TraceCollector.start();
         long until = System.currentTimeMillis() + 10_000;
         while ((traces(a, inA).length() == 0 || traces(b, inB).length() == 0) && System.currentTimeMillis() < until) {
             Thread.sleep(200);
@@ -232,10 +225,8 @@ public class VirtualHostsTest {
         ProfileDir.in(b, () -> {
             ServerCaptureStore store = ServerCapture.store();
             assertTrue(store.start(id, "admin", 1 << 20, 60_000, true, "", false, false, false, 0, true));
-            // a request of profile B opens it on this node
             TraceCollector.watchOthers(new ServerCapture.Capture(id, store.nodeFile(id, ServerCapture.nodeName()), store.readMeta(id)));
         });
-        // The tick runs on a thread with another profile's folder: it must still find the capture in B, not drop it
         ProfileDir.in(a, () -> {
             java.lang.reflect.Method tick = TraceCollector.class.getDeclaredMethod("othersTick");
             tick.setAccessible(true);

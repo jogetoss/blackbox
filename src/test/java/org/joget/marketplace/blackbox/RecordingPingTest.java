@@ -10,7 +10,6 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-/** BB1: the recorder's heartbeat (recording-ping) and the timing in the start response. */
 public class RecordingPingTest {
 
     private static final String ID = "0f8fad5b-d9cb-469f-a165-70867728950e";

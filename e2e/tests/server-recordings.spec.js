@@ -1,8 +1,5 @@
-// The extension's Recordings page also lists the user's own recordings on the Upload URL's server that this browser
-// doesn't list: the "other computer" case. Each test's browser profile starts empty, like a new computer.
 const { test, expect, JOGET, loginJoget, api, report } = require('./fixtures');
 
-/** Uploads a session.json straight to the server (no video), as the logged-in user; returns the server's meta. */
 async function uploadDirect(page, title) {
   return page.evaluate(async ({ base, title, body }) => {
     const t = await (await fetch(`${base}/web/json/directory/user/csrfToken`)).json();
@@ -34,14 +31,12 @@ test('lists server recordings this browser never had, once, and says when not lo
     await expect(tr.locator('.badge', { hasText: 'Not in this browser' })).toBeVisible();
     await expect(page.locator('#folderInfo')).toContainText('only on the server');
 
-    // Ticked, it takes no batch action
     await tr.locator('td.sel input').check();
     await expect(page.locator('#batchUpload')).toBeDisabled();
     await expect(page.locator('#batchZip')).toBeDisabled();
     await expect(page.locator('#batchDelete')).toBeDisabled();
     await tr.locator('td.sel input').uncheck();
 
-    // Uploaded from this browser (upload history): listed once, as history
     await page.evaluate(({ id, url }) => idbAddHistory('local-' + id, { recording: { startedAt: new Date().toISOString(), tab: { title: 'local copy' } } },
       { id, url, at: new Date().toISOString() }), { id: meta.id, url: new URL(row.url, JOGET).href });
     await page.reload();
@@ -49,7 +44,6 @@ test('lists server recordings this browser never had, once, and says when not lo
     await expect(page.locator('a.rec-title', { hasText: 'local copy' })).toHaveCount(1);
     await page.evaluate((id) => idbHistoryDelete('local-' + id), meta.id);
 
-    // Logged out: a note with a link to the server's recordings page, no server rows
     await context.clearCookies();
     await page.reload();
     await expect(page.locator('#serverMsg')).toContainText('Log in to');

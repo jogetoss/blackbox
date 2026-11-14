@@ -12,7 +12,6 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-/** GlowrootClient.points against a fake Glowroot that answers like 0.14: error traces only under error/points. */
 public class GlowrootClientPointsTest {
 
     private HttpServer server;
@@ -26,10 +25,8 @@ public class GlowrootClientPointsTest {
             asked.add(path);
             String body;
             if (path.equals("/backend/transaction/points")) {
-                // the slow request, and a slow failed one (also under error/points)
                 body = "{\"normalPoints\":[[1000,2500.4,\"\",\"slow\"]],\"errorPoints\":[[2000,3000.0,\"\",\"slowFailed\"]],\"partialPoints\":[]}";
             } else if (path.equals("/backend/error/points")) {
-                // the fast failed request is only here
                 body = "{\"normalPoints\":[],\"errorPoints\":[[3000,263.2,\"\",\"fastFailed\"],[2000,3000.0,\"\",\"slowFailed\"]],\"partialPoints\":[]}";
             } else {
                 ex.sendResponseHeaders(404, -1);

@@ -13,13 +13,6 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * The process instances a recording touched, for reading only (Joget has no import for running processes): state,
- * requester, dates, workflow variables and each activity with its state, assignees and dates. Found from the
- * process and activity ids in the recorded URLs and form posts and in the sample rows (workflow forms use the process
- * id as record id). Masked like the sample data: user names become the same pseudonyms, variable values are masked
- * (real values: only variables named like a sensitive field).
- */
 final class ProcessData {
 
     static final int MAX_PROCESSES = 20;
@@ -27,25 +20,21 @@ final class ProcessData {
 
     private static final Pattern WORKFLOW_ID = Pattern.compile("\\d{1,12}_[A-Za-z0-9][A-Za-z0-9_-]*_[A-Za-z0-9_-]+");
 
-    /** Joget's WorkflowManager, or a test double. */
     interface Source {
         WorkflowProcess process(String processId);
 
         Collection<WorkflowActivity> activities(String processId);
 
-        /** An activity with its assignees (getAssignmentUsers, getNameOfAcceptedUser), or null. */
         WorkflowActivity activityInfo(String activityId);
 
         Collection<WorkflowVariable> variables(String processId);
 
-        /** For an activity id, its process id; else null. */
         String processOf(String activityId);
     }
 
     private ProcessData() {
     }
 
-    /** Process ids among these ids: process ids as they are, activity ids as their process. */
     static Set<String> processIds(Collection<String> ids, Source src) {
         Set<String> out = new LinkedHashSet<>();
         for (String id : ids) {
@@ -58,7 +47,6 @@ final class ProcessData {
         return out;
     }
 
-    /** The processes of this app (process definition ids start with appId#), as apps.json's "processes". */
     static JSONArray collect(String appId, Set<String> processIds, Source src, SampleData.Mode mode, Masker masker,
             Masker.IdMap ids) throws JSONException {
         JSONArray list = new JSONArray();
@@ -73,12 +61,12 @@ final class ProcessData {
                 p = null;
             }
             if (p == null || p.getId() == null || !p.getId().startsWith(appId + "#")) {
-                continue; // not a process, or another app's
+                continue;
             }
             JSONObject o = new JSONObject().put("id", id).put("processDefId", p.getId()).put("name", p.getName())
                     .put("version", p.getVersion()).put("state", p.getState());
             if (ids.contains(id)) {
-                o.put("recordId", ids.get(id)); // its workflow form row in the sample data
+                o.put("recordId", ids.get(id));
             }
             putUser(o, "requester", p.getRequesterId(), mode, masker);
             putDate(o, "created", p.getCreatedTime());
@@ -157,7 +145,6 @@ final class ProcessData {
         }
     }
 
-    /** Joget's WorkflowManager. */
     static Source joget() {
         org.joget.workflow.model.service.WorkflowManager wm = (org.joget.workflow.model.service.WorkflowManager)
                 org.joget.apps.app.service.AppUtil.getApplicationContext().getBean("workflowManager");

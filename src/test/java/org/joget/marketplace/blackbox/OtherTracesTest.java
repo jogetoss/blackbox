@@ -23,11 +23,6 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-/**
- * Other users' traces (capture option otherTraces): TraceCollector.collectOthers against a fake Glowroot 0.14. A
- * recording ran from 10 s to 20 s; Glowroot kept traces of its own request, another user's, a background job and a
- * request that started after the stop.
- */
 public class OtherTracesTest {
 
     private static final String CAPTURE = "cap1";
@@ -71,7 +66,6 @@ public class OtherTracesTest {
         }
         byte[] body;
         if (path.equals("/backend/transaction/points")) {
-            // [end, duration, ?, id]: the Background list has only the job
             List<String> ids = "Background".equals(q.get("transaction-type")) ? java.util.Arrays.asList("job") : java.util.Arrays.asList("own", "bob", "late");
             JSONArray pts = new JSONArray();
             for (String id : ids) {
@@ -162,13 +156,12 @@ public class OtherTracesTest {
         store.put(owed, TraceCollector.OTHERS_PENDING, true);
         store.put(done, TraceCollector.OTHERS_PENDING, false);
         store.put(plain, "othersPending-another-node", true);
-        TraceCollector.stop(); // clears what is watched
+        TraceCollector.stop();
         java.util.function.Supplier<ServerCaptureStore> real = ServerCapture.stores;
         ServerCapture.stores = () -> store;
         try {
             assertEquals(java.util.Arrays.asList(owed), TraceCollector.recoverOthers(store, null, 1));
             assertTrue("already watched: not added twice", TraceCollector.recoverOthers(store, null, 2).isEmpty());
-            // its "pending" note keeps the replay page polling until the copy
             JSONArray notes = TraceStore.merge(store.dir(owed), 3);
             assertEquals(1, notes.length());
             assertEquals("pending", notes.getJSONObject(0).getString("state"));

@@ -12,7 +12,6 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-/** BB2/BB5 with virtual hosts: the timer thread checks every profile's captures, each with its own test override. */
 public class ProfilesCheckTest {
 
     private static final String A_ID = "2a8fad5b-d9cb-469f-a165-70867728950e";

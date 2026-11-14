@@ -123,7 +123,6 @@ public class RecordingZipTest {
         assertArrayEquals(WEBM, Files.readAllBytes(to.file(newId, RecordingStore.VIDEO)));
         assertEquals(SESSION, new String(Files.readAllBytes(to.file(newId, RecordingStore.SESSION)), StandardCharsets.UTF_8));
 
-        // Not allowed to see system logs: the recording comes in without it
         JSONObject noLog = RecordingZip.importZip(to, zipOf(id, true), 1 << 20, false, "carol", "Carol");
         assertFalse(noLog.has(RecordingStore.CAPTURE));
         assertNull(to.file(noLog.getString("id"), RecordingStore.SYSTEM_LOG));
@@ -160,7 +159,6 @@ public class RecordingZipTest {
             RecordingZip.importZip(to, zip, 1 << 20, true, "u", "U");
             fail("expected InvalidUpload for " + zip.getFileName());
         } catch (RecordingStore.InvalidUpload e) {
-            // expected
         }
     }
 
@@ -184,7 +182,6 @@ public class RecordingZipTest {
         assertEquals(1, Files.readAllLines(g.resolve("node-b.jsonl")).size());
         assertEquals(1002, new JSONObject(Files.readAllLines(g.resolve("node-a.jsonl")).get(2)).getLong("ts"));
 
-        // A broken gauges.json: refused, and nothing is left of the recording
         Path bad = tmp.resolve("bad.zip");
         try (java.util.zip.ZipOutputStream z = new java.util.zip.ZipOutputStream(Files.newOutputStream(bad))) {
             for (String[] e : new String[][]{{"session.json", SESSION}, {"system-log.json", SYSTEM_LOG}, {GaugeStore.MERGED, "{\"nodes\":{\"n\":[{\"ts\":1}"}}) {

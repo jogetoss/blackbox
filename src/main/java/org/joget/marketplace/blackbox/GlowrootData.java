@@ -24,24 +24,6 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * One recording cut out of a Glowroot 0.14 embedded data folder, in Glowroot's own format, so it opens in a standalone
- * Glowroot of the same version. Built by {@link GlowrootPackager} on each node, as glowroot/{node}.zip next to the
- * traces, with glowroot/{node}.json saying how far it got.
- *
- * Glowroot keeps its data in data.h2.db (H2 1.3, locked while the agent runs) and five *.capped.db ring files that
- * the H2 rows point into (a "capped id" is a position in the ring). The cut:
- * <ol>
- * <li>copies data.h2.db (the copy is not locked), then deletes every row outside the recording: traces not tagged
- * with its id ({@link GlowrootTag}), aggregates and gauges outside its time (keeping one rollup bucket more on each
- * side, which Glowroot's charts show), and incidents;</li>
- * <li>reads the blocks the kept rows point to straight from the live capped files, writes them one after another
- * into new capped files of the same ring size, and points the rows at the new positions;</li>
- * <li>compacts the H2 copy.</li>
- * </ol>
- * A block Glowroot overwrote before it could be read is left out (its column is set to null), which Glowroot shows as
- * missing detail, the same as it would itself.
- */
 final class GlowrootData {
 
     static final String DIR = "glowroot";
@@ -55,23 +37,18 @@ final class GlowrootData {
         "SHARED_QUERY_TEXTS_CAPPED_ID", "MAIN_THREAD_PROFILE_CAPPED_ID", "AUX_THREAD_PROFILE_CAPPED_ID"};
     private static final String[] AGGREGATE_IDS = {"QUERIES_CAPPED_ID", "SERVICE_CALLS_CAPPED_ID",
         "MAIN_THREAD_PROFILE_CAPPED_ID", "AUX_THREAD_PROFILE_CAPPED_ID"};
-    private static final int HEADER = 20;       // currIndex (long), sizeKb (int), lastResizeBaseIndex (long)
-    private static final int BLOCK_HEADER = 8;  // the block's length (long), then its LZF bytes
-    private static final long OVERWRITE_MARGIN = 1024 * 1024; // at most this much of a ring (see CappedReader.margin)
+    private static final int HEADER = 20;
+    private static final int BLOCK_HEADER = 8;
+    private static final long OVERWRITE_MARGIN = 1024 * 1024;
     private static final int DELETE_BATCH = 20_000;
 
     private GlowrootData() {
     }
 
-    /**
-     * Free space the build needs in the temp folder: one copy of data.h2.db (the batched deletes keep it from
-     * growing), plus room for the copied capped blocks and the ZIP.
-     */
     static long spaceNeeded(long h2Bytes) {
         return h2Bytes + Math.max(64L * 1024 * 1024, h2Bytes / 10);
     }
 
-    /** The recording's overall state for the lists: building (any node not done), saved (any saved), failed, or null. */
     static String overall(org.json.JSONArray statuses) {
         boolean saved = false;
         boolean failed = false;
@@ -90,7 +67,6 @@ final class GlowrootData {
         return "rollup-" + level + "-detail.capped.db";
     }
 
-    /** What the cut kept, for the status file. */
     static final class Result {
         int traces;
         int aggregates;
@@ -99,27 +75,18 @@ final class GlowrootData {
         long cappedBytes;
     }
 
-    /**
-     * Cuts recording recId (tagged traces; aggregates and gauges between from and to, epoch ms) out of srcData (a
-     * Glowroot data folder) into outData. h2 opens H2 1.3 files: Glowroot's own shaded driver.
-     */
     static Result slice(Driver h2, Path srcData, Path outData, long from, long to, String recId) throws IOException, SQLException {
         return slice(h2, srcData, outData, from, to, recId, false);
     }
 
-    /** allTraces: keep every trace that ran during the recording (other users' too), not only the tagged ones. */
     static Result slice(Driver h2, Path srcData, Path outData, long from, long to, String recId, boolean allTraces)
             throws IOException, SQLException {
         Files.createDirectories(outData);
-        // H2 first, then the capped files: every capped id in the copy then exists in the capped files
         Files.copy(srcData.resolve("data.h2.db"), outData.resolve("data.h2.db"), StandardCopyOption.REPLACE_EXISTING);
         Result r = new Result();
         Properties login = new Properties();
         login.setProperty("user", "sa");
         login.setProperty("password", "");
-        // a small cache: this runs inside Joget's JVM
-        // DB_CLOSE_ON_EXIT=FALSE: H2's own shutdown hook would close the copy under a build still running; the build
-        // then stops with the JVM and stays "building", so it is built again after the restart (GlowrootPackager.recover)
         String url = "jdbc:h2:" + outData.resolve("data").toAbsolutePath() + ";CACHE_SIZE=8192;DB_CLOSE_ON_EXIT=FALSE";
         try (Connection c = h2.connect(url, login)) {
             if (c == null) {
@@ -127,7 +94,7 @@ final class GlowrootData {
             }
             c.setAutoCommit(false);
             try (Statement s = c.createStatement()) {
-                if (allTraces) { // the traces that overlap the recording: ended after its start, started before its stop
+                if (allTraces) {
                     deleteInBatches(c, s, "DELETE FROM TRACE WHERE CAPTURE_TIME < " + from + " OR START_TIME > " + to);
                     deleteInBatches(c, s, "DELETE FROM TRACE_ATTRIBUTE WHERE TRACE_ID NOT IN (SELECT ID FROM TRACE)");
                 } else {
@@ -174,28 +141,22 @@ final class GlowrootData {
                 s.execute("SHUTDOWN COMPACT");
             }
         }
-        Files.deleteIfExists(outData.resolve("data.trace.db")); // H2's own log of the compaction
+        Files.deleteIfExists(outData.resolve("data.trace.db"));
         return r;
     }
 
-    /**
-     * Deletes in batches, each committed and checkpointed: H2 keeps every deleted row in its transaction log inside
-     * the file until the commit, so one big DELETE of most of the copy makes it about 1.4 times larger first.
-     */
     private static void deleteInBatches(Connection c, Statement s, String delete) throws SQLException {
         while (s.executeUpdate(delete + " LIMIT " + DELETE_BATCH) > 0) {
             c.commit();
-            s.execute("CHECKPOINT"); // lets H2 reuse the log's pages
+            s.execute("CHECKPOINT");
         }
         c.commit();
     }
 
-    /** Rows whose rollup bucket ends outside (from - one bucket, to + two buckets): a bucket's time is its end. */
     static String outside(long from, long to, long bucketMs) {
         return " WHERE CAPTURE_TIME <= " + (from - bucketMs) + " OR CAPTURE_TIME >= " + (to + 2 * bucketMs);
     }
 
-    /** Copies each kept row's blocks into out and points the row at the copies. Returns the number of rows. */
     private static int remap(Connection c, String table, String key, String[] cols, CappedReader in, CappedWriter out, Result r)
             throws SQLException, IOException {
         String select = "SELECT " + key + ", " + String.join(", ", cols) + " FROM " + table;
@@ -229,12 +190,6 @@ final class GlowrootData {
         return "'" + s.replace("'", "''") + "'";
     }
 
-    // ---------- capped files ----------
-
-    /**
-     * Reads raw blocks from a capped file as Glowroot's CappedDatabaseOutputStream writes it, while Glowroot may still
-     * be writing: a block counts only if Glowroot did not overwrite it before or while it was read.
-     */
     static final class CappedReader implements Closeable {
         private final RandomAccessFile f;
         final long currIndex;
@@ -254,26 +209,20 @@ final class GlowrootData {
             }
         }
 
-        /**
-         * Bytes Glowroot may have written past the position its header shows: it writes a chunk, then the header. A
-         * chunk is one LZF block (up to 64 KB); rings are at least 1 MB, so 1/16 of the ring, at most 1 MB.
-         */
         long margin() {
             return Math.min(OVERWRITE_MARGIN, size / 16);
         }
 
-        /** The smallest id not overwritten yet, as Glowroot computes it. */
         static long smallestKept(long base, long currIndex, long size) {
             return Math.max(base, currIndex - size);
         }
 
-        /** The block's bytes (LZF, as stored), or null when it was overwritten or is not there. */
         byte[] block(long id) throws IOException {
             if (id < smallestKept(base, currIndex, size) || id + BLOCK_HEADER > currIndex) {
                 return null;
             }
             f.seek(HEADER + (id - base) % size);
-            long len = f.readLong(); // Glowroot never splits a block's length across the ring's end
+            long len = f.readLong();
             if (len < 0 || len > size || id + BLOCK_HEADER + len > currIndex) {
                 return null;
             }
@@ -281,12 +230,11 @@ final class GlowrootData {
             int done = 0;
             while (done < len) {
                 long pos = (id + BLOCK_HEADER + done - base) % size;
-                int n = (int) Math.min(len - done, size - pos); // the bytes may wrap to the ring's start
+                int n = (int) Math.min(len - done, size - pos);
                 f.seek(HEADER + pos);
                 f.readFully(b, done, n);
                 done += n;
             }
-            // Glowroot may have written over it meanwhile: check its header again
             f.seek(0);
             long now = f.readLong();
             int nowSizeKb = f.readInt();
@@ -303,7 +251,6 @@ final class GlowrootData {
         }
     }
 
-    /** Writes a new capped file of the given ring size, blocks one after another from 0, so none wraps. */
     static final class CappedWriter implements Closeable {
         private final RandomAccessFile f;
         private final int sizeKb;
@@ -316,7 +263,6 @@ final class GlowrootData {
             f.seek(HEADER);
         }
 
-        /** Writes a block and returns its new capped id. */
         long write(byte[] block) throws IOException {
             if (cursor + BLOCK_HEADER + block.length > sizeKb * 1024L) {
                 throw new IOException("The kept blocks do not fit in the capped file's size");
@@ -335,18 +281,16 @@ final class GlowrootData {
         @Override
         public void close() throws IOException {
             f.seek(0);
-            f.writeLong(cursor); // currIndex
+            f.writeLong(cursor);
             f.writeInt(sizeKb);
-            f.writeLong(0L);     // lastResizeBaseIndex
+            f.writeLong(0L);
             f.close();
         }
     }
 
-    // ---------- the package ----------
-
     static String readme(String recordingId, String node, String agentVersion, long from, long to) {
         String range = "from=" + from + "&to=" + to;
-        String version = agentVersion == null ? null : agentVersion.split(",")[0].trim(); // "0.14.2, built ..." -> "0.14.2"
+        String version = agentVersion == null ? null : agentVersion.split(",")[0].trim();
         return "BlackBox recording " + recordingId + ": Glowroot data of node " + node + "\n"
                 + "Cut out of Glowroot " + (version == null ? "0.14" : version) + " in its own format: the traces of the\n"
                 + "recorded requests, plus the aggregates and gauges of all traffic on that node during the recording.\n"
@@ -368,7 +312,6 @@ final class GlowrootData {
                 + "details: share it accordingly.\n";
     }
 
-    /** Zips the cut data folder plus README.txt into zip (written atomically). */
     static void zip(Path data, String readme, Path zip) throws IOException {
         Files.createDirectories(zip.getParent());
         Path tmp = zip.resolveSibling(zip.getFileName() + ".part");
@@ -393,9 +336,6 @@ final class GlowrootData {
         z.closeEntry();
     }
 
-    // ---------- status and files ----------
-
-    /** glowroot/{node}.json: {state: waiting|building|saved|failed, reason, bytes, from, to, updated, ...}. */
     static void writeStatus(Path outer, String node, JSONObject status) throws IOException {
         Path dir = Files.createDirectories(outer.resolve(DIR));
         Path tmp = dir.resolve(node + ".json." + Long.toHexString(System.nanoTime()) + ".part");
@@ -403,7 +343,6 @@ final class GlowrootData {
         Files.move(tmp, dir.resolve(node + ".json"), StandardCopyOption.REPLACE_EXISTING);
     }
 
-    /** True when a node's status says waiting or building (not finished yet). */
     static boolean unfinished(Path outer, String node) {
         Path f = outer == null ? null : outer.resolve(DIR).resolve(node + ".json");
         if (f == null || !Files.isRegularFile(f)) {
@@ -417,19 +356,9 @@ final class GlowrootData {
         }
     }
 
-    /** Every node's status, sorted by node, or an empty list. */
-    /**
-     * A "waiting" status with no news for this long reads as failed: the capture never stopped within the packager's 3
-     * hours, plus its build window, or its node stopped watching it (the folder failed, or the node is gone).
-     */
     static final long WAITING_STALE_MS = 3 * 3600 * 1000L + 15 * 60_000L;
-    /** A "building" status with no news for this long reads as failed: the build died without saving its end. */
     static final long BUILDING_STALE_MS = 2 * 3600 * 1000L;
 
-    /**
-     * Each node's status, sorted by node. A "waiting" or "building" one that had no news for too long (WAITING_STALE_MS,
-     * BUILDING_STALE_MS) is read as failed, so the recording doesn't show "building" for good; a later status still wins.
-     */
     static JSONArray statuses(Path outer) throws IOException {
         return statuses(outer, System.currentTimeMillis());
     }
@@ -446,7 +375,6 @@ final class GlowrootData {
                 try {
                     all.add(new JSONObject(new String(Files.readAllBytes(f), StandardCharsets.UTF_8)));
                 } catch (JSONException e) {
-                    // half-written by an older version: skip
                 }
             }
         }
@@ -468,7 +396,6 @@ final class GlowrootData {
         return list;
     }
 
-    /** A node's package, or null when there is none (or the name is not a node name). */
     static Path zipFile(Path outer, String node) {
         if (outer == null || node == null || !NODE_ZIP.matcher(node + ".zip").matches()) {
             return null;
@@ -477,7 +404,6 @@ final class GlowrootData {
         return Files.isRegularFile(f) ? f : null;
     }
 
-    /** Moves the glowroot/ folder's files from a capture's pending folder into the recording (upload). */
     static void moveAll(Path from, Path to) throws IOException {
         Path src = from.resolve(DIR);
         if (!Files.isDirectory(src)) {
@@ -493,9 +419,8 @@ final class GlowrootData {
             }
         }
         try {
-            Files.delete(src); // empty now, unless a build is writing its .part file
+            Files.delete(src);
         } catch (IOException e) {
-            // not empty: the build moves its file when done
         }
     }
 }

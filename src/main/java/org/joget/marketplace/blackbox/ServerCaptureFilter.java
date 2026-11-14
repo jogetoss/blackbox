@@ -9,14 +9,6 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import org.joget.apps.app.model.PluginWebFilterAbstract;
 
-/**
- * Marks requests that carry X-BlackBox-Id (added by the extension to the recorded tab's requests) so their log
- * lines are captured ({@link ServerCapture}), records each one's method, URL, status and time, and hands slow
- * and failed ones to {@link TraceCollector} for their Glowroot trace.
- *
- * Runs on every URL before Spring Security, so log lines from the login itself are captured too. Requests without
- * the header cost one header lookup.
- */
 public class ServerCaptureFilter extends PluginWebFilterAbstract {
 
     @Override
@@ -59,12 +51,12 @@ public class ServerCaptureFilter extends PluginWebFilterAbstract {
 
     @Override
     public int getOrder() {
-        return -1000; // wrap the other plugin filters, so their log lines are captured too
+        return -1000;
     }
 
     @Override
     public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain) throws IOException, ServletException {
-        String profile = ServerCapture.enterRequest(); // with virtual hosts: this request's profile, for All server log lines
+        String profile = ServerCapture.enterRequest();
         try {
             capture((HttpServletRequest) req, res, chain);
         } finally {
@@ -82,10 +74,9 @@ public class ServerCaptureFilter extends PluginWebFilterAbstract {
         }
         HttpServletResponse response = (HttpServletResponse) res;
         long start = System.currentTimeMillis();
-        // The viewer compares this with the browser's clock to line up the system log with the video
         response.setHeader(ServerCapture.TIME_HEADER, String.valueOf(start));
         String url = request.getRequestURI() + (request.getQueryString() != null ? "?" + request.getQueryString() : "");
-        GlowrootTag.tag(id); // a Glowroot trace of it, if Glowroot keeps one, carries the recording id
+        GlowrootTag.tag(id);
         Object prev = ServerCapture.begin(capture, request.getMethod() + " " + url);
         TraceCollector.Running run = TraceCollector.begin(capture, request.getMethod(), url, start);
         Throwable failure = null;

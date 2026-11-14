@@ -1,10 +1,8 @@
-// Loads one stored recording into the shared replay viewer (viewer.js, copied from the extension at build time).
-window.blackboxPage = 'server'; // for the Features list
+window.blackboxPage = 'server';
 (function () {
   const $ = (id) => document.getElementById(id);
   const id = new URLSearchParams(location.search).get('id');
 
-  // The viewer's drag-and-drop would replace the stored recording with local files: turn it off here.
   document.addEventListener('drop', (e) => { e.preventDefault(); e.stopImmediatePropagation(); }, true);
 
   load().catch((e) => {
@@ -15,7 +13,7 @@ window.blackboxPage = 'server'; // for the Features list
     }
   });
 
-  window.blackboxTimeInUrl = true; // view?id=…&t=… opens at that moment
+  window.blackboxTimeInUrl = true;
 
   async function load() {
     if (!id) throw new Error('No recording id in the URL.');
@@ -41,8 +39,6 @@ window.blackboxPage = 'server'; // for the Features list
       $('delete').onclick = remove;
     }
 
-    // System log and Glowroot traces: for everyone who can view the recording (canViewServerData); the extension's own
-    // viewer never shows them
     let systemLog = null;
     let systemLogError = null;
     let traces = null;
@@ -53,7 +49,7 @@ window.blackboxPage = 'server'; // for the Features list
       systemLog = await BB.getJson('systemlog', { id }).catch((e) => { systemLogError = e; return null; });
       traces = await BB.getJson('traces', { id }).catch(() => null);
       gauges = await BB.getJson('gauges', { id }).catch(() => null);
-      serverInfo = await BB.getJson('serverinfo', { id }).catch(() => null); // missing in older recordings
+      serverInfo = await BB.getJson('serverinfo', { id }).catch(() => null);
     }
     if (meta.apps && meta.canViewServerData) apps = await BB.getJson('apps', { id }).catch(() => null);
     $('serverLegend').hidden = !systemLog;
@@ -74,32 +70,29 @@ window.blackboxPage = 'server'; // for the Features list
       info: BB.uploadInfo(meta),
     });
     if (traces) followTraces(traces);
-    if (meta.serverCapture && meta.serverCapture.status === 'attached' && meta.canViewServerData) glowrootData().catch(() => { /* no button */ });
+    if (meta.serverCapture && meta.serverCapture.status === 'attached' && meta.canViewServerData) glowrootData().catch(() => { });
     if (meta.canViewServerData && meta.appExport && meta.appExport.state === 'exporting') appsPending();
     $('recStatus').hidden = false;
-    neighbours().catch(() => { /* no Older / Newer, the recording still plays */ });
+    neighbours().catch(() => { });
     if (systemLogError) window.blackboxShowError('Could not load the system logs: ' + (systemLogError.message || systemLogError));
   }
 
-  // Traces of slow requests can arrive after the upload: poll while some are still being collected
   let pendingTraces = 0;
   let traceTimer = null;
   function followTraces(t) {
     pendingTraces = t.pending;
-    clearTimeout(traceTimer); // one poll loop, also after a retry
+    clearTimeout(traceTimer);
     if (!t.pending) return;
     traceTimer = setTimeout(async () => {
       const next = await BB.getJson('traces', { id }).catch(() => null);
-      if (!next) return followTraces(t); // try again later
+      if (!next) return followTraces(t);
       window.blackboxSetTraces(next.traces);
       followTraces(next);
     }, 5000);
   }
 
-  // Glowroot data (one package per node, built about a minute after the stop): a button per node, checked again
-  // every 15 seconds while one is still being built
   let glowrootTimer = null;
-  let zipTitle = ''; // Download ZIP's own title, while it says why it waits
+  let zipTitle = '';
   async function glowrootData() {
     clearTimeout(glowrootTimer);
     const nodes = (await BB.getJson('glowroot', { id })).nodes || [];
@@ -119,14 +112,13 @@ window.blackboxPage = 'server'; // for the Features list
       } else {
         const b = document.createElement('button');
         b.disabled = true;
-        const node = nodes.length > 1 ? ' (' + n.node + ')' : ''; // which node, on a cluster
+        const node = nodes.length > 1 ? ' (' + n.node + ')' : '';
         b.textContent = (n.state === 'failed' ? 'No Glowroot data' : 'Preparing Glowroot data') + node;
         b.title = n.reason || '';
         box.append(b);
       }
     }
     box.hidden = !nodes.length;
-    // The ZIP carries the Glowroot data: it can be downloaded once every node has built its package
     const building = nodes.some((n) => n.state === 'waiting' || n.state === 'building');
     $('dlZip').classList.toggle('busy', building);
     $('dlZip').setAttribute('aria-disabled', String(building));
@@ -139,8 +131,6 @@ window.blackboxPage = 'server'; // for the Features list
       zipTitle = '';
     }
   }
-  // The apps are still being exported in the background (ExportJobs): reload once they are in. The server ends a
-  // lost export (restart) as failed; past APPS_WAIT_MS the page stops asking anyway
   const APPS_WAIT_MS = 30 * 60 * 1000;
   const appsSince = Date.now();
   function appsPending() {
@@ -159,7 +149,6 @@ window.blackboxPage = 'server'; // for the Features list
     if ($('dlZip').classList.contains('busy')) e.preventDefault();
   }, true);
 
-  // A download made now would miss the traces still being collected
   for (const a of ['dlZip', 'dlHtml']) {
     $(a).addEventListener('click', (e) => {
       if (pendingTraces && !confirm(`${pendingTraces} Glowroot ${pendingTraces === 1 ? 'trace is' : 'traces are'} still being collected and would be missing from this download. Download anyway?`)) {
@@ -168,7 +157,6 @@ window.blackboxPage = 'server'; // for the Features list
     });
   }
 
-  // Older / Newer: the recordings this user can see, in the list page's order (newest first)
   async function neighbours() {
     const list = (await BB.getJson('list')).recordings;
     const i = list.findIndex((r) => r.id === id);

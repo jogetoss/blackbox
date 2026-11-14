@@ -21,22 +21,12 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * Glowroot traces of a recording's requests, kept in a traces/ folder inside the capture's pending folder and, after
- * the upload, inside the recording's folder. Methods take that outer folder.
- * <ul>
- * <li>traces/{node}.jsonl: one line per state change of a request's trace, appended by the node that served it
- * (so two nodes never write the same file). The last line of a key wins.</li>
- * <li>traces/{node}-{traceId}.html: Glowroot's own export of the trace (a self-contained page).</li>
- * </ul>
- * States: pending (request running, or waiting for Glowroot), saved, none (Glowroot kept no trace), failed.
- */
 final class TraceStore {
 
     static final String DIR = "traces";
-    static final String MERGED = "traces.json"; // in a recording ZIP, next to traces/{file}
+    static final String MERGED = "traces.json";
     static final String IMPORT_NODE = "import";
-    static final long STALE_MS = 10 * 60 * 1000L; // a pending trace with no news for this long has failed
+    static final long STALE_MS = 10 * 60 * 1000L;
     private static final Pattern INDEX = Pattern.compile("^[A-Za-z0-9.-]+\\.jsonl$");
     private static final Pattern FILE = Pattern.compile("^[A-Za-z0-9.-]+-[0-9a-f]{8,64}\\.html$");
     private static final Object LOCK = new Object();
@@ -74,7 +64,6 @@ final class TraceStore {
         Files.move(tmp, traces.resolve(name), StandardCopyOption.REPLACE_EXISTING);
     }
 
-    /** The latest state of every trace in dir, sorted by request time. Pending ones with no news are marked failed. */
     static JSONArray merge(Path outer, long now) throws IOException {
         Map<String, JSONObject> latest = new LinkedHashMap<>();
         Path dir = outer == null ? null : outer.resolve(DIR);
@@ -99,10 +88,9 @@ final class TraceStore {
                             + e.optString("reason"));
                 }
                 if (!e.optString("file").isEmpty() && (!isTraceFile(e.optString("file")) || !Files.isRegularFile(dir.resolve(e.optString("file"))))) {
-                    e.remove("file"); // never written or not copied
+                    e.remove("file");
                 }
             } catch (JSONException ex) {
-                // keys and values are plain
             }
             result.put(e);
         }
@@ -116,7 +104,7 @@ final class TraceStore {
                 try {
                     e = new JSONObject(line);
                 } catch (JSONException ex) {
-                    continue; // cut short by a crash
+                    continue;
                 }
                 String key = e.optString("key");
                 JSONObject prev = latest.get(key);
@@ -138,15 +126,10 @@ final class TraceStore {
         return n;
     }
 
-    /** Moves the trace files of from into to (the upload). Safe to run again and from two nodes at once. */
     static void moveAll(Path fromOuter, Path toOuter) throws IOException {
         moveFolder(fromOuter, toOuter, DIR, TraceStore::isTraceFile);
     }
 
-    /**
-     * Moves outer/dir/ of from into to: *.jsonl files are appended to the target's (a node may still be writing),
-     * files accepted by other are moved. Safe to run again and from two nodes at once.
-     */
     static void moveFolder(Path fromOuter, Path toOuter, String dir, java.util.function.Predicate<String> other) throws IOException {
         Path from = fromOuter.resolve(dir);
         if (!Files.isDirectory(from)) {
@@ -166,7 +149,7 @@ final class TraceStore {
             Path target = to.resolve(f.getFileName().toString());
             try {
                 if (isIndexFile(f.getFileName().toString())) {
-                    synchronized (LOCK) { // appended as a stream: the index is never held whole
+                    synchronized (LOCK) {
                         try (java.io.InputStream in = Files.newInputStream(f);
                                 java.io.OutputStream out = Files.newOutputStream(target, StandardOpenOption.CREATE, StandardOpenOption.APPEND)) {
                             byte[] buf = new byte[64 * 1024];
@@ -181,17 +164,14 @@ final class TraceStore {
                     Files.move(f, target, StandardCopyOption.REPLACE_EXISTING);
                 }
             } catch (NoSuchFileException e) {
-                // moved by the other node
             }
         }
         try {
             Files.deleteIfExists(from);
         } catch (IOException e) {
-            // a node wrote again meanwhile: the next move takes it
         }
     }
 
-    /** The trace files of a recording folder (for the ZIP). */
     static List<Path> traceFiles(Path outer) throws IOException {
         List<Path> result = new ArrayList<>();
         Path dir = outer.resolve(DIR);
@@ -208,12 +188,6 @@ final class TraceStore {
         return result;
     }
 
-    // ---------- Glowroot data ----------
-
-    /**
-     * Is header (Glowroot's trace header) the trace of this request? Same method and path, and it started within
-     * 2 seconds of when the BlackBox filter saw the request start (Glowroot starts timing a little earlier).
-     */
     static boolean matches(JSONObject header, String method, String url, long start) {
         String path = url.contains("?") ? url.substring(0, url.indexOf('?')) : url;
         String headline = header.optString("headline");
@@ -226,7 +200,6 @@ final class TraceStore {
                 && Math.abs(header.optLong("startTime") - start) <= 2000;
     }
 
-    /** Does the trace carry GlowrootTag's attribute with this capture id? Glowroot: "attributes": {name: [values]}. */
     static boolean tagged(JSONObject header, String captureId) {
         JSONObject attributes = header.optJSONObject("attributes");
         JSONArray values = attributes != null ? attributes.optJSONArray(GlowrootTag.ATTRIBUTE) : null;
@@ -238,10 +211,6 @@ final class TraceStore {
         return false;
     }
 
-    /**
-     * The numbers the Traces tab shows: duration, CPU, SQL count and time, where the time went (self time per timer)
-     * and the slowest queries. header and queries are Glowroot's JSON for one trace.
-     */
     static JSONObject summary(JSONObject header, JSONObject queries) throws JSONException {
         JSONObject s = new JSONObject()
                 .put("durationMs", Math.round(header.optLong("durationNanos") / 1e6))

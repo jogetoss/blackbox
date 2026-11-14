@@ -1,7 +1,3 @@
-// Downloads and imports: the server's Download ZIP and Download HTML, the standalone viewer, Import ZIP on the server
-// and in the extension, the extension's own Download ZIP, and the exported apps (.jwa) without data, with real data
-// and with masked data, imported back into Joget over iService (each import adds an iService version; the test
-// deletes it, and the masked rows it added, afterwards).
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
@@ -16,7 +12,6 @@ const VIEWER = path.join(__dirname, '..', '..', 'chrome-extension', 'dist', 'bla
 
 test.skip(LEGACY_EXTENSION, 'tests this extension only');
 
-/** One SQL statement on Joget's database; rows as arrays of strings. */
 function sql(query) {
   const out = execFileSync('docker', ['exec', '-i', DB_CONTAINER, 'sh', '-c', `mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -N -B ${DB}`],
     { input: query, encoding: 'utf8' });
@@ -24,7 +19,6 @@ function sql(query) {
 }
 const quote = (s) => "'" + String(s).replace(/[\\']/g, '\\$&') + "'";
 
-/** The entries of a ZIP (name → Buffer), read with Python's zipfile. */
 function unzip(file) {
   const json = execFileSync('python3', ['-I', '-c', `
 import base64, json, sys, zipfile
@@ -34,7 +28,6 @@ with zipfile.ZipFile(sys.argv[1]) as z:
   return new Map(Object.entries(JSON.parse(json)).map(([k, v]) => [k, Buffer.from(v, 'base64')]));
 }
 
-/** GET a URL with the browser's Joget session as bytes; waits out the ZIP's 409 while the Glowroot data is built. */
 async function fetchBytes(page, url) {
   const b64 = await page.evaluate(async (url) => {
     let res = await fetch(url);
@@ -50,7 +43,6 @@ async function fetchBytes(page, url) {
   return Buffer.from(b64, 'base64');
 }
 
-/** POST bytes with the page's CSRF token; multipart when `field` is given (Joget's App import form). */
 async function postBytes(page, url, bytes, { field, fileName, contentType = 'application/zip' } = {}) {
   return page.evaluate(async ({ base, url, b64, field, fileName, contentType }) => {
     const t = await (await fetch(`${base}/web/json/directory/user/csrfToken`)).json();
@@ -69,7 +61,6 @@ async function postBytes(page, url, bytes, { field, fileName, contentType = 'app
   }, { base: JOGET, url, b64: bytes.toString('base64'), field, fileName, contentType });
 }
 
-/** A recording uploaded the way the extension does after a stop, with its server capture and apps exported with `mode` data. */
 async function uploadWithApps(context, extensionId, joget, mode) {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/recordings.html`);
@@ -85,7 +76,6 @@ async function uploadWithApps(context, extensionId, joget, mode) {
   return { page, id, rec, apps };
 }
 
-/** The server's Download ZIP of a recording, written to dir; returns the path and its entries. */
 async function downloadZip(joget, dir, recId) {
   const file = path.join(dir, recId + '.zip');
   fs.writeFileSync(file, await fetchBytes(joget, `${JOGET}/api/blackbox?action=download&format=zip&id=${recId}`));
@@ -94,8 +84,6 @@ async function downloadZip(joget, dir, recId) {
 
 const iServiceVersions = () => sql("SELECT appVersion FROM app_app WHERE appId = 'iService'").map((r) => Number(r[0]));
 
-/** Imports a .jwa over iService through App Center's import form; returns the new version. Every version it
- * added goes into `created`, also when a check fails, so the caller can delete it. */
 async function importJwa(joget, bytes, created) {
   const before = iServiceVersions();
   expect(before.length, 'iService versions read from the database').toBeGreaterThan(0);
@@ -120,7 +108,6 @@ async function deleteIServiceVersion(joget, version) {
   expect(iServiceVersions()).not.toContain(version);
 }
 
-/** The data/<table>.json files of a .jwa: table → rows. */
 function jwaData(jwaBytes, dir) {
   const file = path.join(dir, 'app-' + Date.now() + '.jwa');
   fs.writeFileSync(file, jwaBytes);
@@ -130,8 +117,6 @@ function jwaData(jwaBytes, dir) {
   }
   return out;
 }
-
-// ---------- apps without data, with real data, with masked data ----------
 
 for (const mode of ['none', 'real', 'masked']) {
   test(`Download ZIP with apps ${mode === 'none' ? 'without data' : `with ${mode} data`}: ZIP, .jwa and its import over iService`, async ({ context, extensionId }) => {
@@ -144,15 +129,14 @@ for (const mode of ['none', 'real', 'masked']) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'bb-export-'));
     const { rec, apps } = await uploadWithApps(context, extensionId, joget, mode);
     let imported;
-    const versions = []; // iService versions the .jwa import added
+    const versions = [];
     let version;
-    let added = {}; // masked rows the .jwa import adds: table → ids
+    let added = {};
     try {
       const iService = apps.apps.find((a) => a.id === 'iService');
       expect(iService?.state).toBe('saved');
       expect(iService.sample?.mode).toBe(mode === 'none' ? undefined : mode);
 
-      // The ZIP: recording, server data and the .jwa
       const { file, entries } = await downloadZip(joget, dir, rec.id);
       for (const name of ['meta.json', 'session.json', 'system-log.json', 'app/apps.json', `app/${iService.file}`]) {
         expect(entries.has(name), name + ' in the ZIP').toBe(true);
@@ -163,7 +147,6 @@ for (const mode of ['none', 'real', 'masked']) {
       expect(jwa.equals(await fetchBytes(joget, `${JOGET}/api/blackbox?action=appfile&id=${rec.id}&file=${iService.file}`)),
         'the .jwa in the ZIP is the App tab\'s Download .jwa').toBe(true);
 
-      // The .jwa's rows: none, real (original ids), masked (new ids from the idMap, user names userN)
       const data = jwaData(jwa, dir);
       if (mode === 'none') {
         expect(Object.keys(data), 'no data/ in the .jwa').toEqual([]);
@@ -188,7 +171,6 @@ for (const mode of ['none', 'real', 'masked']) {
         }
       }
 
-      // Import ZIP on the server: a new recording with the same apps
       const res = await postBytes(joget, `${JOGET}/api/blackbox?action=import`, fs.readFileSync(file));
       expect(res.status, res.text).toBe(200);
       imported = JSON.parse(res.text);
@@ -200,7 +182,6 @@ for (const mode of ['none', 'real', 'masked']) {
       expect(jwa.equals(await fetchBytes(joget, `${JOGET}/api/blackbox?action=appfile&id=${imported.id}&file=${iService.file}`)),
         'the imported recording keeps the .jwa').toBe(true);
 
-      // Import the .jwa over iService: a new app version; with data, its rows are in the app's tables
       const counts = Object.fromEntries(Object.keys(data).map((t) => [t, Number(sql(`SELECT COUNT(*) FROM app_fd_${t}`)[0][0])]));
       if (mode === 'masked') added = Object.fromEntries(Object.entries(data).map(([t, rows]) => [t, rows.map((r) => r.id)]));
       version = await importJwa(joget, jwa, versions);
@@ -225,8 +206,6 @@ for (const mode of ['none', 'real', 'masked']) {
   });
 }
 
-// ---------- Download HTML, the standalone viewer, the extension's ZIPs ----------
-
 test('Download HTML replays without Joget; the standalone viewer and the extension open the server ZIP', async ({ context, extensionId }) => {
   test.setTimeout(240_000);
   const joget = await context.newPage();
@@ -235,15 +214,13 @@ test('Download HTML replays without Joget; the standalone viewer and the extensi
   const { page, id, rec } = await uploadWithApps(context, extensionId, joget, 'none');
   let fromExtension;
   try {
-    // Download HTML: one file with the recording, server data and the app list, no .jwa
     const html = (await fetchBytes(joget, `${JOGET}/api/blackbox?action=download&format=html&id=${rec.id}`)).toString('utf8');
     for (const block of ['bb-meta', 'bb-session', 'bb-systemlog', 'bb-apps']) expect(html, block).toContain(`id="${block}"`);
-    expect(html).not.toContain('.jwa"><'); // no .jwa embedded, only listed
-    expect(html).not.toMatch(/<script[^>]+src=/); // nothing loaded from the server
+    expect(html).not.toContain('.jwa"><');
+    expect(html).not.toMatch(/<script[^>]+src=/);
     const htmlFile = path.join(dir, 'recording.html');
     fs.writeFileSync(htmlFile, html);
 
-    // Opened from disk, offline from Joget: the replay shows, with its App tab
     const offline = await context.newPage();
     const errors = [];
     offline.on('pageerror', (e) => errors.push(e.message));
@@ -255,7 +232,6 @@ test('Download HTML replays without Joget; the standalone viewer and the extensi
     await offline.click('#appsTab');
     await expect(offline.locator('#appsPage')).toContainText('Support Request');
 
-    // Theme and Text size pickers (display.js): applied at once, kept after a reload
     const display = (p) => p.evaluate(() => ({ theme: document.documentElement.dataset.theme || '', zoom: document.documentElement.style.zoom }));
     await expect(offline.locator('#themePick')).toHaveValue('');
     await expect(offline.locator('#textSizePick')).toHaveValue('1');
@@ -269,7 +245,6 @@ test('Download HTML replays without Joget; the standalone viewer and the extensi
     await expect(offline.locator('#textSizePick')).toHaveValue('1.5');
     expect(errors, 'no script errors').toEqual([]);
 
-    // The standalone viewer (dist/blackbox-viewer.html) opens the server's ZIP
     const { file: zip } = await downloadZip(joget, dir, rec.id);
     const viewer = await context.newPage();
     const viewerErrors = [];
@@ -278,21 +253,18 @@ test('Download HTML replays without Joget; the standalone viewer and the extensi
     await viewer.setInputFiles('#files', zip);
     await expect(viewer.locator('#app')).toBeVisible({ timeout: 30_000 });
     await expect(viewer.locator('#recTitle')).toContainText(rec.title);
-    // the same choice in every file opened from disk; back to System and 100% from here
     expect(await display(viewer), 'set in the downloaded HTML').toEqual({ theme: 'dark', zoom: '1.5' });
     await viewer.selectOption('#themePick', '');
     await viewer.selectOption('#textSizePick', '1');
     expect(await display(viewer)).toEqual({ theme: '', zoom: '' });
     expect(viewerErrors, 'no script errors').toEqual([]);
 
-    // The standalone viewer also opens session.json on its own
     const session = path.join(dir, 'session.json');
     fs.writeFileSync(session, unzip(zip).get('session.json'));
     await viewer.reload();
     await viewer.setInputFiles('#files', session);
     await expect(viewer.locator('#app')).toBeVisible({ timeout: 30_000 });
 
-    // Extension: Recordings > Import ZIP of the server's ZIP (drop the kept copy first: same recording id)
     await page.goto(`chrome-extension://${extensionId}/recordings.html`);
     await page.evaluate((id) => idbDelete(id), id);
     await page.reload();
@@ -312,7 +284,6 @@ test('Download HTML replays without Joget; the standalone viewer and the extensi
     await page.goto(`chrome-extension://${extensionId}/viewer.html?id=${row.id}`);
     await expect(page.locator('#app')).toBeVisible({ timeout: 30_000 });
 
-    // Extension: Download ZIP, then Import ZIP of that file on the server
     const downloaded = await page.evaluate(async (id) => {
       const row = (await Store.allRows()).find((r) => r.id === id);
       await Actions.downloadZip(row);

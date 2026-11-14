@@ -1,26 +1,18 @@
-// Masks credentials in recorded network data before it is saved (session.json, the partial saves, the upload).
-// On unless the server allows this user to record them unmasked (plugin setting "Allow recording browser secrets
-// unmasked", admins always) and the popup's "Record browser secrets unmasked" is ticked.
-// The secret words are the plugin's Secrets.java list (from Joget Upgrade Advisor's SecretMasker).
-// Used by the recorder; a plain script (no modules), also loaded by node for the tests.
-
 const Mask = (() => {
   const MASK = '****';
   const KEY_WORDS = 'password|passwd|passphrase|pwd|secret|token|api[_-]?key|apikey|access[_-]?key|private[_-]?key|'
     + 'client[_-]?secret|auth[_-]?key|credential|signing[_-]?key|encryption[_-]?key|csrf|xsrf|session[_-]?id|jsessionid|otp';
   const SECRET_NAME = new RegExp(`(${KEY_WORDS}|^pass$|^pass[_.-]|[_.-]pass$|_pass_|salt)`, 'i');
-  // Headers that are credentials whatever the secret words say
   const SECRET_HEADERS = new Set(['authorization', 'proxy-authorization', 'cookie', 'set-cookie', 'api_key', 'x-api-key']);
   const TOKEN_SHAPES = [
     /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
-    /eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, // JWT
+    /eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
     /\bAKIA[0-9A-Z]{16}\b/g,
     /\bgh[pousr]_[A-Za-z0-9]{20,}\b/g,
     /\bxox[abprs]-[A-Za-z0-9-]{10,}/g,
     /\bAIza[0-9A-Za-z_-]{30,}/g,
   ];
   const AUTH_SCHEME = /\b(Bearer|Basic)\s+[A-Za-z0-9\-._~+/]{8,}=*/gi;
-  // "name": "value" in JSON-ish text, name=value in forms and query strings
   const JSON_PAIR = /("([A-Za-z0-9_.\-]{1,100})"\s*:\s*)("(?:[^"\\\n]|\\.)*"|-?\d[\d.eE+-]*|true|false)/g;
   const FORM_PAIR = /(^|[?&;\s])([A-Za-z0-9_.\-[\]%]{1,100})=([^&;\s#]*)/g;
 
@@ -29,7 +21,6 @@ const Mask = (() => {
     try { return decodeURIComponent(s); } catch (e) { return s; }
   }
 
-  // Free text: token shapes, Bearer/Basic, secret-named JSON and form pairs
   function text(s) {
     if (typeof s !== 'string' || !s) return s;
     for (const re of TOKEN_SHAPES) s = s.replace(re, MASK);
@@ -41,7 +32,6 @@ const Mask = (() => {
 
   function url(u) {
     if (typeof u !== 'string' || !u) return u;
-    // user:password@host
     u = u.replace(/^([a-zA-Z][a-zA-Z0-9+.-]*:\/\/[^\s:/@#]+:)[^\s@/#]+@/, `$1${MASK}@`);
     const q = u.search(/[?#]/);
     return q < 0 ? u : u.slice(0, q) + text(u.slice(q));
@@ -57,7 +47,6 @@ const Mask = (() => {
     return out;
   }
 
-  // A recorded network entry, in place: URL, request and response headers, post data, response body
   function entry(e) {
     if (!e) return e;
     if (e.url) e.url = url(e.url);
@@ -70,7 +59,6 @@ const Mask = (() => {
     return e;
   }
 
-  // Whether this recording masks: offer = the server's me.options (null: no server), q = the popup's choices
   const on = (offer, q) => !(offer?.credentials === true && q?.credentials === true);
 
   return { MASK, isSecretName, text, url, headers, entry, on };

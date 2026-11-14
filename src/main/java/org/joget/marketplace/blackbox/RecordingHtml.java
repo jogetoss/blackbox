@@ -12,15 +12,6 @@ import java.util.Base64;
 import java.util.Map;
 import java.util.zip.GZIPOutputStream;
 
-/**
- * Writes one recording as a single .html file that replays it in any browser, with no server or extension:
- * the replay page (view.html) with viewer.css, viewer.js and display.js (Theme and Text size) inlined, the recording in data blocks
- * (meta, session.json, system-log.json, apps.json, the full trace pages gzipped as base64, the video as base64) and
- * export.js to open it.
- *
- * Data blocks are &lt;script type="application/json"&gt; elements. JSON text never needs a raw '&lt;' (in strings it can
- * be written <), so every '&lt;' is escaped and no "&lt;/script" can end a block early.
- */
 public class RecordingHtml {
 
     static final String RESOURCES = "static/blackbox/";
@@ -31,10 +22,9 @@ public class RecordingHtml {
     private static final String VIEW_JS = "<script src=\"assets/view.js\"></script>";
     private static final byte[] LT = "\\u003c".getBytes(StandardCharsets.US_ASCII);
 
-    private final String head; // the page up to where the data goes
-    private final String tail; // export.js and the rest of the page
+    private final String head;
+    private final String tail;
 
-    /** Builds the page from the plugin's own resources. */
     public static RecordingHtml fromResources() throws IOException {
         ClassLoader cl = RecordingHtml.class.getClassLoader();
         return new RecordingHtml(read(cl, "view.html"), read(cl, "viewer.css"), read(cl, "viewer.js"), read(cl, "display.js"),
@@ -48,7 +38,6 @@ public class RecordingHtml {
             }
         }
         String page = replaceOnce(viewHtml, CSS_LINK, "<style>\n" + css + "</style>");
-        // in <head>: the saved Theme and Text size apply before the page draws
         page = replaceOnce(page, HEAD_END, "<script>\n" + displayJs + "</script>\n" + HEAD_END);
         page = replaceOnce(page, COMMON_JS, "");
         page = replaceOnce(page, VIEWER_JS, "<script>\n" + viewerJs + "</script>");
@@ -60,30 +49,20 @@ public class RecordingHtml {
         tail = "<script>\n" + exportJs + "</script>" + page.substring(at + VIEW_JS.length());
     }
 
-    /**
-     * meta: the recording's meta.json (title, owner, notes...). systemLog and video may be null.
-     */
     public void write(OutputStream out, String meta, Path session, Path systemLog, Path video) throws IOException {
         write(out, meta, session, systemLog, video, null, null, null);
     }
 
-    /** traces: the recording's Glowroot trace summaries (TraceStore.merge), or null. */
     public void write(OutputStream out, String meta, Path session, Path systemLog, Path video, String traces, String gauges,
             Path serverInfo) throws IOException {
         write(out, meta, session, systemLog, video, traces, gauges, serverInfo, null);
     }
 
-    /** apps: the recording's app/apps.json (the App tab), or null. The .jwa files are not included: they are in the ZIP. */
     public void write(OutputStream out, String meta, Path session, Path systemLog, Path video, String traces, String gauges,
             Path serverInfo, Path apps) throws IOException {
         write(out, meta, session, systemLog, video, traces, gauges, serverInfo, apps, null);
     }
 
-    /**
-     * traceFiles: the full trace pages (Glowroot's export page of each saved trace) by file name, or null. Each goes in
-     * its own block, gzipped (a page is ~450 KB, mostly Glowroot's script, ~105 KB gzipped) as base64; export.js unzips
-     * them so Open full trace works in the file. Names must pass TraceStore.isTraceFile (they go in an attribute).
-     */
     public void write(OutputStream out, String meta, Path session, Path systemLog, Path video, String traces, String gauges,
             Path serverInfo, Path apps, Map<String, Path> traceFiles) throws IOException {
         out.write(head.getBytes(StandardCharsets.UTF_8));
@@ -151,9 +130,7 @@ public class RecordingHtml {
         out.flush();
     }
 
-    /** Copies in to out as base64, gzipped first if asked. Base64 has no '<'. Leaves out open. */
     private static void base64(InputStream in, OutputStream out, boolean gzip) throws IOException {
-        // The encoder (and gzip) must be closed to write their last bytes, but not the response stream
         OutputStream keepOpen = new FilterOutputStream(out) {
             @Override
             public void write(byte[] b, int off, int len) throws IOException {
@@ -179,7 +156,6 @@ public class RecordingHtml {
         out.write("</script>".getBytes(StandardCharsets.UTF_8));
     }
 
-    /** Copies JSON, writing '<' as <. '<' is one byte in UTF-8 and never part of a multi-byte character. */
     static void escaped(InputStream in, OutputStream out) throws IOException {
         byte[] buf = new byte[64 * 1024];
         int n;

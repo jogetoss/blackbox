@@ -24,7 +24,7 @@ import org.junit.Test;
 public class GlowrootDataTest {
 
     private static final String REC = "11111111-2222-3333-4444-555555555555";
-    private static final long FROM = 1_800_000_000_000L; // the recording: 2 minutes
+    private static final long FROM = 1_800_000_000_000L;
     private static final long TO = FROM + 120_000L;
 
     private Path dir;
@@ -39,9 +39,6 @@ public class GlowrootDataTest {
         RecordingStore.deleteTree(dir);
     }
 
-    // ---------- capped files ----------
-
-    /** Writes blocks the way Glowroot's CappedDatabaseOutputStream does, into a tiny ring. */
     static final class GlowrootRing {
         final RandomAccessFile f;
         final long size;
@@ -58,7 +55,7 @@ public class GlowrootDataTest {
         long write(byte[] b) throws IOException {
             long pos = currIndex % size;
             if (size - pos < 8) {
-                currIndex += size - pos; // no room for the block's length: it starts at the ring's start
+                currIndex += size - pos;
             }
             long id = currIndex;
             f.seek(20 + currIndex % size);
@@ -70,7 +67,7 @@ public class GlowrootDataTest {
             f.write(b, 0, first);
             if (first < b.length) {
                 f.seek(20);
-                f.write(b, first, b.length - first); // wraps past the ring's end
+                f.write(b, first, b.length - first);
             }
             currIndex += b.length;
             f.seek(0);
@@ -88,11 +85,10 @@ public class GlowrootDataTest {
         assertTrue("some kept blocks wrap past the ring's end (" + wrapped + ")", wrapped > 0);
     }
 
-    /** Fills a 4 KB ring until it wrapped several times, copies what survived, reads the copy back. Returns wraps. */
     private int ringRoundTrip(int seed) throws IOException {
         Path p = dir.resolve("ring-" + seed + ".capped.db");
         Random rnd = new Random(seed);
-        List<long[]> ids = new ArrayList<>(); // id, block seed
+        List<long[]> ids = new ArrayList<>();
         GlowrootRing ring = new GlowrootRing(p, 4);
         for (int i = 0; i < 60; i++) {
             ids.add(new long[]{ring.write(bytes(seed * 1000 + i, 100 + rnd.nextInt(300))), seed * 1000 + i});
@@ -102,14 +98,13 @@ public class GlowrootDataTest {
         int gone = 0;
         int wrapped = 0;
         Path copy = dir.resolve("copy-" + seed + ".capped.db");
-        List<long[]> copied = new ArrayList<>(); // new id, block seed
+        List<long[]> copied = new ArrayList<>();
         try (GlowrootData.CappedReader in = new GlowrootData.CappedReader(p);
                 GlowrootData.CappedWriter out = new GlowrootData.CappedWriter(copy, in.sizeKb)) {
             assertTrue("the ring wrapped several times", in.currIndex > 3 * in.size);
             for (long[] e : ids) {
                 byte[] b = in.block(e[0]);
                 if (b == null) {
-                    // overwritten, or so close to being overwritten that a write in progress may have reached it
                     assertTrue("only overwritten blocks are missing",
                             e[0] < GlowrootData.CappedReader.smallestKept(in.base, in.currIndex + in.margin(), in.size));
                     gone++;
@@ -139,8 +134,6 @@ public class GlowrootDataTest {
         return b;
     }
 
-    // ---------- the cut ----------
-
     @Test
     public void keepsOnlyTheRecordingAndRewritesCappedIds() throws Exception {
         Path src = Files.createDirectories(dir.resolve("src"));
@@ -149,7 +142,7 @@ public class GlowrootDataTest {
         for (int i = 0; i < 4; i++) {
             rollups[i] = new GlowrootRing(src.resolve(GlowrootData.rollupCapped(i)), 64);
         }
-        rollups[0].write(bytes(99, 500)); // not the recording's: must not be copied
+        rollups[0].write(bytes(99, 500));
         long other = traceRing.write(bytes(1, 300));
         long entries = traceRing.write(bytes(2, 400));
         long profile = traceRing.write(bytes(3, 200));
@@ -173,7 +166,6 @@ public class GlowrootDataTest {
             s.execute("INSERT INTO TRACE VALUES ('other', " + (FROM + 6000) + ", " + other + ", NULL, NULL, NULL, NULL)");
             s.execute("INSERT INTO TRACE_ATTRIBUTE VALUES ('mine', 'BlackBox recording', '" + REC + "', 0)");
             s.execute("INSERT INTO TRACE_ATTRIBUTE VALUES ('other', 'BlackBox recording', 'someone-else', 0)");
-            // minute buckets (time = end of the minute): kept from FROM - 1 min to TO + 2 min (exclusive)
             long[] minutes = {FROM - 120_000, FROM - 30_000, FROM + 60_000, TO + 60_000, TO + 120_000, TO + 600_000};
             for (long t : minutes) {
                 s.execute("INSERT INTO AGGREGATE_TT_ROLLUP_0 VALUES (" + t + ", " + (t == FROM + 60_000 ? queries : -1) + ", NULL, NULL, NULL)");
@@ -242,7 +234,7 @@ public class GlowrootDataTest {
                 s.execute("CREATE TABLE GAUGE_VALUE_ROLLUP_" + i + " (GAUGE_ID BIGINT, CAPTURE_TIME BIGINT, VALUE DOUBLE, WEIGHT BIGINT)");
             }
             s.execute("CREATE TABLE INCIDENT (OPEN_TIME BIGINT)");
-            String[][] traces = { // id, start, end (capture time)
+            String[][] traces = {
                 {"mine", String.valueOf(FROM + 1000), String.valueOf(FROM + 2000)},
                 {"otherUser", String.valueOf(FROM + 3000), String.valueOf(FROM + 4000)},
                 {"overlapsStart", String.valueOf(FROM - 5000), String.valueOf(FROM + 500)},
@@ -272,8 +264,6 @@ public class GlowrootDataTest {
         }
     }
 
-    // ---------- the package ----------
-
     @Test
     public void overallStateAndSpaceNeeded() throws Exception {
         JSONArray s = new JSONArray();
@@ -291,7 +281,7 @@ public class GlowrootDataTest {
 
     @Test
     public void buildsAMinuteAfterTheStop() {
-        long stop = 1_800_000_010_000L; // 10 s into a minute
+        long stop = 1_800_000_010_000L;
         assertEquals(1_800_000_060_000L + 30_000L, GlowrootPackager.readyAt(stop));
     }
 
@@ -309,7 +299,6 @@ public class GlowrootDataTest {
         try (ZipFile z = new ZipFile(zip.toFile())) {
             java.util.List<String> names = new java.util.ArrayList<>();
             z.stream().forEach(e -> names.add(e.getName()));
-            // the offline viewer needs only data/: it writes its own default admin.json and config.json
             assertEquals(Arrays.asList("data/data.h2.db", "README.txt"), names);
         }
         assertEquals(zip, GlowrootData.zipFile(dir.resolve("rec"), "node-a"));
@@ -340,18 +329,14 @@ public class GlowrootDataTest {
         String session = "{\"recording\":{\"tab\":{\"title\":\"T\"}},\"console\":[],\"network\":[]}";
         long now = System.currentTimeMillis();
 
-        // A capture still on disk with this node's package unfinished: watched again
         String open = "0f8fad5b-d9cb-469f-a165-70867728950e";
         assertTrue(logs.start(open, "admin", 1024, 3600_000L, false, "", false, true));
         GlowrootData.writeStatus(logs.dir(open), "n1", new JSONObject().put("node", "n1").put("state", "building"));
-        // Another node's unfinished package: not this node's business
         GlowrootData.writeStatus(logs.dir(open), "n2", new JSONObject().put("node", "n2").put("state", "waiting"));
 
-        // A recording whose capture is gone: failed, so it doesn't count as building for good
         String gone = recordings.create(new java.io.ByteArrayInputStream(session.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
                 1 << 20, "admin", "Admin", "t", "").getString("id");
         GlowrootData.writeStatus(recordings.dir(gone), "n1", new JSONObject().put("node", "n1").put("state", "waiting"));
-        // A finished one is left alone
         String saved = recordings.create(new java.io.ByteArrayInputStream(session.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
                 1 << 20, "admin", "Admin", "t2", "").getString("id");
         GlowrootData.writeStatus(recordings.dir(saved), "n1", new JSONObject().put("node", "n1").put("state", "saved"));
@@ -359,7 +344,7 @@ public class GlowrootDataTest {
         try {
             assertEquals(Arrays.asList(open), GlowrootPackager.recover(logs, recordings, null, "n1", now));
         } finally {
-            GlowrootPackager.stop(); // clears the watch list
+            GlowrootPackager.stop();
         }
         assertTrue("still to build", GlowrootData.unfinished(logs.dir(open), "n1"));
         JSONObject failed = GlowrootData.statuses(recordings.dir(gone)).getJSONObject(0);
@@ -375,7 +360,6 @@ public class GlowrootDataTest {
         String session = "{\"recording\":{\"tab\":{\"title\":\"T\"}},\"console\":[],\"network\":[]}";
         String id = recordings.create(new java.io.ByteArrayInputStream(session.getBytes(java.nio.charset.StandardCharsets.UTF_8)),
                 1 << 20, "admin", "Admin", "t", "").getString("id");
-        // A node wrote "waiting" long ago, then stopped watching: nobody writes again
         GlowrootData.writeStatus(recordings.dir(id), "n1", new JSONObject().put("node", "n1").put("state", "waiting").put("updated", 1));
         recordings.modifyMeta(id, m -> m.put("serverData", new JSONObject().put("glowroot", "building")));
 
@@ -383,7 +367,6 @@ public class GlowrootDataTest {
         assertEquals("failed", row.getJSONObject("serverData").getString("glowroot"));
         assertEquals("saved too", "failed", recordings.readMeta(id).getJSONObject("serverData").getString("glowroot"));
 
-        // A fresh one stays building
         GlowrootData.writeStatus(recordings.dir(id), "n1", new JSONObject().put("node", "n1").put("state", "building")
                 .put("updated", System.currentTimeMillis()));
         recordings.modifyMeta(id, m -> m.put("serverData", new JSONObject().put("glowroot", "building")));

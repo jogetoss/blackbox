@@ -79,7 +79,6 @@ public class TraceStoreTest {
 
     @Test
     public void onlyTracesTaggedWithTheCaptureAreItsOwn() throws Exception {
-        // Glowroot's header: "attributes": {"BlackBox recording": ["<capture id>"]}
         JSONObject mine = new JSONObject().put("attributes", new JSONObject().put(GlowrootTag.ATTRIBUTE, new JSONArray().put("cap1")));
         assertTrue(TraceStore.tagged(mine, "cap1"));
         assertFalse("another user's recording", TraceStore.tagged(mine, "cap2"));

@@ -20,7 +20,6 @@ public class Activator implements BundleActivator {
         try {
             ServerCapture.start();
         } catch (Throwable e) {
-            // e.g. a Joget without the log4j 1.2 bridge: recordings still work, without system logs
             LogUtil.error(getClass().getName(), e, "BlackBox could not start server capture");
         }
     }

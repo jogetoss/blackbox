@@ -1,15 +1,9 @@
-// Talks to the upload server: a BlackBox upload endpoint at the "Upload URL" from Settings (see ARCHITECTURE.md "Upload endpoint (API)").
-// Requests carry the browser's cookies, so the user's existing login on that server is used.
-// Needs host permission for the server's origin (asked for in Settings or on the first upload).
-
 const Server = {
-  // { uploadUrl, viewUrl } from Settings; viewUrl is an optional override ('' = use the server's link)
   async getSettings() {
     const s = await chrome.storage.local.get(['uploadUrl', 'viewUrl']);
     return { uploadUrl: s.uploadUrl || '', viewUrl: s.viewUrl || '' };
   },
 
-  // Shown when the server answers 401
   notLoggedIn(endpoint) {
     return `Not logged in to ${new URL(endpoint).origin}. Log in there in this browser, then try again.`;
   },
@@ -18,7 +12,6 @@ const Server = {
     return settings.viewUrl ? settings.viewUrl.split('{id}').join(encodeURIComponent(id)) : serverUrl || '';
   },
 
-  // Drops a trailing slash, query and hash; throws on anything that is not http(s)
   normalize(url) {
     let u;
     try {
@@ -38,24 +31,20 @@ const Server = {
     return chrome.permissions.contains({ origins: this.origins(endpoint) });
   },
 
-  // Must be called straight from a click (user gesture), before any await.
   requestPermission(endpoint) {
     return chrome.permissions.request({ origins: this.origins(endpoint) });
   },
 
-  // The server sends links as paths (e.g. /app/login); make them absolute. Only http(s) links on the server itself
-  // (host and port; the scheme may differ behind a proxy): never javascript:, data: or another site.
   resolve(endpoint, path) {
     try {
       if (!path) return '';
       const u = new URL(path, endpoint);
       return /^https?:$/.test(u.protocol) && u.host === new URL(endpoint).host ? u.href : '';
     } catch (e) {
-      return ''; // a link the server sent that isn't a URL: show no link
+      return '';
     }
   },
 
-  // GET or POST with progress. Resolves with the JSON body; rejects with an Error that has .status.
   request(endpoint, method, params, body, contentType, onProgress) {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -65,7 +54,7 @@ const Server = {
       if (onProgress) xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded, e.total); };
       xhr.onload = () => {
         let res = null;
-        try { res = JSON.parse(xhr.responseText); } catch (e) { /* not JSON */ }
+        try { res = JSON.parse(xhr.responseText); } catch (e) { }
         if (xhr.status >= 200 && xhr.status < 300 && res) return resolve(res);
         let message = res?.error?.message;
         if (!message) {
@@ -82,8 +71,6 @@ const Server = {
         err.status = 0;
         reject(err);
       };
-      // GETs are small (me): a server that never answers would otherwise hang until the browser gives up.
-      // Uploads (POST) can take minutes, so they have no limit.
       if (method === 'GET') {
         xhr.timeout = 15000;
         xhr.ontimeout = () => {
@@ -100,16 +87,14 @@ const Server = {
     return this.request(endpoint, 'GET', { action: 'me' });
   },
 
-  // { user, recordings: [meta...] }: the recordings this user may see (an admin sees everyone's)
   list(endpoint) {
     return this.request(endpoint, 'GET', { action: 'list' });
   },
 
-  // The server's recordings page: <context>/blackbox/ next to <context>/api/blackbox; else the server's root
   recordingsPage(endpoint) {
     const u = new URL(endpoint);
     return /\/api\/blackbox$/.test(u.pathname) ? u.origin + u.pathname.replace(/\/api\/blackbox$/, '/blackbox/') : u.origin + '/';
   },
 };
 
-if (typeof module !== 'undefined') module.exports = Server; // node tests (e2e/tests/extension-trust.spec.js)
+if (typeof module !== 'undefined') module.exports = Server;

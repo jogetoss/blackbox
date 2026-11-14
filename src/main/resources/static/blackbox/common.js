@@ -1,4 +1,3 @@
-// Shared helpers for the BlackBox pages. All recorded text is set with textContent, never innerHTML.
 (function () {
   const ctx = location.pathname.slice(0, location.pathname.indexOf('/blackbox'));
   const service = ctx + '/api/blackbox';
@@ -14,7 +13,6 @@
   }
 
   class ApiError extends Error {
-    // Error bodies: {"error":{"code":"403","message":"..."}}
     constructor(status, body) {
       super((body && body.error && body.error.message) || 'Request failed (HTTP ' + status + ').');
       this.status = status;
@@ -33,7 +31,6 @@
     return body;
   }
 
-  // POST with XMLHttpRequest so uploads can report progress.
   async function post(action, params, body, contentType, onProgress) {
     const t = await csrf();
     return new Promise((resolve, reject) => {
@@ -44,7 +41,7 @@
       if (onProgress) xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded, e.total); };
       xhr.onload = () => {
         let res = null;
-        try { res = JSON.parse(xhr.responseText); } catch (e) { /* not JSON */ }
+        try { res = JSON.parse(xhr.responseText); } catch (e) { }
         if (xhr.status >= 200 && xhr.status < 300) resolve(res);
         else reject(new ApiError(xhr.status, res));
       };
@@ -72,14 +69,12 @@
     return mb >= 1 ? mb.toFixed(1) + ' MB' : Math.max(1, Math.round(bytes / 1024)) + ' KB';
   }
 
-  // "2026-10-30 09:50:09 UTC", like the viewer's utc(): every time on the page is in UTC
   function fmtDate(iso) {
     if (!iso) return '';
     const d = new Date(iso);
     return isNaN(d) ? String(iso) : d.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
   }
 
-  // Shows "log in" help when the API says 401; returns true if it did.
   function loginNeeded(e, box) {
     if (!(e instanceof ApiError) || e.status !== 401) return false;
     box.textContent = '';
@@ -96,7 +91,6 @@
     return true;
   }
 
-  // "Uploaded by" rows for the Info tab (the replay page and the downloaded HTML file)
   function uploadInfo(meta) {
     const who = (o) => (o.ownerName && o.ownerName !== o.owner ? o.ownerName + ' (' + o.owner + ')' : o.owner);
     const info = { 'Uploaded by': who(meta), 'Uploaded': fmtDate(meta.uploadedAt) };

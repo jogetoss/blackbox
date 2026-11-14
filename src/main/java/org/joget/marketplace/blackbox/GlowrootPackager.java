@@ -19,29 +19,16 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * Builds each node's Glowroot data package of a recording ({@link GlowrootData}) after the recording stops.
- *
- * A node watches a capture once the capture opens on it (the start call, or its first tagged request), like
- * {@link GaugeSampler}. After the stop it waits until Glowroot has written the aggregates of the stop's minute
- * (Glowroot writes each minute's aggregates just after the minute ends), then cuts the recording out of its own
- * Glowroot's data folder (found next to the -javaagent jar) and saves glowroot/{node}.zip into the capture's pending
- * folder, or into the recording once uploaded. One package at a time, on one background thread.
- *
- * The H2 work uses Glowroot's own H2 driver (shaded in lib/glowroot-embedded-collector.jar), so the copy stays in the
- * exact H2 version Glowroot reads. Only memory tracks what to build, so after a restart {@link #recover} picks up this
- * node's unfinished packages again, or marks them failed when their capture is gone.
- */
 final class GlowrootPackager {
 
     private static final long TICK_S = 10;
-    private static final long AFTER_MINUTE_MS = 30_000L; // Glowroot writes a minute's aggregates a moment after it ends
-    private static final long MAX_WAIT_MS = 3 * 3600 * 1000L; // give up on captures never stopped
+    private static final long AFTER_MINUTE_MS = 30_000L;
+    private static final long MAX_WAIT_MS = 3 * 3600 * 1000L;
     private static final String NODE = ServerCapture.nodeName();
     private static final String EMBEDDED_JAR = "glowroot-embedded-collector.jar";
     private static final String H2_DRIVER = "org.glowroot.agent.embedded.shaded.org.h2.Driver";
 
-    private static final Map<String, ProfileDir.Watch> WATCHED = new ConcurrentHashMap<>(); // capture id -> since, folder
+    private static final Map<String, ProfileDir.Watch> WATCHED = new ConcurrentHashMap<>();
     private static ScheduledExecutorService jobs;
 
     private GlowrootPackager() {
@@ -54,12 +41,12 @@ final class GlowrootPackager {
         jobs = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "BlackBox Glowroot data");
             t.setDaemon(true);
-            t.setPriority(Thread.MIN_PRIORITY); // background work: requests come first
+            t.setPriority(Thread.MIN_PRIORITY);
             return t;
         });
         jobs.schedule(() -> {
             long now = System.currentTimeMillis();
-            for (Path d : ProfileDir.all(GlowrootPackager.class)) { // every profile's (virtual hosts); one bad one stops no other
+            for (Path d : ProfileDir.all(GlowrootPackager.class)) {
                 ProfileDir.safely(GlowrootPackager.class, "check for unfinished Glowroot data packages", d,
                         () -> recover(ServerCapture.store(), BlackBoxPlugin.store(), d, NODE, now));
             }
@@ -69,16 +56,10 @@ final class GlowrootPackager {
             shutdownFlag = new Thread(() -> jvmStopping = true, "BlackBox shutdown flag");
             Runtime.getRuntime().addShutdownHook(shutdownFlag);
         } catch (IllegalStateException | SecurityException e) {
-            shutdownFlag = null; // already shutting down, or not allowed: only the plugin's own stop is noticed
+            shutdownFlag = null;
         }
     }
 
-    /**
-     * After a restart: this node's packages left waiting or building are watched again while their capture exists (the
-     * build runs as usual; blocks Glowroot overwrote meanwhile are counted as lost). Those in a recording whose capture
-     * is gone are marked failed, so the recording doesn't stay "building" for good. Returns the capture ids watched.
-     * profileDir: the profile's blackbox folder their builds run in (null: the thread's own).
-     */
     static List<String> recover(ServerCaptureStore logs, RecordingStore recordings, Path profileDir, String node, long now)
             throws IOException, JSONException {
         List<String> watched = new ArrayList<>();
@@ -122,16 +103,14 @@ final class GlowrootPackager {
             try {
                 Runtime.getRuntime().removeShutdownHook(shutdownFlag);
             } catch (IllegalStateException | SecurityException e) {
-                // the JVM is shutting down: the hook runs anyway
             }
             shutdownFlag = null;
         }
     }
 
     private static volatile boolean jvmStopping;
-    private static Thread shutdownFlag; // registered while started, so a reloaded plugin leaves none behind
+    private static Thread shutdownFlag;
 
-    /** The plugin stopped (jobs gone), this thread was interrupted, or the JVM is shutting down. */
     private static boolean stopping() {
         synchronized (GlowrootPackager.class) {
             if (jobs == null) {
@@ -141,7 +120,6 @@ final class GlowrootPackager {
         return jvmStopping || Thread.currentThread().isInterrupted();
     }
 
-    /** A capture is open on this node: build its package after it stops. */
     static void watch(ServerCapture.Capture capture) {
         if (jobs == null || !capture.glowrootData || failedOnThisNode(capture.id)
                 || WATCHED.putIfAbsent(capture.id, new ProfileDir.Watch(System.currentTimeMillis(), ProfileDir.current())) != null) {
@@ -150,7 +128,6 @@ final class GlowrootPackager {
         status(capture.id, "waiting", "Built about a minute after the recording stops", null);
     }
 
-    /** The package already failed here (e.g. never stopped within 3 h): a reopened capture must not reset it or build. */
     private static boolean failedOnThisNode(String id) {
         Path dir = TraceCollector.captureDir(id);
         if (dir == null) {
@@ -165,12 +142,10 @@ final class GlowrootPackager {
                 }
             }
         } catch (IOException e) {
-            // unreadable: treat as not failed, watch as before
         }
         return false;
     }
 
-    /** When the package can be built: after Glowroot wrote the aggregates of the minute the recording stopped in. */
     static long readyAt(long stoppedAt) {
         long minuteEnd = (stoppedAt / 60_000L + 1) * 60_000L;
         return minuteEnd + AFTER_MINUTE_MS;
@@ -182,8 +157,8 @@ final class GlowrootPackager {
             String id = e.getKey();
             ProfileDir.Watch watch = e.getValue();
             if (!ProfileDir.safely(GlowrootPackager.class, "check the Glowroot data of capture " + id, watch.dir,
-                    () -> tick(id, watch.since, now))) { // in the capture's profile (virtual hosts)
-                WATCHED.remove(id); // its folder fails: stop watching it, and say so if the folder still takes it
+                    () -> tick(id, watch.since, now))) {
+                WATCHED.remove(id);
                 ProfileDir.safely(GlowrootPackager.class, "save the Glowroot data status of capture " + id, watch.dir,
                         () -> status(id, "failed", "Could not read the capture's folder on " + NODE, null));
             }
@@ -193,7 +168,7 @@ final class GlowrootPackager {
     private static void tick(String id, long since, long now) {
         JSONObject meta = ServerCapture.store().readMeta(id);
         if (meta == null) {
-            WATCHED.remove(id); // expired or deleted
+            WATCHED.remove(id);
             return;
         }
         if (!meta.has("stoppedAt")) {
@@ -210,7 +185,7 @@ final class GlowrootPackager {
     }
 
     private static void build(String id, long from, long to) {
-        if (!BlackBoxPlugin.glowrootShared.getAsBoolean()) { // e.g. started (or left waiting) before a restart without the opt-in
+        if (!BlackBoxPlugin.glowrootShared.getAsBoolean()) {
             status(id, "failed", "With virtual hosts, Glowroot data needs the server started with -D"
                     + BlackBoxPlugin.SHARED_GLOWROOT + "=true: Glowroot holds every profile's requests", null);
             return;
@@ -244,7 +219,6 @@ final class GlowrootPackager {
             work = Files.createTempDirectory("blackbox-glowroot-");
             Path data = work.resolve("data");
             GlowrootData.Result r;
-            // Parent: the loader of java.sql (platform on Java 9+, bootstrap on 8), so the shaded H2 sees JDBC only
             try (URLClassLoader cl = new URLClassLoader(new URL[]{embedded.toUri().toURL()}, Driver.class.getClassLoader())) {
                 Driver h2 = (Driver) Class.forName(H2_DRIVER, true, cl).getDeclaredConstructor().newInstance();
                 JSONObject meta = ServerCapture.store().readMeta(id);
@@ -252,9 +226,9 @@ final class GlowrootPackager {
             }
             String readme = GlowrootData.readme(id, NODE, version, from, to);
 
-            Path dir = TraceCollector.captureDir(id); // pending, or the recording's folder once uploaded
+            Path dir = TraceCollector.captureDir(id);
             if (dir == null) {
-                return; // the capture expired or the recording was deleted meanwhile
+                return;
             }
             Path zip = dir.resolve(GlowrootData.DIR).resolve(NODE + ".zip");
             GlowrootData.zip(data, readme, zip);
@@ -269,7 +243,6 @@ final class GlowrootPackager {
             moveIfUploaded(id, dir);
         } catch (Exception | LinkageError e) {
             if (stopping()) {
-                // Joget or the plugin is stopping: left "building", so recover builds it again after the restart
                 LogUtil.info(GlowrootPackager.class.getName(), "Glowroot data of capture " + id + " not built: stopping (" + e + ")");
                 return;
             }
@@ -290,7 +263,6 @@ final class GlowrootPackager {
         return (bytes + 1024 * 1024 - 1) / (1024 * 1024) + " MB";
     }
 
-    /** agent-{host} when Glowroot keeps one folder per server (its multi-directory mode), else the jar's folder. */
     static Path agentDir(Path glowroot) {
         List<Path> candidates = new ArrayList<>();
         try {
@@ -298,7 +270,6 @@ final class GlowrootPackager {
             candidates.add(glowroot.resolve("agent-" + local.getHostName()));
             candidates.add(glowroot.resolve("agent-" + local.getCanonicalHostName()));
         } catch (IOException e) {
-            // no host name: only the jar's folder
         }
         candidates.add(glowroot);
         for (Path p : candidates) {
@@ -309,7 +280,6 @@ final class GlowrootPackager {
         return null;
     }
 
-    /** This node's status in the capture's folder (pending, or the recording's once uploaded). */
     private static void status(String id, String state, String reason, JSONObject extra) {
         Path dir = TraceCollector.captureDir(id);
         if (dir == null) {
@@ -326,14 +296,13 @@ final class GlowrootPackager {
             JSONObject meta = ServerCapture.store().readMeta(id);
             String rec = meta != null ? meta.optString("recording") : "";
             if (!rec.isEmpty()) {
-                ServerData.refreshGlowroot(BlackBoxPlugin.store(), rec); // the recordings list's state
+                ServerData.refreshGlowroot(BlackBoxPlugin.store(), rec);
             }
         } catch (IOException | JSONException e) {
             LogUtil.warn(GlowrootPackager.class.getName(), "Could not save the Glowroot data status of capture " + id + ": " + e.getMessage());
         }
     }
 
-    /** Written to the pending folder just as the upload moved it: move what was left behind. */
     private static void moveIfUploaded(String id, Path written) throws IOException {
         ServerCaptureStore store = ServerCapture.store();
         if (!written.equals(store.dir(id))) {

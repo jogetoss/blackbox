@@ -13,18 +13,12 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import org.joget.apps.app.model.PluginWebFilterAbstract;
 
-/**
- * Serves the BlackBox pages at <context>/blackbox/...
- *
- * They are static shells; all data comes from /api/blackbox, which checks the user.
- */
 public class BlackBoxPageFilter extends PluginWebFilterAbstract {
 
     private static final String PREFIX = "/blackbox";
     private static final Map<String, String> FILES = new HashMap<>();
 
     static {
-        // URL path (after /blackbox) -> resource, content type. Nothing else under /blackbox is served.
         FILES.put("", "list.html");
         FILES.put("/", "list.html");
         FILES.put("/view", "view.html");
@@ -68,7 +62,7 @@ public class BlackBoxPageFilter extends PluginWebFilterAbstract {
 
     @Override
     public boolean isPositionAfterSecurityFilter() {
-        return false; // static files only, no user needed
+        return false;
     }
 
     @Override
@@ -86,7 +80,6 @@ public class BlackBoxPageFilter extends PluginWebFilterAbstract {
             return;
         }
         if (path.equals(PREFIX)) {
-            // relative asset links need the trailing slash
             response.sendRedirect(request.getContextPath() + PREFIX + "/");
             return;
         }

@@ -62,7 +62,6 @@ public class ServerInfoTest {
         assertFalse(db.toString().contains("s3cret"));
     }
 
-    /** Stands in for the Tomcat JDBC pool: bean getters and setters, plus pool state. */
     public static class FakePool {
         public int getMaxActive() { return 500; }
         public void setMaxActive(int v) { }

@@ -123,7 +123,6 @@ public class SampleDataTest {
         assertEquals(3, ids.size());
     }
 
-    /** Tables: leave (parent rows) and leave_item (grid rows pointing at the parent by "parentId"), plus an untouched one. */
     private static class Fake implements SampleData.Source {
         final Map<String, List<FormRow>> data = new LinkedHashMap<>();
         final Map<String, List<File>> files = new HashMap<>();
@@ -228,7 +227,6 @@ public class SampleDataTest {
         assertEquals("user1", p.getProperty("createdBy"));
         assertTrue(leave.masked.contains("name"));
         assertFalse(leave.masked.contains("status"));
-        // the file: a placeholder under the new id, the column names it
         assertEquals(1, leave.files.size());
         String path = leave.files.keySet().iterator().next();
         assertEquals("app_formuploads/leave/" + p.getId() + "/" + p.getProperty("photo"), path);
@@ -301,7 +299,6 @@ public class SampleDataTest {
         row.setDateCreated(created);
         row.setDateModified(created);
         t.rows.add(row);
-        // The export thread: the locale comes from a request that has ended (Tomcat: "The request object has been recycled")
         org.springframework.context.i18n.LocaleContextHolder.setLocaleContext(() -> {
             throw new IllegalStateException("The request object has been recycled and is no longer associated with this facade");
         });
@@ -318,7 +315,6 @@ public class SampleDataTest {
         assertEquals(P1, written.getString("id"));
         assertEquals("2026-07-10 14:56:15", written.getString("dateCreated"));
         assertEquals("Siti", written.getString("name"));
-        // Joget's import (FormUtil.jsonToFormRowSet) reads the dates with this pattern
         java.text.SimpleDateFormat importFormat = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         assertEquals(created, importFormat.parse(written.getString("dateCreated")));
         assertEquals(created, importFormat.parse(written.getString("dateModified")));

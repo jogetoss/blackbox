@@ -1,12 +1,10 @@
-// What the extension takes from the upload server and its pages: links (server.js resolve) only to the server itself,
-// and the settings and recording messages only from the extension's own pages, not from the theme.js content script.
 const { test, expect, JOGET } = require('./fixtures');
 const Server = require('../../chrome-extension/server.js');
 
 test('server links: http(s) on the upload server only', () => {
   const ep = 'http://joget.example:8080/jw/api/blackbox';
   expect(Server.resolve(ep, '/jw/blackbox/view?id=1')).toBe('http://joget.example:8080/jw/blackbox/view?id=1');
-  expect(Server.resolve(ep, 'https://joget.example:8080/jw/x')).toBe('https://joget.example:8080/jw/x'); // TLS proxy
+  expect(Server.resolve(ep, 'https://joget.example:8080/jw/x')).toBe('https://joget.example:8080/jw/x');
   for (const bad of ['javascript:alert(1)', 'data:text/html,x', 'https://evil.example/x', '//evil.example/x',
     'http://joget.example:9999/x', 'file:///etc/passwd']) {
     expect(Server.resolve(ep, bad), bad).toBe('');
@@ -20,12 +18,11 @@ test('settings stay out of content scripts; the server pages still get the theme
     textSize: '1.15' }), JOGET);
   const page = await context.newPage();
   await expect.poll(async () => {
-    await page.goto(`${JOGET}/blackbox/`); // the content script is registered a moment after uploadUrl changes
+    await page.goto(`${JOGET}/blackbox/`);
     return page.evaluate(() => document.documentElement.dataset.theme || '');
   }, { timeout: 15000 }).toBe('dark');
   expect(await page.evaluate(() => document.documentElement.style.zoom)).toBe('1.15');
 
-  // The content script's own world: run code there through the DevTools protocol
   const cdp = await context.newCDPSession(page);
   await cdp.send('Runtime.enable');
   const contexts = [];

@@ -22,14 +22,6 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * Reads traces from the Glowroot agent running in this JVM, through its web UI's JSON backend (Glowroot 0.14).
- * Nothing in Glowroot is changed: its own slow threshold decides which requests have a trace.
- *
- * The address comes from the plugin settings, or else from Glowroot's admin.json next to the -javaagent jar
- * (agent-&lt;host&gt;/admin.json when Glowroot keeps one folder per server, else admin.json). Glowroot's login is not
- * supported: its anonymous user must be allowed to read transactions.
- */
 final class GlowrootClient {
 
     private static final int CONNECT_MS = 3000;
@@ -37,7 +29,7 @@ final class GlowrootClient {
     private static final long SETTINGS_MS = 60 * 1000L;
     static final long MAX_EXPORT_BYTES = 20L * 1024 * 1024;
 
-    private final String base; // http://localhost:4000 (no trailing slash)
+    private final String base;
     private Settings settings;
     private long settingsAt;
 
@@ -49,7 +41,6 @@ final class GlowrootClient {
         return base;
     }
 
-    /** The configured address, else the local agent's. Null when Glowroot is not running in this JVM. */
     static GlowrootClient find(String configured) {
         if (configured != null && !configured.trim().isEmpty()) {
             return new GlowrootClient(configured.trim());
@@ -58,7 +49,6 @@ final class GlowrootClient {
         return url == null ? null : new GlowrootClient(url);
     }
 
-    /** The Glowroot agent jar of this JVM (its -javaagent), or null. */
     static Path agentJar() {
         for (String arg : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
             if (arg.startsWith("-javaagent:") && arg.contains("glowroot")) {
@@ -70,7 +60,6 @@ final class GlowrootClient {
         return null;
     }
 
-    /** "0.14.2, built 2024-04-06 19:02:00 +0000" from the agent jar's manifest (as Glowroot's Environment page shows it), or null. */
     static String agentVersion() {
         Path jar = agentJar();
         if (jar == null || !Files.isRegularFile(jar)) {
@@ -98,7 +87,6 @@ final class GlowrootClient {
             candidates.add(dir.resolve("agent-" + local.getHostName()).resolve("admin.json"));
             candidates.add(dir.resolve("agent-" + local.getCanonicalHostName()).resolve("admin.json"));
         } catch (IOException e) {
-            // no host name: only the shared admin.json
         }
         candidates.add(dir.resolve("admin.json"));
         for (Path f : candidates) {
@@ -111,17 +99,15 @@ final class GlowrootClient {
                 String context = web != null ? web.optString("contextPath", "/") : "/";
                 return "http://localhost:" + port + (context.startsWith("/") ? context : "/" + context);
             } catch (IOException | JSONException e) {
-                // try the next one
             }
         }
         return "http://localhost:4000";
     }
 
-    /** What Glowroot keeps traces for: requests at least this slow, and errors. */
     static final class Settings {
-        final long thresholdMs;   // the lowest of the slow threshold and its per-transaction overrides
-        final long mainThresholdMs; // the slow threshold set in Glowroot's UI (Configuration > Transactions)
-        final boolean errorOn4xx; // servlet plugin: a 4xx response makes the trace an error
+        final long thresholdMs;
+        final long mainThresholdMs;
+        final boolean errorOn4xx;
 
         Settings(long thresholdMs, boolean errorOn4xx) {
             this(thresholdMs, thresholdMs, errorOn4xx);
@@ -133,7 +119,6 @@ final class GlowrootClient {
             this.errorOn4xx = errorOn4xx;
         }
 
-        /** Would Glowroot have kept a trace of this request? */
         boolean keeps(long ms, int status, boolean failed) {
             return failed || status >= 500 || (errorOn4xx && status >= 400) || ms >= thresholdMs;
         }
@@ -167,7 +152,6 @@ final class GlowrootClient {
         return settings;
     }
 
-    /** A stored trace: its id, when it was captured (the request's end, epoch ms) and its duration. */
     static final class Point {
         final String traceId;
         final long endMs;
@@ -180,16 +164,10 @@ final class GlowrootClient {
         }
     }
 
-    /**
-     * The Web traces captured (finished) between from and to, epoch ms. A point's time is the request's end. Glowroot
-     * lists a trace with an error only under error/points (transaction/points leaves out fast failed requests), so
-     * both are read; a trace in both counts once.
-     */
     List<Point> points(long from, long to) throws IOException {
         return points(from, to, "Web");
     }
 
-    /** The same for one transaction type (Web, Background, ...). */
     List<Point> points(long from, long to, String type) throws IOException {
         String query = "?agent-rollup-id=&transaction-type=" + enc(type) + "&from=" + from + "&to=" + to + "&duration-millis-low=0&limit=1000";
         Map<String, Point> byId = new LinkedHashMap<>();
@@ -198,7 +176,6 @@ final class GlowrootClient {
         return new ArrayList<>(byId.values());
     }
 
-    /** The points of a transaction/points or error/points answer ([endMs, durationMs, ?, traceId]), by trace id. */
     static void addPoints(JSONObject answer, Map<String, Point> byId) {
         for (String kind : new String[]{"normalPoints", "errorPoints", "partialPoints"}) {
             JSONArray list = answer.optJSONArray(kind);
@@ -215,12 +192,10 @@ final class GlowrootClient {
         return getJson("/backend/trace/header?agent-id=&trace-id=" + enc(traceId) + "&check-live-traces=false");
     }
 
-    /** {queries: [...], sharedQueryTexts: [...]}, or an empty object when the trace has none. */
     JSONObject queries(String traceId) throws IOException {
         return getJson("/backend/trace/queries?agent-id=&trace-id=" + enc(traceId));
     }
 
-    /** Glowroot's own export of a trace: one self-contained HTML page (it comes zipped). */
     byte[] exportHtml(String traceId) throws IOException {
         HttpURLConnection c = open("/export/trace?agent-id=&trace-id=" + enc(traceId) + "&check-live-traces=false");
         try (ZipInputStream zip = new ZipInputStream(c.getInputStream())) {

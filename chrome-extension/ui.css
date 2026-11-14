@@ -1,11 +1,9 @@
-/* Colors for the small extension pages (popup, settings, recorder): the same green theme as viewer.css.
-   --page is the settings page's ground, --bg the popup's and the cards'. */
 :root {
   color-scheme: light dark;
   --page: #f6f7f6; --bg: #ffffff; --fg: #0b2a21; --muted: #5d6c66; --line: #e1e7e4; --field: #ffffff; --field-line: #c9d4cf;
   --accent: #087c5e; --on-accent: #ffffff; --danger: #c62f22; --ok: #087c5e; --warn: #9a6400;
   --brand: #105045; --soft: #f0f3f1;
-  --display: Poppins, system-ui, sans-serif; /* only if installed: no web font */
+  --display: Poppins, system-ui, sans-serif;
 }
 :root[data-theme="light"] { color-scheme: light; }
 @media (prefers-color-scheme: dark) {
@@ -24,7 +22,6 @@
 body { background: var(--bg); color: var(--fg); }
 a { color: var(--accent); }
 h1 { font-family: var(--display); font-weight: 600; letter-spacing: -.01em; }
-/* Brand mark before each page's title: dark green tile with the red "recording" dot */
 h1::before {
   content: ""; display: inline-block; width: 20px; height: 20px; margin-right: 8px; vertical-align: -4px; border-radius: 6px;
   background: radial-gradient(circle, var(--danger) 0 3.5px, color-mix(in srgb, var(--danger) 35%, var(--brand)) 4px 6px, var(--brand) 6.5px);

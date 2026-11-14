@@ -1,4 +1,3 @@
-// Browser tests of the BlackBox extension (see README.md). One worker: the tests share one Joget server.
 const { defineConfig } = require('@playwright/test');
 
 module.exports = defineConfig({

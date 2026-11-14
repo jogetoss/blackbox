@@ -1,4 +1,3 @@
-// checks for a real screen recording in the normal window as BB_USER.
 const { test, expect, JOGET, loginJoget, api } = require('./fixtures');
 
 test('a screen recording in the normal window uploads as BB_USER, with its logs and server data', async ({ context }) => {
@@ -23,7 +22,6 @@ test('a screen recording in the normal window uploads as BB_USER, with its logs 
     const marker = 'bb-e2e-' + Date.now();
     await joget.evaluate((u) => { console.error(u.marker); return fetch(u.url).then((r) => r.status); },
       { marker, url: `${JOGET}/web/json/workflow/currentUsername?m=${marker}` });
-    // Credentials in a request: masked, the popup's "Record browser secrets unmasked" being unticked
     await joget.evaluate((url) => fetch(url, { headers: { Authorization: 'Bearer e2esecret12345678' } }).then((r) => r.status),
       `${JOGET}/web/json/workflow/currentUsername?m=${marker}-creds&token=e2esecret`);
     await new Promise((r) => setTimeout(r, 4000));

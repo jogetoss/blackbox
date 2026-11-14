@@ -21,35 +21,10 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * A snapshot of the server at recording-start, shown in the replay page's Info tab. Grouped like Glowroot's JVM >
- * Environment page (host, process, java), then Joget and database, then everything Settings > System Info shows:
- * <ul>
- * <li>license: its license table (Enterprise: SysInfo.getLicenseProperties(), including the signature, system key and
- * MAC addresses; missing on Community)</li>
- * <li>systemProperties: its system table (SysInfo.getSystemProperties(): all Java system properties plus JVM memory
- * and processors; on Community the same values read directly)</li>
- * </ul>
- * Cluster holds Joget's node name and node lists (ServerUtil) and Tomcat's jvmRoute and session replication.
- * Plugins lists every jar in app_plugins with its date and size, marking jars that loaded no plugin.
- * Database and connectionPool hold the current profile's app_datasource file and the pool settings Joget really uses.
- * The database password is left out. JVM arguments, system properties, the datasource file and pool settings go through
- * {@link Secrets}: values with a secret name (the admin's secretNames setting; empty = Secrets.DEFAULT_NAMES) and values shaped like
- * secrets are masked. It is shown only to users allowed to view server data, like the system log itself. A recording
- * started with "Record System Info secrets unmasked" (admins, or users the allowUnmaskedSystemInfo setting allows) uses
- * {@link Secrets#none()}: only the database password stays out. The license table is separate: its system key, signature
- * and MAC addresses ({@link #LICENSE_SECRETS}) are masked unless the recording was started with "Record license secrets
- * unmasked" (allowUnmaskedLicense); the rest of it is kept as System Info shows it.
- */
 final class ServerInfo {
 
     static final String FILE = "server-info.json";
 
-    /**
-     * License entries masked unless asked (name prefixes): the system key, the license signature (on Enterprise it is
-     * the system key the license was issued for: DomainSystemKeyGenerator uses License.getSignature() as the key, and
-     * ContainerSystemKeyGenerator accepts a license only when its signature equals the system key) and the MAC addresses.
-     */
     static final String[] LICENSE_SECRETS = {"platform.systemKey", "platform.license.signature", "platform.net.address"};
 
     private ServerInfo() {
@@ -59,9 +34,7 @@ final class ServerInfo {
         return collect(request, 0, new Secrets(null), true);
     }
 
-    /** recentDays: how far back "recentChanges" looks (0: not collected); secrets: what to mask. */
     static JSONObject collect(HttpServletRequest request, int recentDays, Secrets secrets, boolean maskLicense) throws JSONException {
-        // The database password stays out even when the System Info secrets are recorded unmasked
         Secrets dbSecrets = secrets.masks() ? secrets : Secrets.passwords();
         long now = System.currentTimeMillis();
         Runtime rt = Runtime.getRuntime();
@@ -73,11 +46,11 @@ final class ServerInfo {
         put(host, "Node", ServerCapture.nodeName());
         put(host, "Processors", String.valueOf(rt.availableProcessors()));
         put(host, "Total RAM", mb(osAttribute("TotalPhysicalMemorySize")));
-        put(host, "Free RAM", mb(osAttribute("FreePhysicalMemorySize"))); // the OS's free memory, page cache not counted
+        put(host, "Free RAM", mb(osAttribute("FreePhysicalMemorySize")));
         put(host, "OS", System.getProperty("os.name") + " " + System.getProperty("os.version") + " (" + System.getProperty("os.arch") + ")");
 
         JSONObject process = new JSONObject();
-        String name = jvm.getName(); // "pid@host"
+        String name = jvm.getName();
         put(process, "Process id", name.contains("@") ? name.substring(0, name.indexOf('@')) : name);
         put(process, "Started", utcDate("yyyy-MM-dd HH:mm:ss").format(new java.util.Date(jvm.getStartTime())));
         put(process, "Uptime", duration(jvm.getUptime()));
@@ -100,7 +73,7 @@ final class ServerInfo {
         try {
             version = ResourceBundleUtil.getMessage("console.footer.label.revision");
         } catch (RuntimeException | LinkageError e) {
-            version = null; // outside a running Joget
+            version = null;
         }
         put(joget, "Version", version != null && !version.startsWith("console.") ? version : null);
         put(joget, "Edition", sysInfo != null ? "Enterprise" : "Community");
@@ -116,29 +89,24 @@ final class ServerInfo {
             dsFile = DynamicDataSourceManager.getProperties();
             db = database(DynamicDataSourceManager.getCurrentProfile(), dsFile, dbSecrets);
         } catch (RuntimeException | LinkageError e) {
-            // not readable here
         }
         JSONObject pool = null;
         try {
             pool = pool(AppUtil.getApplicationContext().getBean("setupDataSource"), dsFile, dbSecrets);
         } catch (Exception | LinkageError e) {
-            // outside a running Joget
         }
 
         JSONObject cluster = null;
         try {
             cluster = cluster(request);
         } catch (Exception | LinkageError e) {
-            // outside a running Joget
         }
         JSONObject plugins = null;
         try {
             plugins = plugins();
         } catch (Exception | LinkageError e) {
-            // outside a running Joget
         }
 
-        // Everything System Info shows, as it shows it
         Map<?, ?> license = sysInfo != null ? call(sysInfo, "getLicenseProperties") : null;
         Map<?, ?> system = sysInfo != null ? call(sysInfo, "getSystemProperties") : null;
         if (system == null) {
@@ -147,7 +115,7 @@ final class ServerInfo {
 
         JSONObject result = new JSONObject().put("takenAt", now)
                 .put("host", host).put("process", process).put("java", java).put("joget", joget).put("database", db)
-                .put("secretsMasked", secrets.masks()) // false: recorded unmasked; the viewer's Info tab says so
+                .put("secretsMasked", secrets.masks())
                 .put("licenseMasked", maskLicense);
         if (pool != null && pool.length() > 0) {
             result.put("connectionPool", pool);
@@ -156,9 +124,8 @@ final class ServerInfo {
             try {
                 JSONArray recentApps = new JSONArray();
                 result.put("recentChanges", recentChanges(recentDays, now, recentApps));
-                result.put(RECENT_APPS, recentApps); // all of them; the page shows the recording's (summarizeApps)
+                result.put(RECENT_APPS, recentApps);
             } catch (Exception | LinkageError e) {
-                // outside a running Joget
             }
         }
         if (cluster != null && cluster.length() > 0) {
@@ -173,14 +140,12 @@ final class ServerInfo {
         return result.put("systemProperties", masked(system, secrets));
     }
 
-    /** A formatter for pattern + " UTC" in UTC: every time on the Info tab is in UTC, whatever the server's time zone. */
     static java.text.SimpleDateFormat utcDate(String pattern) {
         java.text.SimpleDateFormat f = new java.text.SimpleDateFormat(pattern + " 'UTC'", java.util.Locale.ROOT);
         f.setTimeZone(TimeZone.getTimeZone("UTC"));
         return f;
     }
 
-    /** The server's own zone id with its offset at that time, e.g. "GMT (UTC+0)", "Asia/Kolkata (UTC+5:30)". */
     static String zoneLabel(TimeZone tz, long at) {
         int min = tz.getOffset(at) / 60000;
         String off = (min < 0 ? "-" : "+") + Math.abs(min) / 60 + (min % 60 != 0 ? String.format(":%02d", Math.abs(min) % 60) : "");
@@ -189,11 +154,6 @@ final class ServerInfo {
 
     private static final long MB = 1024 * 1024;
 
-    /**
-     * Pool settings in the order shown. Joget's DynamicDataSource (a Tomcat JDBC pool) copies every other key of
-     * app_datasource-<profile>.properties onto itself with BeanUtils and ignores keys it can't set, so these are read
-     * back from the pool to show what is really used.
-     */
     static final String[] POOL_SETTINGS = {"initialSize", "maxActive", "maxIdle", "minIdle", "maxWait", "maxAge",
         "testOnBorrow", "testOnReturn", "testWhileIdle", "testOnConnect", "validationQuery", "validationQueryTimeout",
         "validationInterval", "validatorClassName", "initSQL", "timeBetweenEvictionRunsMillis",
@@ -204,17 +164,14 @@ final class ServerInfo {
         "commitOnReturn", "rollbackOnReturn", "alternateUsernameAllowed", "useEquals", "useLock",
         "ignoreExceptionOnPreLoad"};
 
-    /** Pool state at recording start: label, getter. */
     private static final String[][] POOL_STATE = {{"Pool size", "getSize"}, {"Active connections", "getActive"},
         {"Idle connections", "getIdle"}, {"Waiting threads", "getWaitCount"}};
 
-    /** Keys DynamicDataSource handles itself instead of setting them on the pool. */
     private static boolean isConnectionKey(String key) {
         return key.endsWith("Driver") || key.endsWith("Url") || key.endsWith("User") || key.endsWith("Password")
                 || key.endsWith("profileName") || key.endsWith("encryption");
     }
 
-    /** The datasource file of the current profile: profile, driver, URL, user, then its other keys. No password. */
     static JSONObject database(String profile, Properties file, Secrets secrets) throws JSONException {
         JSONObject db = new JSONObject();
         put(db, "Profile", profile);
@@ -233,10 +190,6 @@ final class ServerInfo {
         return db;
     }
 
-    /**
-     * The pool's settings as it uses them, a value that differs from the file marked "(file says x)", the file's keys
-     * the pool has no setting for (Joget ignores them without a word), and the pool state now.
-     */
     static JSONObject pool(Object ds, Properties file, Secrets secrets) throws JSONException {
         JSONObject p = new JSONObject();
         if (ds == null) {
@@ -268,12 +221,6 @@ final class ServerInfo {
         return p;
     }
 
-    /**
-     * Joget's cluster view (ServerUtil: this node's wflow.name, the nodes in the shared servers.json and the licensed
-     * active nodes, with their serversIP.properties address) and Tomcat's: the Engine's jvmRoute (the suffix load
-     * balancers use for sticky sessions) and whether it replicates sessions: only with a Catalina Cluster and a
-     * distributable web app (Enterprise's web.xml has &lt;distributable/&gt;, Community's doesn't).
-     */
     static JSONObject cluster(HttpServletRequest request) throws JSONException {
         JSONObject c = new JSONObject();
         String name = org.joget.commons.util.ServerUtil.getServerName();
@@ -291,7 +238,6 @@ final class ServerInfo {
         return c;
     }
 
-    /** On only with a Catalina Cluster and this web app distributable (its WebModule MBean); null when unknown. */
     private static String replication(String contextPath) {
         try {
             javax.management.MBeanServer server = ManagementFactory.getPlatformMBeanServer();
@@ -300,7 +246,7 @@ final class ServerInfo {
             }
             String path = contextPath.isEmpty() ? "/" : contextPath;
             for (javax.management.ObjectName n : server.queryNames(new javax.management.ObjectName("Catalina:j2eeType=WebModule,*"), null)) {
-                String name = n.getKeyProperty("name"); // //host/path
+                String name = n.getKeyProperty("name");
                 int at = name != null && name.startsWith("//") ? name.indexOf('/', 2) : -1;
                 if (at >= 0 && name.substring(at).equals(path)) {
                     return Boolean.TRUE.equals(server.getAttribute(n, "distributable")) ? "On (Tomcat cluster)"
@@ -335,10 +281,6 @@ final class ServerInfo {
         }
     }
 
-    /**
-     * What changed on this server lately: app versions (any edit updates their date), plugin jars, wflow files.
-     * recentApps gets every app version changed in the period: {id, version, published, name, modified}.
-     */
     private static JSONObject recentChanges(int days, long now, JSONArray recentApps) throws JSONException {
         long since = now - days * 24L * 3600 * 1000;
         org.joget.apps.app.dao.AppDefinitionDao dao = (org.joget.apps.app.dao.AppDefinitionDao) AppUtil.getApplicationContext()
@@ -358,10 +300,6 @@ final class ServerInfo {
         return recentChanges(days, since, apps, new java.io.File(org.joget.commons.util.SetupManager.getBaseDirectory()), ManagementFactory.getRuntimeMXBean().getStartTime());
     }
 
-    /**
-     * apps: [modified ms, text], newest first. Lists app versions and files at the top of the wflow folder
-     * (app_datasource files and the like; not logs) changed since then, and Joget's start when it is that recent.
-     */
     static JSONObject recentChanges(int days, long since, java.util.List<Object[]> apps, java.io.File wflowDir,
             long started) throws JSONException {
         JSONObject c = new JSONObject();
@@ -384,7 +322,6 @@ final class ServerInfo {
         return c;
     }
 
-    /** Files Joget itself rewrites while running (cluster node lists, who is online): not changes anyone made. */
     private static final java.util.Set<String> JOGET_RUNTIME_FILES = new java.util.HashSet<>(java.util.Arrays.asList(
             "servers.json", "serversip.properties", "app_presence.json"));
 
@@ -406,7 +343,6 @@ final class ServerInfo {
         return lines.isEmpty() ? null : String.join("\n", lines);
     }
 
-    /** The plugins Joget loaded from app_plugins, by jar file. */
     private static JSONObject plugins() throws JSONException {
         PluginManager pm = (PluginManager) AppUtil.getApplicationContext().getBean("pluginManager");
         Map<String, java.util.List<String>> loaded = new TreeMap<>();
@@ -420,10 +356,6 @@ final class ServerInfo {
         return plugins(new java.io.File(pm.getBaseDirectory()), loaded);
     }
 
-    /**
-     * One entry per jar in the plugin folder (jar file -> date · size), plus jars Joget loaded from elsewhere. A jar in
-     * the folder with no loaded plugin failed to load (Joget logs why) or holds no plugin.
-     */
     static JSONObject plugins(java.io.File dir, Map<String, java.util.List<String>> loaded) throws JSONException {
         Map<String, String> entries = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         java.io.File[] jars = dir.listFiles((d, n) -> n.toLowerCase(java.util.Locale.ROOT).endsWith(".jar"));
@@ -458,7 +390,6 @@ final class ServerInfo {
         return key.toLowerCase(java.util.Locale.ROOT).contains("password");
     }
 
-    /** Hides password=... in a JDBC URL or driver property list. */
     static String maskPasswords(String s) {
         return s == null ? null : s.replaceAll("(?i)(password=)[^;&]*", "$1****");
     }
@@ -485,7 +416,6 @@ final class ServerInfo {
         }
     }
 
-    /** What BeanUtils.setProperty needs to apply a file key: a public one-argument setter. */
     private static boolean hasSetter(Object o, String key) {
         if (key.isEmpty()) {
             return false;
@@ -524,15 +454,12 @@ final class ServerInfo {
         return (s / 86400 > 0 ? s / 86400 + " d " : "") + (s / 3600 % 24) + " h " + (s / 60 % 60) + " min";
     }
 
-    /** Writes the snapshot into the capture's pending folder; it moves into the recording with the rest of the server capture. */
     static final String RECENT_APPS = "recentApps";
 
-    /** The form tables of an app version (null: latest), or null when there is no such app. */
     interface AppTables {
         java.util.Set<String> of(String appId, String version);
     }
 
-    /** Joget's app definitions: the tables of their forms. */
     static AppTables jogetTables() {
         org.joget.apps.app.service.AppService appService = (org.joget.apps.app.service.AppService) AppUtil.getApplicationContext()
                 .getBean("appService");
@@ -542,11 +469,6 @@ final class ServerInfo {
         };
     }
 
-    /**
-     * Narrows Recent changes' "App versions" to the recording: the apps it used and other apps whose forms use one of
-     * their tables, one line per app (latest change, how many versions changed). The full list stays in recentApps.
-     * Does nothing when infoFile is missing or has no recentApps.
-     */
     static void summarizeApps(Path infoFile, java.util.Collection<String> used, AppTables tables) throws IOException {
         if (infoFile == null || !Files.isRegularFile(infoFile)) {
             return;
@@ -565,7 +487,7 @@ final class ServerInfo {
                     usedTables.addAll(t);
                 }
             }
-            Map<String, java.util.List<JSONObject>> byApp = new java.util.LinkedHashMap<>(); // newest first, as listed
+            Map<String, java.util.List<JSONObject>> byApp = new java.util.LinkedHashMap<>();
             for (int i = 0; i < all.length(); i++) {
                 JSONObject a = all.getJSONObject(i);
                 byApp.computeIfAbsent(a.getString("id"), k -> new java.util.ArrayList<>()).add(a);
@@ -587,7 +509,7 @@ final class ServerInfo {
                         }
                     }
                     if (common.isEmpty()) {
-                        continue; // not related to the recording
+                        continue;
                     }
                     shares = " · shares " + String.join(", ", common);
                 }
@@ -603,7 +525,7 @@ final class ServerInfo {
                 changes.put("App versions", String.join("\n", lines));
             }
             Files.write(infoFile, info.toString().getBytes(StandardCharsets.UTF_8));
-        } catch (RuntimeException e) { // JSONException included
+        } catch (RuntimeException e) {
             throw new IOException(e);
         }
     }
@@ -620,7 +542,6 @@ final class ServerInfo {
         }
     }
 
-    /** What SysInfo.getSystemProperties() gives on Enterprise: all system properties plus the JVM's memory. */
     private static Map<String, String> communitySystem() {
         Map<String, String> m = new TreeMap<>();
         for (String k : System.getProperties().stringPropertyNames()) {
@@ -634,7 +555,6 @@ final class ServerInfo {
         return m;
     }
 
-    /** The license table, sorted; with mask, {@link #LICENSE_SECRETS} as {@link Secrets#MASK} (empty values stay empty). */
     static JSONObject license(Map<?, ?> map, boolean mask) throws JSONException {
         JSONObject o = sorted(map);
         if (mask) {
@@ -650,7 +570,6 @@ final class ServerInfo {
         return o;
     }
 
-    /** Sorted, each value through {@link Secrets#mask} by its name. */
     static JSONObject masked(Map<?, ?> map, Secrets secrets) throws JSONException {
         JSONObject o = new JSONObject();
         for (Map.Entry<?, ?> e : new TreeMap<>(map).entrySet()) {
@@ -674,12 +593,10 @@ final class ServerInfo {
         }
     }
 
-    /** Enterprise: SysInfo, and with it the license table, is there. */
     static boolean hasLicense() {
         return enterprise() != null;
     }
 
-    /** Joget Enterprise's SysInfo class (Settings > System Info), from Joget's own classloader, or null on Community. */
     private static Class<?> enterprise() {
         try {
             return Class.forName("org.joget.commons.util.SysInfo", true, AppUtil.class.getClassLoader());

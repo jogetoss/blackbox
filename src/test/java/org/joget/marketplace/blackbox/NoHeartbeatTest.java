@@ -10,7 +10,6 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-/** BB8: a capture that never got a ping (no heartbeat) is never browser-lost; only the maxUntil + 2 min backup applies. */
 public class NoHeartbeatTest {
 
     private static final String ID = "7b2f6c3e-2b7d-4c8e-9f10-1a2b3c4d5e6f";
@@ -26,13 +25,13 @@ public class NoHeartbeatTest {
     @Before
     public void setUp() throws Exception {
         Path root = Files.createTempDirectory("bb-no-heartbeat");
-        store = new ServerCaptureStore(root.resolve("pending")); // root: one profile's blackbox folder
+        store = new ServerCaptureStore(root.resolve("pending"));
         realStores = ServerCapture.stores;
         ServerCapture.stores = () -> store;
         realDirs = ServerCapture.checkDirs;
         ServerCapture.checkDirs = () -> java.util.Collections.singletonList(root);
         realKnobs = LivenessKnobs.fileSupplier;
-        LivenessKnobs.fileSupplier = () -> root.resolve(LivenessKnobs.FILE); // missing: the defaults
+        LivenessKnobs.fileSupplier = () -> root.resolve(LivenessKnobs.FILE);
     }
 
     @After
@@ -45,12 +44,12 @@ public class NoHeartbeatTest {
 
     @Test
     public void noPingsPastLostMsStaysOpenButPastMaxUntilPlusTwoMinutesStops() throws Exception {
-        assertTrue(store.start(ID, "admin", 1024, DAY, false, "", false, false, false, 5 * MIN)); // as the start action does
+        assertTrue(store.start(ID, "admin", 1024, DAY, false, "", false, false, false, 5 * MIN));
         JSONObject meta = store.readMeta(ID);
         assertFalse("no ping yet", meta.has("lastSeenAt"));
         long maxUntil = meta.getLong("maxUntil");
 
-        ServerCapture.checkLost(meta.getLong("startedAt") + LivenessKnobs.lostMs() + MIN); // well past lostMs
+        ServerCapture.checkLost(meta.getLong("startedAt") + LivenessKnobs.lostMs() + MIN);
         assertFalse("still open", store.readMeta(ID).has("stoppedAt"));
         ServerCapture.checkLost(maxUntil + GRACE);
         assertFalse("still open within the grace", store.readMeta(ID).has("stoppedAt"));

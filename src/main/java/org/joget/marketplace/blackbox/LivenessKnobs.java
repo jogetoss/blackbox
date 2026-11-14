@@ -7,14 +7,6 @@ import java.util.function.Supplier;
 import org.joget.commons.util.LogUtil;
 import org.json.JSONObject;
 
-/**
- * Timing of the liveness checks, with an optional test override.
- *
- * <wflow>/blackbox/liveness-test.json may hold pingMs, lostMs, checkMs and minLimitMs (milliseconds, at least 1000). It
- * is read on every call, never cached, so a test changes it without a restart. A missing or invalid file, or a value
- * below 1000, gives the default. It is not a plugin setting: admins don't see it. While it sets a value, a warning is
- * logged (at most once a minute) so a forgotten file shows in the log.
- */
 final class LivenessKnobs {
 
     static final String FILE = "liveness-test.json";
@@ -24,7 +16,6 @@ final class LivenessKnobs {
     static final long MIN_VALUE_MS = 1000L;
     private static final long WARN_EVERY_MS = 60_000L;
 
-    /** Where the override file is; tests (no Joget running) swap it. */
     static Supplier<Path> fileSupplier = () -> ProfileDir.current().resolve(FILE);
 
     private static volatile long lastWarn;
@@ -40,7 +31,6 @@ final class LivenessKnobs {
         return get("lostMs", LOST_MS);
     }
 
-    /** lostMs from a given override file (one profile's, with virtual hosts). */
     static long lostMs(Path file) {
         return get(file, "lostMs", LOST_MS);
     }
@@ -53,12 +43,10 @@ final class LivenessKnobs {
         return get(file, "checkMs", CHECK_MS);
     }
 
-    /** Lowest value the hard limit may take; Long.MAX_VALUE means no override (the limit is not lowered). */
     static long minLimitMs() {
         return get("minLimitMs", Long.MAX_VALUE);
     }
 
-    /** True when the file is present and sets at least one valid value. */
     static boolean inUse() {
         JSONObject o = read(defaultFile());
         if (o == null) {
@@ -93,7 +81,7 @@ final class LivenessKnobs {
     private static Path defaultFile() {
         try {
             return fileSupplier.get();
-        } catch (Exception e) { // no Joget: use the defaults
+        } catch (Exception e) {
             return null;
         }
     }
@@ -104,7 +92,7 @@ final class LivenessKnobs {
                 return null;
             }
             return new JSONObject(new String(Files.readAllBytes(f), StandardCharsets.UTF_8));
-        } catch (Exception e) { // unreadable or not JSON: use the defaults
+        } catch (Exception e) {
             return null;
         }
     }
@@ -118,7 +106,6 @@ final class LivenessKnobs {
         try {
             LogUtil.warn(LivenessKnobs.class.getName(), "Test timing override in use (" + FILE + " in the blackbox folder); delete it for normal timing");
         } catch (Throwable t) {
-            // no Joget logging (unit tests)
         }
     }
 }

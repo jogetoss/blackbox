@@ -31,7 +31,7 @@ public class ProcessDataTest {
                 p.setRequesterId("siti");
                 p.setCreatedTime(new Date(1000));
             }
-            return p; // Joget returns an empty one for unknown ids
+            return p;
         }
 
         @Override

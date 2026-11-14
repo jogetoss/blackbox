@@ -20,16 +20,13 @@ for name, code in (('viewer.css', css), ('viewer.js', js), ('zip.js', zipjs), ('
 parts = [
     ('<link rel="stylesheet" href="viewer.css">', f'<style>\n{css}</style>'),
     ('<script src="viewer.js"></script>', f'<script>\n{js}</script>'),
-    ('<script src="zip.js"></script>', f'<script>\n{zipjs}</script>'),  # opens recording ZIPs
-    # theme.js reads the extension's Settings; the standalone file has its own Theme and Text size pickers
+    ('<script src="zip.js"></script>', f'<script>\n{zipjs}</script>'),
     ('  <script src="theme.js"></script>\n', f'  <script>\n{displayjs}</script>\n'),
-    # extension only (chrome.* APIs, the extension's storage): recordings list, linked folder, status
     ('  <script src="idb.js"></script>\n', ''),
     ('  <script src="store.js"></script>\n', ''),
     ('  <script src="server.js"></script>\n', ''),
     ('  <script src="actions.js"></script>\n', ''),
     ('  <script src="quick.js"></script>\n', ''),
-    # replay.js needs the extension: the standalone file only labels where the open recording came from
     ('  <script src="replay.js"></script>\n', '''  <script>
 document.addEventListener('blackbox-files-opened', () => {
   const where = document.createElement('span');
@@ -47,7 +44,6 @@ for old, new in parts:
         raise SystemExit(f'viewer.html no longer contains: {old.strip()}')
     html = html.replace(old, new, 1)
 
-# the upload form needs the extension (actions.js)
 html, n = re.subn(r'  <!-- upload form \(actions\.js\) -->\n.*?  <!-- /upload form -->\n', '', html, flags=re.S)
 if n != 1:
     raise SystemExit('viewer.html no longer contains the upload form markers')

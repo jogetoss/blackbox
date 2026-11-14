@@ -32,19 +32,6 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * Sample form data for an exported app: the records the recording touched (their ids in the recorded URLs and form
- * posts), the rows of the app's other tables that point at them, and, for tables with none of those, the newest rows.
- * Added to the .jwa the way Joget's own export adds data (data/&lt;table&gt;.json, app_formuploads/&lt;table&gt;/&lt;id&gt;/), so
- * importing the .jwa imports them too.
- * <ul>
- * <li>Masked (the default): values through {@link Masker}; user names become user1, user2...; uploaded files become
- * small placeholder files with masked names (the real ones are not copied).</li>
- * <li>Real: values and files as they are, except columns {@link Masker#isSensitive} names.</li>
- * </ul>
- * Record ids get new UUIDs everywhere they appear (unless kept), so importing never overwrites rows of the same id;
- * the recording's app/apps.json lists old -&gt; new ("idMap") so support can match them to the URLs and logs.
- */
 final class SampleData {
 
     static final int MAX_IDS = 200;
@@ -52,7 +39,6 @@ final class SampleData {
     static final long MAX_FILE_BYTES = 5L * 1024 * 1024;
     static final long MAX_FILES_BYTES = 50L * 1024 * 1024;
 
-    /** Record ids are UUIDs, or Joget process / activity ids (123_app_process, 45_123_app_process_activity). */
     private static final Pattern UUID = Pattern.compile("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
     private static final Pattern WORKFLOW_ID = Pattern.compile("(?<![A-Za-z0-9_])\\d{1,12}_[A-Za-z0-9][A-Za-z0-9_-]*_[A-Za-z0-9_-]+");
     private static final Pattern ID_PARAM = Pattern.compile("(?:^|[?&;\"])(?:id|_id|recordId|fk|parentId|processId|activityId)(?:\"\\s*:\\s*\"|=)([A-Za-z0-9_.-]{1,100})");
@@ -63,28 +49,23 @@ final class SampleData {
         MASKED, REAL;
     }
 
-    /** What the data comes from: Joget's FormDataDao and upload folder (see {@link #joget}), or a test double. */
     interface Source {
         FormRow load(String table, String id);
 
-        /** Rows whose column holds one of the values. */
         FormRowSet findIn(String table, String column, Collection<String> values, int max);
 
         FormRowSet newest(String table, int max);
 
         Collection<String> columns(String table);
 
-        /** The uploaded files of a row, or an empty list. */
         List<File> files(String table, String id);
 
-        /** For an activity id, its process id; else null. */
         String processOf(String activityId);
     }
 
     private SampleData() {
     }
 
-    /** Candidate record ids in the recorded URLs and form posts. */
     static Set<String> candidateIds(Iterable<String> texts) {
         Set<String> ids = new LinkedHashSet<>();
         for (String t : texts) {
@@ -105,11 +86,9 @@ final class SampleData {
         return ids;
     }
 
-    /** Kept of the request bodies (the extension sends up to 64 KB of each): enough for the ids, bounded in memory. */
     static final int MAX_POST_CHARS = 64 * 1024;
     static final long MAX_POST_TOTAL = 16L * 1024 * 1024;
 
-    /** The request bodies the browser sent (form posts carry the record id). */
     static List<String> postData(Path session) {
         List<String> list = new ArrayList<>();
         if (session == null || !Files.isRegularFile(session)) {
@@ -117,36 +96,33 @@ final class SampleData {
         }
         try {
             long[] kept = {0};
-            SessionFile.each(session, "network", java.util.Collections.singleton("postData"), e -> { // one entry at a time, only postData
+            SessionFile.each(session, "network", java.util.Collections.singleton("postData"), e -> {
                 String post = e.optString("postData");
                 if (!post.isEmpty() && kept[0] < MAX_POST_TOTAL) {
-                    post = post.length() > MAX_POST_CHARS ? post.substring(0, MAX_POST_CHARS) : post; // ids are near the start
+                    post = post.length() > MAX_POST_CHARS ? post.substring(0, MAX_POST_CHARS) : post;
                     kept[0] += post.length();
                     list.add(post);
                 }
             });
         } catch (IOException | RuntimeException e) {
-            // unreadable: none
         }
         return list;
     }
 
-    /** One table's sample: its rows (masked, ids replaced), files to add, and which columns were masked. */
     static final class Table {
         final String name;
         final FormRowSet rows = new FormRowSet();
-        final Map<String, byte[]> files = new LinkedHashMap<>(); // app_formuploads/... -> content (placeholders)
-        final Map<String, Path> fileSources = new LinkedHashMap<>(); // app_formuploads/... -> real file, streamed into the .jwa
-        long sourceBytes; // their total size, for the per-table limit
+        final Map<String, byte[]> files = new LinkedHashMap<>();
+        final Map<String, Path> fileSources = new LinkedHashMap<>();
+        long sourceBytes;
         final Set<String> masked = new TreeSet<>();
-        String picked; // "touched", "linked", "newest"
+        String picked;
 
         Table(String name) {
             this.name = name;
         }
     }
 
-    /** The app's form tables, each with the option values of its forms' select boxes, radios and check boxes. */
     static Map<String, Set<String>> tables(AppDefinition def) {
         Map<String, Set<String>> tables = new LinkedHashMap<>();
         Collection<FormDefinition> forms = def.getFormDefinitionList();
@@ -157,8 +133,7 @@ final class SampleData {
             Set<String> options = tables.computeIfAbsent(f.getTableName(), k -> new HashSet<>());
             try {
                 collectOptions(new JSONObject(f.getJson()), options);
-            } catch (RuntimeException e) { // JSONException included
-                // a form we can't read: no options from it
+            } catch (RuntimeException e) {
             }
         }
         return tables;
@@ -185,12 +160,8 @@ final class SampleData {
         }
     }
 
-    /**
-     * Picks and converts the sample rows of these tables. ids is shared by all apps of the recording (one id map).
-     */
     static List<Table> build(Map<String, Set<String>> tables, Set<String> candidates, Source src, Mode mode, Masker masker,
             Masker.IdMap ids, int newest) {
-        // Activity ids point at their process, whose id is the record id of workflow forms
         Set<String> wanted = new LinkedHashSet<>(candidates);
         for (String c : candidates) {
             String process = WORKFLOW_ID.matcher(c).matches() ? src.processOf(c) : null;
@@ -212,7 +183,6 @@ final class SampleData {
             t.picked = t.rows.isEmpty() ? null : "touched";
             picked.put(table, t);
         }
-        // Rows pointing at the touched ones or at a recorded id (grids, subforms, child forms, logs by process id)
         found.addAll(wanted);
         if (!found.isEmpty()) {
             for (Table t : picked.values()) {
@@ -230,7 +200,6 @@ final class SampleData {
                 }
             }
         }
-        // One step further: the rows those rows point at (a log row's parent request)
         Set<String> refs = new LinkedHashSet<>();
         for (Table t : picked.values()) {
             for (FormRow row : t.rows) {
@@ -287,7 +256,6 @@ final class SampleData {
         return result;
     }
 
-    /** A value that could be a record id: one token of 5 to 100 id characters with a digit. */
     static boolean isIdLike(String v) {
         return v.length() >= 5 && v.length() <= 100 && v.matches("[A-Za-z0-9_.-]+") && v.matches(".*\\d.*");
     }
@@ -313,7 +281,6 @@ final class SampleData {
         String oldId = row.getId();
         String newId = ids.get(oldId);
         Map<String, String> renamedFiles = new java.util.HashMap<>();
-        // Uploaded files: placeholders with the masked name (masked), or the files (real), under the new id
         long total = 0;
         for (Map.Entry<String, byte[]> e : t.files.entrySet()) {
             total += e.getValue().length;
@@ -336,7 +303,7 @@ final class SampleData {
                     total += f.length();
                     t.sourceBytes += f.length();
                     renamedFiles.put(name, target);
-                    t.fileSources.put("app_formuploads/" + t.name + "/" + newId + "/" + target, f.toPath()); // copied at addTo
+                    t.fileSources.put("app_formuploads/" + t.name + "/" + newId + "/" + target, f.toPath());
                     continue;
                 } else {
                     continue;
@@ -362,7 +329,7 @@ final class SampleData {
                 String s = String.valueOf(v);
                 String converted;
                 if (isFileList(s, renamedFiles)) {
-                    StringBuilder names = new StringBuilder(); // a file field: the names of the files written above
+                    StringBuilder names = new StringBuilder();
                     for (String n : s.split(";")) {
                         names.append(names.length() > 0 ? ";" : "").append(renamedFiles.get(n));
                     }
@@ -373,7 +340,7 @@ final class SampleData {
                     converted = masker.value(key, s, options, ids);
                 }
                 if (!converted.equals(s) && !converted.equals(ids.replaceIn(s, x -> x))) {
-                    t.masked.add(key); // changed by more than the new record ids
+                    t.masked.add(key);
                 }
                 out.put(key, converted);
             }
@@ -393,7 +360,6 @@ final class SampleData {
         return true;
     }
 
-    /** The text of the .jwa's app definition and process (for {@link Masker#setDefinition}). */
     static String definitionText(Path jwa) throws IOException {
         StringBuilder text = new StringBuilder();
         try (ZipFile z = new ZipFile(jwa.toFile())) {
@@ -415,7 +381,6 @@ final class SampleData {
         return text.toString();
     }
 
-    /** Copies the .jwa with the sample tables (data/ and app_formuploads/) added; replaces the file. */
     static void addTo(Path jwa, List<Table> tables) throws IOException {
         if (tables.isEmpty()) {
             return;
@@ -437,7 +402,7 @@ final class SampleData {
             while (all.hasMoreElements()) {
                 ZipEntry e = all.nextElement();
                 if (written.contains(e.getName())) {
-                    continue; // ours replace Joget's (there are none: the export had no data)
+                    continue;
                 }
                 out.putNextEntry(new ZipEntry(e.getName()));
                 try (InputStream is = in.getInputStream(e)) {
@@ -453,13 +418,6 @@ final class SampleData {
         Files.move(tmp, jwa, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
     }
 
-    /**
-     * The rows as Joget's own export writes data/&lt;table&gt;.json (FormUtil.formRowSetToJson(rows, true)): the row's
-     * properties, with dates (dateCreated, dateModified are properties too) as "yyyy-MM-dd HH:mm:ss" in the server's
-     * time zone, which is what FormUtil.jsonToFormRowSet reads on import. Not Joget's method itself: it (and
-     * FormRow.getProperty for a Date) formats dates with the current request's locale, and the export runs on a
-     * background thread after that request ended, so it threw and returned "[]" (no rows in the .jwa).
-     */
     static String toJson(FormRowSet rows) throws IOException {
         java.text.SimpleDateFormat date = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         JSONArray out = new JSONArray();
@@ -469,7 +427,6 @@ final class SampleData {
                 for (Object p : r.getCustomProperties().keySet()) {
                     String key = p != null ? p.toString().trim() : "";
                     if (!key.isEmpty()) {
-                        // FormRow.getProperty formats a Date value with the request's locale too
                         Object v = r.get(key);
                         o.put(key, v instanceof java.util.Date ? date.format((java.util.Date) v) : r.getProperty(key));
                     }
@@ -482,7 +439,6 @@ final class SampleData {
         return out.toString();
     }
 
-    /** A real uploaded file into the .jwa, copied as a stream (it may be several MB). */
     private static void putFile(ZipOutputStream out, Set<String> written, String name, Path file) throws IOException {
         if (!written.add(name)) {
             return;
@@ -507,7 +463,6 @@ final class SampleData {
         out.closeEntry();
     }
 
-    /** The string values of the converted sample rows (process ids among them are kept as they are). */
     static Set<String> valuesIn(List<Table> tables) {
         Set<String> values = new LinkedHashSet<>();
         for (Table t : tables) {
@@ -522,7 +477,6 @@ final class SampleData {
         return values;
     }
 
-    /** apps.json's summary of one app's sample. */
     static JSONObject summary(List<Table> tables, Mode mode) throws JSONException {
         JSONArray list = new JSONArray();
         for (Table t : tables) {
@@ -532,7 +486,6 @@ final class SampleData {
         return new JSONObject().put("mode", mode.name().toLowerCase(java.util.Locale.ROOT)).put("tables", list);
     }
 
-    /** Adds the id map to the recording's apps.json: "idMap": {"kept": false, "ids": {old: new}}. */
     static void writeIdMap(Path recordingDir, Masker.IdMap ids, boolean kept) throws IOException {
         Path list = AppExport.list(recordingDir);
         if (ids.all().isEmpty() || list == null) {
@@ -547,7 +500,6 @@ final class SampleData {
         }
     }
 
-    /** Joget's form data and upload folder. Table names are the forms' (without app_fd_). */
     static Source joget() {
         org.joget.apps.form.dao.FormDataDao dao = (org.joget.apps.form.dao.FormDataDao) org.joget.apps.app.service.AppUtil
                 .getApplicationContext().getBean("formDataDao");

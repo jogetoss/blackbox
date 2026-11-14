@@ -8,7 +8,6 @@ import java.nio.file.Paths;
 import org.json.JSONArray;
 import org.junit.Test;
 
-/** The Always-masked column names setting (sensitiveColumns): one word per line, commas also separate. */
 public class MaskerSettingTest {
 
     private static final byte[] KEY = "k".getBytes(StandardCharsets.UTF_8);

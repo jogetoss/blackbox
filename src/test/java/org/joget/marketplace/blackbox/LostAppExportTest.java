@@ -14,10 +14,6 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-/**
- * App exports saved as lost (ExportJobs.lost) while their job still runs or ends: the job's end must win, and a
- * recording left waiting must get the apps when it is opened again.
- */
 public class LostAppExportTest {
 
     private static final String SESSION = "{\"tool\":\"blackbox 1.3.0\",\"recording\":{\"durationMs\":1200,"
@@ -54,7 +50,6 @@ public class LostAppExportTest {
                 .getString("id");
     }
 
-    /** A stop capture already attached to rec, its app export in state. */
     private void capture(String rec, JSONObject state) throws Exception {
         assertTrue(captures.start(CAPTURE, "admin", 1024, DAY));
         assertTrue(captures.put(CAPTURE, "recording", rec));
@@ -73,7 +68,6 @@ public class LostAppExportTest {
         return new JSONObject().put("state", "done").put("saved", new JSONArray().put(new JSONObject().put("file", "crm-1.jwa")));
     }
 
-    /** What the stop's export job leaves in the capture's folder. */
     private void exportedApp() throws Exception {
         Path dir = Files.createDirectories(captures.dir(CAPTURE).resolve(AppExport.DIR));
         Files.write(dir.resolve("crm-1.jwa"), new byte[] {1});
@@ -90,7 +84,6 @@ public class LostAppExportTest {
         assertTrue(Files.isRegularFile(recordings.dir(rec).resolve(AppExport.DIR).resolve("crm-1.jwa")));
     }
 
-    /** Finding 1, captureMeta: the job saves done between the reader's lost() and its write. */
     @Test
     public void aLostMarkDoesNotOverwriteTheStopJobsEnd() throws Exception {
         String rec = recording();
@@ -98,7 +91,6 @@ public class LostAppExportTest {
         capture(rec, old);
         recordings.updateMeta(rec, new JSONObject().put("appExport", new JSONObject(old.toString()).put("capture", CAPTURE)));
         exportedApp();
-        // endStopExport's first half (save done) runs inside the reader's gap; its second half (deliver) after it
         BlackBoxPlugin.afterLostCheck = () -> {
             try {
                 assertTrue(captures.put(CAPTURE, "appExport", done()));
@@ -115,13 +107,12 @@ public class LostAppExportTest {
         assertAppsDelivered(rec);
     }
 
-    /** Finding 1, settleAppExport line 810: the upload's job saves done between the lost() check and the write. */
     @Test
     public void aLostMarkDoesNotOverwriteTheUploadJobsEnd() throws Exception {
         String rec = recording();
         JSONObject meta = recordings.updateMeta(rec, new JSONObject().put("appExport", longAgo()));
         BlackBoxPlugin.afterLostCheck = () -> {
-            try { // what finishUploadExport saves
+            try {
                 recordings.updateMeta(rec, new JSONObject().put("appExport", new JSONObject().put("state", "done"))
                         .put("apps", new JSONArray().put(new JSONObject().put("file", "crm-1.jwa"))));
             } catch (Exception e) {
@@ -134,7 +125,6 @@ public class LostAppExportTest {
         assertEquals(1, recordings.readMeta(rec).getJSONArray("apps").length());
     }
 
-    /** Finding 2: the late end's one delivery fails; opening the recording later must deliver it. */
     @Test
     public void aFailedLateDeliveryIsRetriedWhenTheRecordingIsOpened() throws Exception {
         String rec = recording();
@@ -142,18 +132,17 @@ public class LostAppExportTest {
         recordings.updateMeta(rec, new JSONObject().put("appExport", ExportJobs.lostState().put("capture", CAPTURE)));
         exportedApp();
         Path blocker = recordings.dir(rec).resolve(AppExport.DIR);
-        Files.write(blocker, new byte[0]); // a file where the app/ folder goes: moving the apps in fails
+        Files.write(blocker, new byte[0]);
         BlackBoxPlugin.endStopExport(CAPTURE, done());
         assertTrue("setup: the late delivery failed", ExportJobs.wasLost(appExport(rec)));
         assertEquals("done", captures.readMeta(CAPTURE).getJSONObject("appExport").getString("state"));
 
         Files.delete(blocker);
-        BlackBoxPlugin.settleAppExport(recordings, rec, recordings.readMeta(rec)); // someone opens the recording
+        BlackBoxPlugin.settleAppExport(recordings, rec, recordings.readMeta(rec));
 
         assertAppsDelivered(rec);
     }
 
-    /** Line 807: one failed read of the capture's meta must not close the recording for good. */
     @Test
     public void anUnreadableCaptureMetaDoesNotCloseTheRecording() throws Exception {
         String rec = recording();
@@ -162,24 +151,23 @@ public class LostAppExportTest {
         recordings.updateMeta(rec, new JSONObject().put("appExport", new JSONObject(running.toString()).put("capture", CAPTURE)));
         Path metaFile = captures.dir(CAPTURE).resolve("meta.json");
         byte[] good = Files.readAllBytes(metaFile);
-        Files.write(metaFile, "{".getBytes(StandardCharsets.UTF_8)); // readMeta returns null once; the folder is there
+        Files.write(metaFile, "{".getBytes(StandardCharsets.UTF_8));
         BlackBoxPlugin.settleAppExport(recordings, rec, recordings.readMeta(rec));
         Files.write(metaFile, good);
 
         exportedApp();
-        BlackBoxPlugin.endStopExport(CAPTURE, done()); // the job ends normally
+        BlackBoxPlugin.endStopExport(CAPTURE, done());
 
         assertAppsDelivered(rec);
     }
 
-    /** Guard for the finding 2 fix: a recording whose capture also says lost is not rewritten on every view. */
     @Test
     public void openingALostRecordingWhoseCaptureIsLostWritesNothing() throws Exception {
         String rec = recording();
         capture(rec, ExportJobs.lostState());
         recordings.updateMeta(rec, new JSONObject().put("appExport", ExportJobs.lostState().put("capture", CAPTURE)));
         Path metaFile = recordings.dir(rec).resolve(RecordingStore.META);
-        Object before = Files.readAttributes(metaFile, BasicFileAttributes.class).fileKey(); // each save is a new file
+        Object before = Files.readAttributes(metaFile, BasicFileAttributes.class).fileKey();
 
         for (int i = 0; i < 3; i++) {
             BlackBoxPlugin.settleAppExport(recordings, rec, recordings.readMeta(rec));

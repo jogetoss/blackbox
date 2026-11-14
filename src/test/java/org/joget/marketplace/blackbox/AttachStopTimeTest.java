@@ -8,7 +8,6 @@ import org.json.JSONObject;
 import org.junit.Before;
 import org.junit.Test;
 
-/** BB4: an upload that attaches a capture with no stoppedAt uses lastSeenAt, not the upload time. */
 public class AttachStopTimeTest {
 
     private static final String ID = "0f8fad5b-d9cb-469f-a165-70867728950e";
@@ -28,11 +27,10 @@ public class AttachStopTimeTest {
 
     @Test
     public void aCapturePingedThenUploadedLaterGetsLastSeenAt() throws Exception {
-        long seen = System.currentTimeMillis() - 90 * 60 * 1000L; // pinged 90 min ago, uploaded now
+        long seen = System.currentTimeMillis() - 90 * 60 * 1000L;
         assertTrue(store.put(ID, "lastSeenAt", seen));
         assertNotNull(store.attach(ID, "admin", target));
         assertEquals(seen, store.readMeta(ID).getLong("stoppedAt"));
-        // the recording's own system-log.json carries the same time
         assertEquals(seen, new JSONObject(new String(Files.readAllBytes(target), "UTF-8")).getLong("stoppedAt"));
     }
 

@@ -20,14 +20,6 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * The Joget apps a recording used, exported at upload with Joget's own app export (the same .jwa as App Composer's
- * Export, without form data, plugins or groups). Apps are found in the recorded URLs: userview, embed, form/datalist,
- * builder and JSON API paths, appId / appVersion parameters and process definition ids (appId#version#process).
- * Apps with problems (failed requests, server errors, console errors on their pages) come first, then the most used.
- * Saved as app/&lt;appId&gt;-&lt;version&gt;.jwa plus app/apps.json (what was found and exported, or why not).
- * App definitions can hold plugin settings and environment variables, so they count as server data.
- */
 final class AppExport {
 
     static final String DIR = "app";
@@ -35,18 +27,14 @@ final class AppExport {
     static final int MAX_APPS = 3;
     static final String FILE_NAME = "[A-Za-z0-9_-]+-\\d+\\.jwa";
 
-    /** Joget's own App Center: usually just the way into the app in question, so kept only when it had problems or was the only app. */
     static final String APP_CENTER = "appcenter";
 
     private static final String ID = "([A-Za-z0-9_-]+)";
     private static final Pattern[] PATHS = {
-        // /web/userview/app/userview/..., /web/embed/userview/..., /web/ulogin/..., mobile
         Pattern.compile("/web/(?:embed/)?(?:userview|ulogin|mobile|mapp)/" + ID + "(?:/|$|\\?)"),
-        // /web/app/app/1/form/..., /web/client/app/app/1/..., /web/console/app/app/1/..., /web/json/app/app/1/...
         Pattern.compile("/web/(?:client/|console/|json/(?:console/)?)?app/" + ID + "/(\\d+|latest|_)?"),
         Pattern.compile("/web/json/data/(?:form|list|app)/(?:\\w+/)?" + ID + "/(\\d+)/"),
     };
-    /** App icons and userview screenshots (App Center loads them for every app): files, not the app in use. */
     private static final Pattern RESOURCE = Pattern.compile("/web/(?:app/[A-Za-z0-9_-]+/(?:\\d+/)?resources/|userview/screenshot/)");
     private static final Pattern PROCESS = Pattern.compile("(?:^|[/=&?])" + ID + "(?:#|%23)(\\d+|latest)(?:#|%23)\\w+");
     private static final Pattern APP_PARAM = Pattern.compile("[?&]appId=" + ID + "(?:&|$)");
@@ -55,7 +43,6 @@ final class AppExport {
     private AppExport() {
     }
 
-    /** One app seen in the recording: its id, the version a URL named (null: the published one), how often seen. */
     static final class Seen {
         final String appId;
         String version;
@@ -67,11 +54,6 @@ final class AppExport {
         }
     }
 
-    /**
-     * One recorded thing that can name an app: a request (url), or a problem on a page (console error: page only).
-     * page is the page the browser showed (a document's own URL, else the request's Referer); browser is false for
-     * the server's system log, which can also hold requests of other tabs (service worker fetches carry no tab).
-     */
     static final class Hit {
         final String url;
         final String page;
@@ -86,7 +68,6 @@ final class AppExport {
         }
     }
 
-    /** The apps in these browser URLs, most used first. */
     static List<Seen> find(Iterable<String> urls) {
         List<Hit> hits = new ArrayList<>();
         for (String url : urls) {
@@ -95,11 +76,6 @@ final class AppExport {
         return find(hits);
     }
 
-    /**
-     * The apps of these hits: apps with problems first, then the most used. Apps come from the browser's requests; the
-     * system log only adds to them (or names the apps when the browser recorded none). App Center is kept only when it
-     * had problems or was the only app.
-     */
     static List<Seen> find(List<Hit> hits) {
         boolean browserNamesApps = false;
         for (Hit h : hits) {
@@ -115,7 +91,7 @@ final class AppExport {
                 Seen s = seen.computeIfAbsent(app[0], Seen::new);
                 s.count++;
                 if (app[1] != null && app[1].matches("\\d+") && s.version == null) {
-                    s.version = app[1]; // the first numbered version wins; "latest" and "_" mean the published one
+                    s.version = app[1];
                 }
             }
             if (h.problem) {
@@ -134,7 +110,6 @@ final class AppExport {
         return list;
     }
 
-    /** {appId, version or null} of the app a URL names, or null. */
     static String[] appOf(String url) {
         if (url == null || RESOURCE.matcher(url).find()) {
             return null;
@@ -157,7 +132,6 @@ final class AppExport {
         return null;
     }
 
-    /** URLs of the recording: the browser's requests in session.json and the server's in the system log. */
     static List<String> urls(Path session, Path systemLog) {
         List<String> urls = new ArrayList<>();
         addUrls(urls, session, "network");
@@ -180,15 +154,12 @@ final class AppExport {
         }
     }
 
-    // The fields each reader needs: the rest of an entry (response bodies above all) is skipped, not built
     private static final java.util.Set<String> URL_FIELDS = new java.util.HashSet<>(java.util.Arrays.asList("url"));
     private static final java.util.Set<String> NETWORK_FIELDS = new java.util.HashSet<>(java.util.Arrays.asList("t", "url", "type", "status", "failed", "requestHeaders"));
     private static final java.util.Set<String> CONSOLE_FIELDS = new java.util.HashSet<>(java.util.Arrays.asList("t", "level"));
     private static final java.util.Set<String> LOG_FIELDS = new java.util.HashSet<>(java.util.Arrays.asList("kind", "url", "status", "error", "level", "req", "other"));
 
-    /** Kept per URL: an app id and version are near the start; a crafted file can't fill memory with URLs. */
     static final int MAX_URL_CHARS = 8 * 1024;
-    /** Requests and log lines kept per recording (a long real recording has a few thousand). */
     static final int MAX_HITS = 200_000;
 
     private static String cutUrl(String u) {
@@ -203,19 +174,13 @@ final class AppExport {
                 }
             });
         } catch (IOException e) {
-            // unreadable: no apps from it
         }
     }
 
-    /**
-     * The hits of a recording: the browser's requests (failed or 4xx/5xx: a problem) and console errors (a problem on
-     * the page shown then), then the system log's requests (5xx: a problem) and error lines (a problem on their
-     * request). Other server threads' lines are left out.
-     */
     static List<Hit> hits(Path session, Path systemLog) {
         List<Hit> hits = new ArrayList<>();
-        java.util.TreeMap<Long, String> pages = new java.util.TreeMap<>(); // t -> page shown from then on
-        try { // each list read as a stream, one entry at a time (SessionFile)
+        java.util.TreeMap<Long, String> pages = new java.util.TreeMap<>();
+        try {
             SessionFile.each(session, "network", NETWORK_FIELDS, n -> {
                 if (n.optString("url").isEmpty() || hits.size() >= MAX_HITS) {
                     return;
@@ -241,13 +206,11 @@ final class AppExport {
                 if ("request".equals(e.optString("kind")) && !e.optString("url").isEmpty()) {
                     hits.add(new Hit(decode(cutUrl(e.optString("url"))), null, e.has("error") || e.optInt("status") >= 500, false));
                 } else if (e.optString("level").matches("ERROR|FATAL") && e.optString("req").contains(" ")) {
-                    // req is "METHOD /path": a problem on that request's app, not another request of it
                     String req = cutUrl(e.optString("req"));
                     hits.add(new Hit(null, decode(req.substring(req.indexOf(' ') + 1)), true, false));
                 }
             });
         } catch (IOException e) {
-            // unreadable: the hits read so far
         }
         return hits;
     }
@@ -264,39 +227,33 @@ final class AppExport {
         return null;
     }
 
-    /** Exports one app version into out; returns its definition, or null when there is no such app. */
     interface Exporter {
         AppDefinition export(String appId, String version, OutputStream out) throws IOException;
     }
 
-    /** An app the user may not have exported: listed as denied with the reason, and not counted against the cap. */
     static class Denied extends IOException {
         Denied(String reason) {
             super(reason);
         }
     }
 
-    /** Joget's own export: the published version when the URLs named none, else the latest. */
     static Exporter joget() {
         return joget(null);
     }
 
-    /** The version an export takes: the one the URLs named, else the published one, else the latest. Null: no app. */
     static AppDefinition resolve(String appId, String version) {
         AppService appService = (AppService) AppUtil.getApplicationContext().getBean("appService");
         AppDefinition def = version != null ? appService.loadAppDefinition(appId, version) : appService.getPublishedAppDefinition(appId);
         if (def == null) {
-            def = appService.loadAppDefinition(appId, null); // never published: the latest
+            def = appService.loadAppDefinition(appId, null);
         }
         return def;
     }
 
-    /** The key of an access decision: the app and the version it resolved to. */
     static String key(AppDefinition def) {
         return def.getAppId() + "@" + def.getVersion();
     }
 
-    /** As {@link #joget()}; deny gives the reason an app's definition may not be exported (null: allowed). */
     static Exporter joget(java.util.function.Function<AppDefinition, String> deny) {
         AppService appService = (AppService) AppUtil.getApplicationContext().getBean("appService");
         return (appId, version, out) -> {
@@ -313,7 +270,6 @@ final class AppExport {
         };
     }
 
-    /** Runs on each saved .jwa (e.g. adds sample data); returns keys to add to the app's apps.json entry, or null. */
     interface AfterExport {
         JSONObject run(Path jwa, AppDefinition def) throws IOException;
     }
@@ -322,10 +278,6 @@ final class AppExport {
         return save(recordingDir, apps, exporter, null, MAX_APPS);
     }
 
-    /**
-     * Exports the apps (at most max, 0: all) into recordingDir/app/ and writes apps.json. Returns the summary kept in
-     * meta.json: [{id, name, version, problems}] of the exported ones.
-     */
     static JSONArray save(Path recordingDir, List<Seen> apps, Exporter exporter, AfterExport after, int max) throws IOException {
         JSONArray list = new JSONArray();
         JSONArray summary = new JSONArray();
@@ -333,12 +285,12 @@ final class AppExport {
             return summary;
         }
         if (!Files.isDirectory(recordingDir)) {
-            throw new IOException("Gone: " + recordingDir.getFileName()); // deleted before a background export ran
+            throw new IOException("Gone: " + recordingDir.getFileName());
         }
         Path dir = recordingDir.resolve(DIR);
         Files.createDirectories(dir);
         try {
-            int taken = 0; // apps tried, against the cap: denied ones don't count
+            int taken = 0;
             for (int i = 0; i < apps.size(); i++) {
                 Seen s = apps.get(i);
                 JSONObject a = new JSONObject().put("id", s.appId).put("requests", s.count);
@@ -407,7 +359,6 @@ final class AppExport {
         return summary;
     }
 
-    /** The recording's saved .jwa files. */
     static List<Path> files(Path recordingDir) throws IOException {
         List<Path> files = new ArrayList<>();
         Path dir = recordingDir.resolve(DIR);
@@ -423,13 +374,11 @@ final class AppExport {
         return files;
     }
 
-    /** The recording's apps.json, or null. */
     static Path list(Path recordingDir) {
         Path f = recordingDir.resolve(DIR).resolve(LIST);
         return Files.isRegularFile(f) ? f : null;
     }
 
-    /** A saved .jwa of this recording, or null (only names apps.json lists, so no path tricks). */
     static Path file(Path recordingDir, String name) {
         if (name == null || !name.matches(FILE_NAME)) {
             return null;

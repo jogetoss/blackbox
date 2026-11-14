@@ -5,15 +5,11 @@
   <link rel="stylesheet" href="ui.css">
   <script src="theme.js"></script>
   <style>
-    /* Chrome caps popups at 600px tall (800px wide): wider, so everything fits without scrolling */
     body { width: 340px; margin: 0; padding: 12px; font: 13px system-ui, sans-serif; }
-    /* Title as a dark green band across the top */
     h1 { font-size: 15px; margin: -12px -12px 12px; padding: 10px 12px; background: var(--brand); color: #fff; }
     h1::before { background: radial-gradient(circle, #ff6b5e 0 3.5px, rgba(255, 255, 255, .18) 4px); }
     button { width: 100%; padding: 10px; border: 0; border-radius: 10px; color: var(--on-accent); font: 600 13px system-ui, sans-serif; cursor: pointer; }
     button:disabled { opacity: .6; cursor: default; }
-    /* Record buttons in one row: screen, window, tab; the hint shows under the label; "Record the screen" is the
-       main action */
     .start { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
     .start button { display: flex; flex-direction: column; justify-content: flex-start; gap: 3px; text-align: left; padding: 8px 9px; line-height: 1.25; background: var(--bg); color: var(--fg); border: 1px solid var(--field-line); }
     .start button:hover:not(:disabled) { border-color: var(--accent); }
@@ -29,7 +25,7 @@
     #quick { margin: 10px 0 0; padding: 6px 10px 10px; border: 1px solid var(--line); border-radius: 10px; }
     #quick legend { padding: 0 4px; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
     #quick label { display: flex; gap: 6px; align-items: center; margin-top: 3px; }
-    #quick > label { display: inline-flex; margin-right: 16px; } /* Page sound and Microphone on one row */
+    #quick > label { display: inline-flex; margin-right: 16px; }
     #quick label input { margin: 0; }
     #quick .sub { margin-left: 18px; }
     #quick .sub2 { margin-left: 36px; }
@@ -45,8 +41,6 @@
     <button data-mode="window" title="Pick a window; pick a Chrome window to get the URL bar">Record a window<small>Pick a Chrome window to get the URL bar</small></button>
     <button data-mode="tab" title="Records this tab's page directly, no picker (no URL bar in the video)">Record this tab<small>No picker, no URL bar in the video</small></button>
   </div>
-  <!-- Quick settings for the next recording: sound is this browser's; the rest the server offers (BlackBox plugin
-       settings and this user's rights, me.options). Every box starts unticked and asks for its part. -->
   <fieldset id="quick">
     <legend>Quick Settings</legend>
     <label title="The sound of the tab you start from, also when you record a window or the screen"><input type="checkbox" id="qPage"> Page sound</label>

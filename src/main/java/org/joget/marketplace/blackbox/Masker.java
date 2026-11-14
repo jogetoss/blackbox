@@ -20,26 +20,11 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * Replaces form values with fake ones of the same shape, for sample data: each letter by a letter of the same case,
- * each digit by a digit, everything else (spaces, punctuation, symbols, empty values) kept, so length, format and
- * special characters stay and most data-dependent bugs still show. The same value always gets the same fake within one
- * Masker (a random key per recording), so equal values stay equal across rows and tables.
- * <p>
- * Kept as they are, since they rarely identify anyone and the app's logic depends on them: values listed as options
- * of the form's select boxes, radios and check boxes; yes/no/true/false; numbers of up to 5 digits before the decimal
- * point; UUIDs and Joget process / activity ids; values found in the app's own definition. User names seen in
- * createdBy / modifiedBy become user1, user2... wherever they appear. Dates (yyyy-MM-dd...) keep their year and get another valid month and day. JSON (grid values) is masked leaf
- * by leaf. Columns named like a sensitive field (see {@link #DEFAULT_SENSITIVE}) are always masked, also when real
- * values were asked for.
- */
 final class Masker {
 
-    /** Also the default value of the sensitiveColumns setting in blackboxPlugin.json; keep the two the same. */
     static final String DEFAULT_SENSITIVE = String.join("\n", "password", "ic", "nric", "passport", "email", "phone", "mobile",
             "tel", "address", "salary", "birth", "dob", "bank", "account", "card", "iban", "ssn");
 
-    /** Technical ids, kept: UUIDs and Joget process / activity ids (123_app_process). */
     private static final Pattern TECH_ID = Pattern.compile("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
             + "|\\d{1,12}_[A-Za-z0-9][A-Za-z0-9_-]*_[A-Za-z0-9_-]+");
     private static final Pattern SMALL_NUMBER = Pattern.compile("-?\\d{1,5}([.,]\\d+)?");
@@ -54,7 +39,6 @@ final class Masker {
     private Set<String> definitionTokens = new HashSet<>();
     private String definitionText = "";
 
-    /** sensitiveWords: one word per line (commas also separate); a column whose name has one as a word is always masked. */
     Masker(String sensitiveWords) {
         this(sensitiveWords, randomKey());
     }
@@ -80,10 +64,6 @@ final class Masker {
         return k;
     }
 
-    /**
-     * The app's own definition (appDefinition.xml, package.xpdl): values found in it come from the app, not from its
-     * users (status names, activity ids, hash variables), so they are kept.
-     */
     void setDefinition(String text) {
         definitionText = text != null ? text : "";
         definitionTokens = new HashSet<>();
@@ -107,12 +87,10 @@ final class Masker {
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
     }
 
-    /** Notes a user name seen in createdBy / modifiedBy, so the same name in other columns gets the same pseudonym. */
     void knowUser(String username) {
         user(username);
     }
 
-    /** Whether a column's name has one of the sensitive words as a word (camelCase, snake_case, kebab-case, digits). */
     boolean isSensitive(String column) {
         for (String w : words(column)) {
             if (sensitive.contains(w)) {
@@ -132,10 +110,6 @@ final class Masker {
         return words;
     }
 
-    /**
-     * One form value. options: the form's option values (kept unless the column is sensitive). Old ids found in the
-     * value are replaced from ids (and never masked); ids may be empty.
-     */
     String value(String column, String value, Collection<String> options, IdMap ids) {
         if (value == null || value.isEmpty()) {
             return value;
@@ -153,7 +127,6 @@ final class Masker {
                 Object json = trimmed.startsWith("{") ? new JSONObject(trimmed) : new JSONArray(trimmed);
                 return json(column, json, options, ids, always).toString();
             } catch (JSONException e) {
-                // not JSON: a plain value
             }
         }
         if (!always && (options.contains(value) || FLAGS.contains(trimmed.toLowerCase(Locale.ROOT))
@@ -161,12 +134,11 @@ final class Masker {
             return value;
         }
         if (!always && containsOption(value, options)) {
-            return value; // a multi-select value like "a;b"
+            return value;
         }
         return ids.replaceIn(value, this::shapeAroundHashVariables);
     }
 
-    /** Hash variables stored as text (#form.table.field[{currentUser.username}]#) are the app's, not data: kept. */
     private static final Pattern HASH_VARIABLE = Pattern.compile("#[A-Za-z][A-Za-z0-9_.\\-]*(\\[[^#]*\\])?#");
 
     String shapeAroundHashVariables(String value) {
@@ -211,12 +183,11 @@ final class Masker {
             return out;
         }
         if (json instanceof String) {
-            return value(always ? "password" : column, (String) json, options, ids); // "password": always sensitive
+            return value(always ? "password" : column, (String) json, options, ids);
         }
-        return json; // numbers, booleans, null
+        return json;
     }
 
-    /** The fake of a plain value: same shape; a date keeps its year. */
     String shape(String value) {
         Matcher d = DATE.matcher(value);
         if (d.matches()) {
@@ -231,7 +202,7 @@ final class Masker {
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
             if (k >= h.length) {
-                h = hash(value + "#" + i); // longer values: more random bytes
+                h = hash(value + "#" + i);
                 k = 0;
             }
             int r = h[k++] & 0xff;
@@ -242,7 +213,7 @@ final class Masker {
             } else if (c >= '0' && c <= '9') {
                 out.append((char) ('0' + r % 10));
             } else if (Character.isLetter(c)) {
-                out.append(Character.isUpperCase(c) ? UPPER.charAt(r % 26) : LOWER.charAt(r % 26)); // other scripts
+                out.append(Character.isUpperCase(c) ? UPPER.charAt(r % 26) : LOWER.charAt(r % 26));
             } else {
                 out.append(c);
             }
@@ -250,7 +221,6 @@ final class Masker {
         return out.toString();
     }
 
-    /** A user name, replaced by user1, user2... (the same name, the same pseudonym). */
     String user(String username) {
         if (username == null || username.isEmpty()) {
             return username;
@@ -258,7 +228,6 @@ final class Masker {
         return users.computeIfAbsent(username, u -> "user" + (users.size() + 1));
     }
 
-    /** A file name: the name masked, the extension kept. */
     String fileName(String name) {
         int dot = name.lastIndexOf('.');
         return dot > 0 ? shape(name.substring(0, dot)) + name.substring(dot) : shape(name);
@@ -268,7 +237,6 @@ final class Masker {
         return mac.doFinal(value.getBytes(StandardCharsets.UTF_8));
     }
 
-    /** Old record ids to new ones (or to themselves when ids are kept); replaces them inside values. */
     static final class IdMap {
         private final Map<String, String> map = new java.util.LinkedHashMap<>();
         private final boolean keep;
@@ -297,7 +265,6 @@ final class Masker {
             return java.util.Collections.unmodifiableMap(map);
         }
 
-        /** Old ids in the value become new ones; the text between them goes through rest (e.g. masking). */
         String replaceIn(String value, java.util.function.UnaryOperator<String> rest) {
             if (map.isEmpty()) {
                 return rest.apply(value);

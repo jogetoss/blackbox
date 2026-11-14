@@ -1,22 +1,18 @@
-// Extension only, shared by the Recordings page and the Replay page: the recordings in browser storage
-// (IndexedDB, see idb.js) and the ones in the linked folder (read from disk, never copied).
 const Store = (() => {
-  const MAX_DISK = 50;       // newest recordings listed from the linked folder
+  const MAX_DISK = 50;
   const state = {
-    folder: null,            // linked FileSystemDirectoryHandle
-    diskItems: [],           // scanned from the linked folder
-    folderReady: false,      // read access granted and scanned
+    folder: null,
+    diskItems: [],
+    folderReady: false,
   };
 
-  // { kind: 'saved' | 'disk' | 'history', id, startedAt, durationMs, tab, uploaded, onDisk }, newest first.
-  // 'history' = uploaded, local copy gone.
   async function allRows() {
     const saved = (await idbList()).map((r) => ({ kind: 'saved', id: r.id, ...summary(r.report), uploaded: r.uploaded, uploadProblem: r.uploadProblem, recovered: !!r.recovered, imported: !!r.imported, onDisk: false }));
     const savedIds = new Set(saved.map((r) => r.id));
     for (const r of saved) if (state.diskItems.some((d) => d.id === r.id)) r.onDisk = true;
     const disk = [];
     for (const d of state.diskItems) {
-      if (savedIds.has(d.id)) continue; // already listed; the badge says it's on disk too
+      if (savedIds.has(d.id)) continue;
       disk.push({ ...d, kind: 'disk', uploaded: await idbMetaGet('uploaded:' + d.id), onDisk: true });
     }
     const local = new Set([...saved, ...disk].map((r) => r.id));
@@ -24,13 +20,11 @@ const Store = (() => {
     return [...saved, ...disk, ...history].sort((a, b) => ((a.startedAt || a.id) < (b.startedAt || b.id) ? 1 : -1));
   }
 
-  // issues: the Browser issues column (errors, failedRequests, slowRequests, slowThresholdMs; older recordings lack slow)
   function summary(report) {
     const rec = report?.recording || {};
     return { startedAt: rec.startedAt, durationMs: rec.durationMs, tab: rec.tab || {}, issues: report?.summary || null };
   }
 
-  // { video: Blob|File|null, report } of one recording
   async function load(kind, id) {
     if (kind === 'disk') {
       const item = state.diskItems.find((d) => d.id === id);
@@ -45,12 +39,9 @@ const Store = (() => {
     return { video: rec.video, report: rec.report };
   }
 
-  // Replay page address of a row
   function replayUrl(row) {
     return 'viewer.html?' + new URLSearchParams(row.kind === 'disk' ? { disk: row.id } : { id: row.id });
   }
-
-  // ---------- linked folder ----------
 
   async function linkFolder() {
     if (!window.showDirectoryPicker) throw new Error('This browser cannot open folders.');
@@ -58,7 +49,7 @@ const Store = (() => {
     try {
       handle = await window.showDirectoryPicker({ id: 'blackbox', mode: 'read', startIn: 'downloads' });
     } catch (e) {
-      if (e.name === 'AbortError') return false; // the user closed the picker
+      if (e.name === 'AbortError') return false;
       throw e;
     }
     state.folder = handle;
@@ -74,7 +65,6 @@ const Store = (() => {
     await idbMetaDelete('folder');
   }
 
-  // After a browser restart Chrome asks again; that needs a click (allowFolder).
   async function restoreFolder() {
     state.folder = (await idbMetaGet('folder')) || null;
     if (state.folder && (await state.folder.queryPermission({ mode: 'read' })) === 'granted') await scanFolder();
@@ -87,8 +77,6 @@ const Store = (() => {
     return true;
   }
 
-  // Finds recordings in the folder: <folder>/<time>/session.json (+ recording.webm). Also accepts the parent
-  // folder (blackbox/ inside it) or a single recording folder.
   async function scanFolder() {
     const folder = state.folder;
     const dirs = [];
@@ -105,7 +93,7 @@ const Store = (() => {
       if (!session) continue;
       const head = await (await session.getFile()).slice(0, 16384).text();
       const item = { id: dir.name, dir, parent: dir === base ? null : base, session, video: await child(dir, 'recording.webm', 'file'), ...headerSummary(head) };
-      if (!item.startedAt && !/"console"\s*:/.test(head) && !/"recording"\s*:/.test(head)) continue; // not ours
+      if (!item.startedAt && !/"console"\s*:/.test(head) && !/"recording"\s*:/.test(head)) continue;
       items.push(item);
     }
     state.diskItems = items;
@@ -120,15 +108,12 @@ const Store = (() => {
     }
   }
 
-  // Reads startedAt / durationMs / tab from the start of session.json without parsing the whole file
-  // (the "recording" block comes first, see recorder.js).
   function headerSummary(head) {
     const STR = /"((?:[^"\\]|\\.)*)"/.source;
     const unquote = (m) => { if (!m) return undefined; try { return JSON.parse('"' + m[1] + '"'); } catch (e) { return m[1]; } };
     const tabAt = head.indexOf('"tab"');
     const tab = tabAt >= 0 ? head.slice(tabAt) : '';
     const ms = head.match(/"durationMs"\s*:\s*(\d+)/);
-    // "summary" follows the "recording" block, so it is in the first 16 KB too
     const sumAt = head.indexOf('"summary"');
     const sum = sumAt >= 0 ? head.slice(sumAt, sumAt + 400) : '';
     const num = (key) => { const m = sum.match(new RegExp('"' + key + '"\\s*:\\s*(\\d+)')); return m ? Number(m[1]) : undefined; };
@@ -140,8 +125,6 @@ const Store = (() => {
       tab: { url: unquote(tab.match(new RegExp('"url"\\s*:\\s*' + STR))), title: unquote(tab.match(new RegExp('"title"\\s*:\\s*' + STR))) },
     };
   }
-
-  // ---------- small DOM helpers shared by both pages ----------
 
   function badges(r) {
     const out = [];

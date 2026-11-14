@@ -11,13 +11,6 @@ import org.joget.apps.app.model.PluginWebFilterAbstract;
 import org.joget.apps.app.service.AppUtil;
 import org.joget.plugin.base.PluginManager;
 
-/**
- * Serves the BlackBox endpoint at <context>/api/blackbox.
- *
- * /api/* runs Spring Security (so the logged-in user is known) but not JsonResponseFilter, which rejects
- * requests whose Referer is not Joget - the extension's requests have none. The request never reaches
- * Joget's apiServlet: this filter answers it and does not continue the chain.
- */
 public class BlackBoxApiFilter extends PluginWebFilterAbstract {
 
     static final String PATH = "/api/blackbox";
@@ -69,7 +62,6 @@ public class BlackBoxApiFilter extends PluginWebFilterAbstract {
             chain.doFilter(req, res);
             return;
         }
-        // Loaded through the plugin manager so the saved settings are applied
         PluginManager pm = (PluginManager) AppUtil.getApplicationContext().getBean("pluginManager");
         BlackBoxPlugin plugin = (BlackBoxPlugin) pm.getPlugin(BlackBoxPlugin.class.getName());
         if (plugin == null) {

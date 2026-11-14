@@ -6,7 +6,6 @@ import java.lang.reflect.Proxy;
 import javax.servlet.http.HttpServletRequest;
 import org.junit.Test;
 
-/** "Allow uploads over HTTP" off: which requests count as safe, and which settings default to on. */
 public class HttpsOnlyTest {
 
     private static HttpServletRequest req(boolean secure, String host, String forwardedProto) {

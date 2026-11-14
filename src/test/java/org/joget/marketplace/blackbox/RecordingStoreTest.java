@@ -35,7 +35,7 @@ public class RecordingStoreTest {
         JSONObject meta = store.create(in(SESSION), 1024 * 1024, "admin", "Admin User", "", "notes");
         String id = meta.getString("id");
         assertTrue(RecordingStore.isValidId(id));
-        assertEquals("Joget DX", meta.getString("title")); // falls back to the tab title
+        assertEquals("Joget DX", meta.getString("title"));
         assertEquals("admin", meta.getString("owner"));
         assertEquals(0, meta.getLong("videoSize"));
         assertEquals(2, meta.getJSONObject("summary").getInt("errors"));
@@ -58,7 +58,7 @@ public class RecordingStoreTest {
             String session = SESSION.replace("\"durationMs\":1200,", "\"durationMs\":1200,\"" + key + "\":{\"status\":\"on\",\"id\":\"" + uuid + "\"},");
             JSONObject meta = store.create(in(session), 1024 * 1024, "admin", "Admin User", "", "");
             assertEquals(key, uuid, meta.optString("captureId"));
-            assertFalse(key, store.readMeta(meta.getString("id")).has("captureId")); // never saved
+            assertFalse(key, store.readMeta(meta.getString("id")).has("captureId"));
         }
     }
 
@@ -68,14 +68,14 @@ public class RecordingStoreTest {
         Path file = root.resolve(id).resolve(RecordingStore.META);
         JSONObject old = new JSONObject(new String(Files.readAllBytes(file), StandardCharsets.UTF_8));
         old.put(RecordingStore.LEGACY_CAPTURE, new JSONObject().put("status", "attached").put("errors", 3));
-        Files.write(file, old.toString().getBytes(StandardCharsets.UTF_8)); // as plugin 8.2.1 saved it
+        Files.write(file, old.toString().getBytes(StandardCharsets.UTF_8));
 
         JSONObject meta = store.readMeta(id);
         assertFalse(meta.has(RecordingStore.LEGACY_CAPTURE));
         assertEquals(3, meta.getJSONObject(RecordingStore.CAPTURE).getInt("errors"));
         assertEquals("attached", store.list().get(0).getJSONObject(RecordingStore.CAPTURE).getString("status"));
 
-        store.updateMeta(id, new JSONObject().put("notes", "x")); // the next change saves the new name
+        store.updateMeta(id, new JSONObject().put("notes", "x"));
         String saved = new String(Files.readAllBytes(file), StandardCharsets.UTF_8);
         assertTrue(saved.contains("\"" + RecordingStore.CAPTURE + "\""));
         assertFalse(saved.contains("\"" + RecordingStore.LEGACY_CAPTURE + "\""));
@@ -85,14 +85,14 @@ public class RecordingStoreTest {
     public void rejectsBadInput() throws Exception {
         expectInvalid(() -> store.create(in("not json"), 1024, "u", "u", null, null));
         expectInvalid(() -> store.create(in("{\"a\":1}"), 1024, "u", "u", null, null));
-        expectInvalid(() -> store.create(in(SESSION), 10, "u", "u", null, null)); // too large
+        expectInvalid(() -> store.create(in(SESSION), 10, "u", "u", null, null));
         expectInvalid(() -> store.create(in(""), 1024, "u", "u", null, null));
 
         String id = store.create(in(SESSION), 1024 * 1024, "u", "u", "t", null).getString("id");
         expectInvalid(() -> store.writeVideo(id, in("not a webm"), 1024));
-        expectInvalid(() -> store.writeVideo(id, new ByteArrayInputStream(WEBM), 5)); // too large
+        expectInvalid(() -> store.writeVideo(id, new ByteArrayInputStream(WEBM), 5));
         store.writeVideo(id, new ByteArrayInputStream(WEBM), 1024);
-        expectInvalid(() -> store.writeVideo(id, new ByteArrayInputStream(WEBM), 1024)); // only once
+        expectInvalid(() -> store.writeVideo(id, new ByteArrayInputStream(WEBM), 1024));
         try (java.util.stream.Stream<Path> files = Files.list(root.resolve(id))) {
             assertFalse("no .part files left", files.anyMatch(p -> p.toString().endsWith(".part")));
         }
@@ -128,14 +128,12 @@ public class RecordingStoreTest {
             c.run();
             fail("expected InvalidUpload");
         } catch (RecordingStore.InvalidUpload expected) {
-            // ok
         }
     }
 
     @Test
     public void metaChangesNeverPutBackAnOlderCopy() throws Exception {
         String id = store.create(in(SESSION), 1024 * 1024, "admin", "Admin", "t", "").getString("id");
-        // A background refresh holding the old meta used to write it back over the video upload
         JSONObject stale = store.readMeta(id);
         store.writeVideo(id, new ByteArrayInputStream(WEBM), 1024);
         store.updateMeta(id, new JSONObject().put("serverData", new JSONObject().put("glowroot", "saved")));
@@ -185,7 +183,7 @@ public class RecordingStoreTest {
         }
         big.append('}');
         expectInvalid(() -> store.create(in(big.toString()), 1024, "u", "u", null, null));
-        expectInvalid(() -> store.create(in("{\"console\":[],\"network\":[{\"a\":1}"), 1024, "u", "u", null, null)); // broken
+        expectInvalid(() -> store.create(in("{\"console\":[],\"network\":[{\"a\":1}"), 1024, "u", "u", null, null));
         assertEquals("no half-made recording left", 0, store.list().size());
         try (java.util.stream.Stream<Path> all = Files.list(root)) {
             assertEquals(0, all.count());

@@ -13,7 +13,6 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
-/** BB5: the recording's hard limit (maxRecordingMinutes), and the server's backup stop past maxUntil + 2 min. */
 public class HardLimitTest {
 
     private static final String ID = "6a1f6c3e-2b7d-4c8e-9f10-1a2b3c4d5e6f";
@@ -32,13 +31,13 @@ public class HardLimitTest {
     public void setUp() throws Exception {
         root = Files.createTempDirectory("bb-hard-limit");
         knobs = root.resolve(LivenessKnobs.FILE);
-        store = new ServerCaptureStore(root.resolve("pending")); // root: one profile's blackbox folder
+        store = new ServerCaptureStore(root.resolve("pending"));
         realStores = ServerCapture.stores;
         ServerCapture.stores = () -> store;
         realDirs = ServerCapture.checkDirs;
         ServerCapture.checkDirs = () -> java.util.Collections.singletonList(root);
         realKnobs = LivenessKnobs.fileSupplier;
-        LivenessKnobs.fileSupplier = () -> knobs; // missing: the defaults
+        LivenessKnobs.fileSupplier = () -> knobs;
         staticMap("MISSES").clear();
     }
 
@@ -122,7 +121,7 @@ public class HardLimitTest {
         start(5 * MIN);
         long maxUntil = store.readMeta(ID).getLong("maxUntil");
         long now = maxUntil + GRACE + 1;
-        assertTrue(store.put(ID, "lastSeenAt", now)); // the browser still pings
+        assertTrue(store.put(ID, "lastSeenAt", now));
         assertTrue(store.stopIfOverLimit(ID, now));
         assertEquals("time-limit", store.readMeta(ID).getString("stopReason"));
     }
@@ -142,7 +141,7 @@ public class HardLimitTest {
     public void theServerCheckStopsItOnEveryNodeRun() throws Exception {
         start(5 * MIN);
         long maxUntil = store.readMeta(ID).getLong("maxUntil");
-        assertTrue(store.put(ID, "lastSeenAt", maxUntil + GRACE)); // pings or not
+        assertTrue(store.put(ID, "lastSeenAt", maxUntil + GRACE));
         ServerCapture.checkLost(maxUntil + GRACE / 2);
         assertFalse(store.readMeta(ID).has("stoppedAt"));
         ServerCapture.checkLost(maxUntil + GRACE + 1);
@@ -156,7 +155,7 @@ public class HardLimitTest {
         long maxUntil = store.readMeta(ID).getLong("maxUntil");
         long seen = maxUntil - 4 * MIN;
         assertTrue(store.put(ID, "lastSeenAt", seen));
-        ServerCapture.checkLost(maxUntil + GRACE + 1); // both apply: lost first, at its last ping
+        ServerCapture.checkLost(maxUntil + GRACE + 1);
         assertEquals("browser-lost", store.readMeta(ID).getString("stopReason"));
         assertEquals(seen, store.readMeta(ID).getLong("stoppedAt"));
     }

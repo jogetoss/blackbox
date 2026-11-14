@@ -15,14 +15,6 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * A recording as one ZIP, to move it to another Joget: meta.json (title, notes, who uploaded it), session.json,
- * system-log.json (if any), the Glowroot traces (traces.json and traces/*.html, if any), the server load samples
- * (gauges.json, if any), the System Info snapshot (server-info.json, if any), each node's Glowroot data
- * (glowroot/{node}.zip with glowroot/{node}.json, if any), the exported apps (app/apps.json and app/*.jwa, if any)
- * and recording.webm.
- * {@link #importZip} turns such a ZIP into a new recording.
- */
 public class RecordingZip {
 
     static final String META = "meta.json";
@@ -33,18 +25,15 @@ public class RecordingZip {
     private RecordingZip() {
     }
 
-    /** systemLog and video may be null. */
     public static void write(OutputStream out, JSONObject meta, Path session, Path systemLog, Path video) throws IOException {
         write(out, meta, session, systemLog, video, null);
     }
 
-    /** traceDir: the folder whose Glowroot traces go in (the recording's), or null for none. */
     public static void write(OutputStream out, JSONObject meta, Path session, Path systemLog, Path video, Path traceDir)
             throws IOException {
         write(out, meta, session, systemLog, video, traceDir, null);
     }
 
-    /** appDir: the folder whose exported apps go in (the recording's), or null for none. */
     public static void write(OutputStream out, JSONObject meta, Path session, Path systemLog, Path video, Path traceDir,
             Path appDir) throws IOException {
         JSONObject m = new JSONObject();
@@ -87,7 +76,6 @@ public class RecordingZip {
             }
         }
         if (traceDir != null) {
-            // Glowroot data: built packages only, with their status; stored as they are (ZIPs already)
             zip.setLevel(Deflater.NO_COMPRESSION);
             JSONArray statuses = GlowrootData.statuses(traceDir);
             for (int i = 0; i < statuses.length(); i++) {
@@ -104,16 +92,16 @@ public class RecordingZip {
         Path apps = appDir != null ? AppExport.list(appDir) : null;
         if (apps != null) {
             add(zip, AppExport.DIR + "/" + AppExport.LIST, apps);
-            zip.setLevel(Deflater.NO_COMPRESSION); // a .jwa is a ZIP already
+            zip.setLevel(Deflater.NO_COMPRESSION);
             for (Path f : AppExport.files(appDir)) {
                 add(zip, AppExport.DIR + "/" + f.getFileName().toString(), f);
             }
         }
         if (video != null) {
-            zip.setLevel(Deflater.NO_COMPRESSION); // WebM is compressed already
+            zip.setLevel(Deflater.NO_COMPRESSION);
             add(zip, RecordingStore.VIDEO, video);
         }
-        zip.finish(); // not close(): the caller owns the response stream
+        zip.finish();
         zip.flush();
     }
 
@@ -123,25 +111,14 @@ public class RecordingZip {
         zip.closeEntry();
     }
 
-    /**
-     * Creates a recording from a ZIP made by {@link #write} (or any ZIP with session.json at its top level).
-     * The importer becomes the owner; who uploaded it first is kept as importedFrom. The system log is kept only
-     * when keepServerData is true. Each file is limited to maxBytes. Nothing is kept if any part is invalid.
-     */
     public static JSONObject importZip(RecordingStore store, Path zipFile, long maxBytes, boolean keepServerData,
             String owner, String ownerName) throws IOException, RecordingStore.InvalidUpload {
         return importZip(store, zipFile, maxBytes, keepServerData, owner, ownerName, DEFAULT_TOTAL_FACTOR * maxBytes, DEFAULT_MAX_ENTRIES);
     }
 
-    /** Import limits when the settings are empty: total uncompressed size = 3 × the file limit; 5000 entries. */
     static final int DEFAULT_TOTAL_FACTOR = 3;
     static final int DEFAULT_MAX_ENTRIES = 5000;
 
-    /**
-     * As above, with the whole ZIP limited: maxTotalBytes uncompressed bytes read from all its entries together and
-     * maxEntries entries (0: no limit for either). Each file still has maxBytes: a ZIP of many files just under it, or
-     * of entries sharing one compressed block, would otherwise write far more than it holds.
-     */
     public static JSONObject importZip(RecordingStore store, Path zipFile, long maxBytes, boolean keepServerData,
             String owner, String ownerName, long maxTotalBytes, int maxEntries) throws IOException, RecordingStore.InvalidUpload {
         BudgetZip zip;
@@ -174,7 +151,7 @@ public class RecordingZip {
             try (InputStream in = zip.getInputStream(sessionEntry)) {
                 meta = store.create(in, maxBytes, owner, ownerName, old.optString("title"), old.optString("notes"));
             }
-            meta.remove("captureId"); // a capture id from the other server: nothing to attach here
+            meta.remove("captureId");
             String id = meta.optString("id");
             try {
                 ZipEntry videoEntry = zip.getEntry(RecordingStore.VIDEO);
@@ -205,10 +182,10 @@ public class RecordingZip {
                 }
                 store.updateMeta(id, meta);
                 if (!keepServerData && (logEntry != null || zip.getEntry(AppExport.DIR + "/" + AppExport.LIST) != null)) {
-                    meta.put("serverDataSkipped", true); // in the response only, so the page can say why it's missing
+                    meta.put("serverDataSkipped", true);
                 }
                 return meta;
-            } catch (RecordingStore.InvalidUpload | IOException | RuntimeException e) { // JSONException is a RuntimeException
+            } catch (RecordingStore.InvalidUpload | IOException | RuntimeException e) {
                 store.delete(id);
                 throw e;
             }
@@ -219,14 +196,12 @@ public class RecordingZip {
         }
     }
 
-    /** Thrown while reading past the ZIP's total budget; importZip turns it into InvalidUpload. */
     static final class BudgetExceeded extends IOException {
         BudgetExceeded(long limit) {
             super("The ZIP unpacks to more than " + (limit / (1024 * 1024)) + " MB, the import limit.");
         }
     }
 
-    /** A ZipFile whose entry streams all draw on one budget of uncompressed bytes (0: no limit). */
     static final class BudgetZip extends ZipFile {
         private final long limit;
         private long used;
@@ -284,7 +259,7 @@ public class RecordingZip {
             throws IOException, RecordingStore.InvalidUpload, JSONException {
         Path target = store.path(id, RecordingStore.SYSTEM_LOG);
         try (InputStream in = zip.getInputStream(entry)) {
-            SessionFile.copy(in, target, maxBytes, RecordingStore.SYSTEM_LOG); // to disk, then checked as a stream
+            SessionFile.copy(in, target, maxBytes, RecordingStore.SYSTEM_LOG);
         }
         try {
             return SessionFile.systemLogSummary(target);
@@ -294,7 +269,6 @@ public class RecordingZip {
         }
     }
 
-    /** glowroot/{node}.zip with its glowroot/{node}.json, as written; a package without a valid saved status is skipped. */
     private static void importGlowroot(RecordingStore store, String id, ZipFile zip, long maxBytes)
             throws IOException, RecordingStore.InvalidUpload {
         java.util.Enumeration<? extends ZipEntry> all = zip.entries();
@@ -332,7 +306,6 @@ public class RecordingZip {
         }
     }
 
-    /** app/apps.json and the .jwa files it lists as saved; returns the meta.json summary of those. */
     private static JSONArray importApps(RecordingStore store, String id, ZipFile zip, long maxBytes)
             throws IOException, RecordingStore.InvalidUpload, JSONException {
         JSONArray summary = new JSONArray();
@@ -396,7 +369,7 @@ public class RecordingZip {
             try (InputStream in = zip.getInputStream(entry)) {
                 copy(in, tmp, maxBytes, GaugeStore.MERGED);
             }
-            GaugeStore.write(store.dir(id), tmp); // as a stream, one sample at a time
+            GaugeStore.write(store.dir(id), tmp);
         } catch (JsonStream.Malformed | JsonStream.TooLarge e) {
             throw new RecordingStore.InvalidUpload(GaugeStore.MERGED + " in the ZIP is not valid JSON.");
         } finally {
@@ -404,7 +377,6 @@ public class RecordingZip {
         }
     }
 
-    /** traces.json becomes the recording's traces/import.jsonl; trace files are copied as they are. */
     private static void importTraces(RecordingStore store, String id, ZipFile zip, long maxBytes)
             throws IOException, RecordingStore.InvalidUpload {
         ZipEntry index = zip.getEntry(TraceStore.MERGED);
@@ -425,7 +397,6 @@ public class RecordingZip {
         }
     }
 
-    /** traces.json's entries, read as a stream: each trace file copied, each entry a line of traces/import.jsonl. */
     private static void importTraceEntries(ZipFile zip, Path index, Path dir) throws IOException, RecordingStore.InvalidUpload {
         Path out = dir.resolve(TraceStore.IMPORT_NODE + ".jsonl");
         int count = 0;
@@ -442,7 +413,7 @@ public class RecordingZip {
                 if (e == null || e.optString("key").isEmpty()) {
                     continue;
                 }
-                e.put("imported", true); // another server's: never looked up in this one's Glowroot (TraceCollector.retryable)
+                e.put("imported", true);
             String file = e.optString("file");
             if (!file.isEmpty()) {
                 ZipEntry f = TraceStore.isTraceFile(file) ? zip.getEntry(TraceStore.DIR + "/" + file) : null;
@@ -462,7 +433,6 @@ public class RecordingZip {
         }
     }
 
-    /** Copies a ZIP entry to a file as a stream, at most maxBytes (else InvalidUpload, and the file is removed). */
     private static void copy(InputStream in, Path target, long maxBytes, String name) throws IOException, RecordingStore.InvalidUpload {
         boolean ok = false;
         try (java.io.OutputStream out = Files.newOutputStream(target)) {

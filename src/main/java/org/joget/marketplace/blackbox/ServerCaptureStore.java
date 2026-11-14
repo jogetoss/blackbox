@@ -15,27 +15,17 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * Server data captured while a recording runs (log lines, requests, traces, server load, System Info, apps exported at
- * stop), kept until the recording is uploaded. The log lines:
- * {root}/{id}/meta.json + system-log.{node}.jsonl (one file per cluster node, so two nodes never write the same file).
- * On upload, {@link #attach} merges them into the recording's system-log.json and deletes the pending folder.
- *
- * The id is a random UUID made by the extension; only the user who started the capture can attach it.
- */
 public class ServerCaptureStore {
 
     public static final String FILE = "system-log.json";
     private static final String META = "meta.json";
     private static final Pattern ID = Pattern.compile("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
-    static final long FORWARD_MS = 24L * 3600 * 1000; // > TraceCollector.GIVE_UP_MS
-    /** How long past maxUntil the server waits for the recorder's own time-limit stop before it stops the capture. */
+    static final long FORWARD_MS = 24L * 3600 * 1000;
     static final long LIMIT_GRACE_MS = 2 * 60_000L;
     private static final Pattern NODE_FILE = Pattern.compile("^system-log\\.[A-Za-z0-9.-]+\\.jsonl$");
     private static final String META_LOCK = ".meta.lock";
     private static final ConcurrentHashMap<String, Object> META_LOCKS = new ConcurrentHashMap<>();
 
-    /** Work on a capture's meta.json under its lock (see {@link #locked}). */
     private interface Locked<T> {
         T run() throws IOException, JSONException;
     }
@@ -50,7 +40,6 @@ public class ServerCaptureStore {
         return root;
     }
 
-    /** Captures of owner still open (not stopped, not attached to a recording), other than exceptId. */
     public int openCount(String owner, String exceptId) throws IOException {
         int n = 0;
         if (!Files.isDirectory(root)) {
@@ -75,36 +64,30 @@ public class ServerCaptureStore {
         return id != null && ID.matcher(id).matches();
     }
 
-    /** Starts a capture. Returns false when the id already belongs to another user. Starting it again is fine. */
     public boolean start(String id, String owner, long maxBytes, long keepMs) throws IOException {
         return start(id, owner, maxBytes, keepMs, false, "", false);
     }
 
-    /** traces: also copy the Glowroot traces of slow, failed and error-logging requests, from glowrootUrl ("" = the local agent). */
     public boolean start(String id, String owner, long maxBytes, long keepMs, boolean traces, String glowrootUrl, boolean gauges)
             throws IOException {
         return start(id, owner, maxBytes, keepMs, traces, glowrootUrl, gauges, false);
     }
 
-    /** glowrootData: also cut the recording out of each node's Glowroot data after the stop (GlowrootPackager). */
     public boolean start(String id, String owner, long maxBytes, long keepMs, boolean traces, String glowrootUrl, boolean gauges,
             boolean glowrootData) throws IOException {
         return start(id, owner, maxBytes, keepMs, traces, glowrootUrl, gauges, glowrootData, false);
     }
 
-    /** allServer: also keep the log lines of every other thread on the nodes the recording reaches. */
     public boolean start(String id, String owner, long maxBytes, long keepMs, boolean traces, String glowrootUrl, boolean gauges,
             boolean glowrootData, boolean allServer) throws IOException {
         return start(id, owner, maxBytes, keepMs, traces, glowrootUrl, gauges, glowrootData, allServer, 0);
     }
 
-    /** maxRecordingMs: the hard limit; the meta gets maxUntil = startedAt + maxRecordingMs (0: no limit). */
     public boolean start(String id, String owner, long maxBytes, long keepMs, boolean traces, String glowrootUrl, boolean gauges,
             boolean glowrootData, boolean allServer, long maxRecordingMs) throws IOException {
         return start(id, owner, maxBytes, keepMs, traces, glowrootUrl, gauges, glowrootData, allServer, maxRecordingMs, false);
     }
 
-    /** otherTraces: also copy the traces of every other request during the recording (TraceCollector.watchOthers). */
     public boolean start(String id, String owner, long maxBytes, long keepMs, boolean traces, String glowrootUrl, boolean gauges,
             boolean glowrootData, boolean allServer, long maxRecordingMs, boolean otherTraces) throws IOException {
         if (!isValidId(id)) {
@@ -137,17 +120,10 @@ public class ServerCaptureStore {
         });
     }
 
-    /** Marks a capture as stopped now. Returns false when it is missing or belongs to another user. */
     public boolean stop(String id, String owner) throws IOException {
         return stop(id, owner, -1, 0);
     }
 
-    /**
-     * Marks a capture as stopped. clientStoppedAt (negative: none) is the browser's stop time, e.g. the last save of a
-     * recording recovered after a crash; it is taken only between startedAt and lastSeenAt + lostMs (now, with no
-     * lastSeenAt), otherwise the stop time is lastSeenAt, or now. A capture already stopped (e.g. browser-lost) keeps
-     * its stop time. Returns false when it is missing or belongs to another user.
-     */
     public boolean stop(String id, String owner, long clientStoppedAt, long lostMs) throws IOException {
         return Boolean.TRUE.equals(lockedIfExists(id, () -> {
             JSONObject meta = readMeta(id);
@@ -175,11 +151,6 @@ public class ServerCaptureStore {
         return seen ? meta.optLong("lastSeenAt") : now;
     }
 
-    /**
-     * The recorder's heartbeat: writes lastSeenAt (and lastSavedAt, videoBytes when not negative) into an open capture.
-     * Returns {state: "on"}, or {state: "stopped", reason} when the capture is stopped or attached (not marked seen);
-     * null when it is missing or belongs to another user.
-     */
     public JSONObject ping(String id, String owner, long lastSavedAt, long videoBytes) throws IOException {
         return lockedIfExists(id, () -> {
             JSONObject meta = readMeta(id);
@@ -201,11 +172,6 @@ public class ServerCaptureStore {
         });
     }
 
-    /**
-     * The lost-browser stop: an open capture whose last ping (lastSeenAt) is older than lostMs gets stoppedAt =
-     * lastSeenAt and stopReason "browser-lost". A capture that never got a ping is left alone. Returns true when this
-     * call stopped it; false when it is missing, already stopped (by a stop, or by another node), or not lost.
-     */
     public boolean stopIfLost(String id, long now, long lostMs) throws IOException {
         return Boolean.TRUE.equals(lockedIfExists(id, () -> {
             JSONObject meta = readMeta(id);
@@ -222,11 +188,6 @@ public class ServerCaptureStore {
         }));
     }
 
-    /**
-     * The hard limit's server backup: an open capture past maxUntil + LIMIT_GRACE_MS gets stoppedAt = maxUntil and
-     * stopReason "time-limit", pings or not. Returns true when this call stopped it; false when it is missing, has no
-     * maxUntil, is already stopped, or is not past the limit.
-     */
     public boolean stopIfOverLimit(String id, long now) throws IOException {
         return Boolean.TRUE.equals(lockedIfExists(id, () -> {
             JSONObject meta = readMeta(id);
@@ -258,32 +219,19 @@ public class ServerCaptureStore {
         }
     }
 
-    /** The capture's pending folder (it may not exist). id must be valid. */
     Path dir(String id) {
         return root.resolve(id);
     }
 
-    /** The file one node appends to. node must match [A-Za-z0-9.-]+. */
     Path nodeFile(String id, String node) {
         return root.resolve(id).resolve("system-log." + node + ".jsonl");
     }
 
-    /**
-     * Merges the capture's node files into target (sorted by time) and moves its traces next to it.
-     * The pending folder then only keeps meta.json, pointing at the recording, for {@link #FORWARD_MS}: traces that
-     * are still being collected go to the recording (see {@link TraceCollector}).
-     * Returns a summary for the recording's meta, or null when the capture is missing, expired, attached or not owner's.
-     */
     public JSONObject attach(String id, String owner, Path target) throws IOException {
         return attach(id, owner, target, true);
     }
 
-    /**
-     * withApps: also move the apps exported at stop. False when the upload exports them itself (the stop's export
-     * failed, or is still running after the wait): a late export then stays here and goes with the pending folder.
-     */
     public JSONObject attach(String id, String owner, Path target, boolean withApps) throws IOException {
-        // Under the lock throughout: a put() at the same time (the stop's export ending) must not lose "recording"
         return lockedIfExists(id, () -> attachLocked(id, owner, target, withApps));
     }
 
@@ -305,8 +253,6 @@ public class ServerCaptureStore {
                     .put("startedAt", meta.optLong("startedAt"))
                     .put("truncated", truncated)
                     .put("entries", list);
-            // No stop yet: the last ping is when the browser was last seen; never pinged: now. Set before the body
-            // is written so system-log.json and the meta agree.
             long now = System.currentTimeMillis();
             if (!meta.has("stoppedAt")) {
                 meta.put("stoppedAt", meta.has("lastSeenAt") ? meta.optLong("lastSeenAt") : now);
@@ -326,7 +272,7 @@ public class ServerCaptureStore {
         GaugeStore.moveAll(dir, target.getParent());
         GlowrootData.moveAll(dir, target.getParent());
         if (withApps) {
-            TraceStore.moveFolder(dir, target.getParent(), AppExport.DIR, name -> true); // exported at stop (BlackBoxPlugin)
+            TraceStore.moveFolder(dir, target.getParent(), AppExport.DIR, name -> true);
         }
         if (Files.isRegularFile(dir.resolve(ServerInfo.FILE))) {
             Files.move(dir.resolve(ServerInfo.FILE), target.resolveSibling(ServerInfo.FILE), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
@@ -341,7 +287,6 @@ public class ServerCaptureStore {
         return summary;
     }
 
-    /** Reads the node files of a capture folder into entries, sorted by time. Returns true when a node's lines were cut off. */
     private static boolean entries(Path dir, List<JSONObject> entries) throws IOException {
         boolean truncated = false;
         try (DirectoryStream<Path> files = Files.newDirectoryStream(dir)) {
@@ -358,16 +303,15 @@ public class ServerCaptureStore {
                         try {
                             e = new JSONObject(line);
                         } catch (JSONException ex) {
-                            continue; // a line cut short by a crash
+                            continue;
                         }
                         if ("truncated".equals(e.optString("kind"))) {
                             truncated = true;
                         } else {
                             if ("request".equals(e.optString("kind"))) {
                                 try {
-                                    e.put("node", node); // which node served it: the sticky-session check
+                                    e.put("node", node);
                                 } catch (JSONException ex) {
-                                    // can't happen for a string
                                 }
                             }
                             entries.add(e);
@@ -380,10 +324,6 @@ public class ServerCaptureStore {
         return truncated;
     }
 
-    /**
-     * The capture's lines so far as a system-log.json body ({entries: [...]}) in target, for the app export at stop.
-     * Nothing moves: the upload still attaches the capture. Lines another node has not flushed yet are missing.
-     */
     public void writeLines(String id, Path target) throws IOException {
         List<JSONObject> entries = new ArrayList<>();
         entries(root.resolve(id), entries);
@@ -398,7 +338,6 @@ public class ServerCaptureStore {
         }
     }
 
-    /** Sets one key of the capture's meta.json. Returns false when the capture is missing. */
     public boolean put(String id, String key, Object value) throws IOException {
         return Boolean.TRUE.equals(lockedIfExists(id, () -> {
             JSONObject meta = readMeta(id);
@@ -411,10 +350,6 @@ public class ServerCaptureStore {
         }));
     }
 
-    /**
-     * Saves the app export as lost ({@link ExportJobs#lostState}) if it still is {@link ExportJobs#lost}, checked again
-     * under the lock: a job's end saved since the caller's check wins. Returns whether it saved.
-     */
     public boolean markExportLost(String id) throws IOException {
         return Boolean.TRUE.equals(lockedIfExists(id, () -> {
             JSONObject meta = readMeta(id);
@@ -427,16 +362,10 @@ public class ServerCaptureStore {
         }));
     }
 
-    /** locked() when the capture's folder exists, else null (nothing to change; don't create it). */
     private <T> T lockedIfExists(String id, Locked<T> work) throws IOException {
         return isValidId(id) && Files.isDirectory(root.resolve(id)) ? locked(id, work) : null;
     }
 
-    /**
-     * Runs work holding the capture's lock, so read-change-write of meta.json never puts back an older copy (like
-     * RecordingStore.modifyMeta): per capture in this JVM, and a file lock for nodes sharing the folder where the file
-     * system supports it. Not reentrant across the file lock: work must not call another locked method.
-     */
     private <T> T locked(String id, Locked<T> work) throws IOException {
         Path dir = root.resolve(id);
         Object lock = META_LOCKS.computeIfAbsent(dir.toAbsolutePath().toString(), k -> new Object());
@@ -449,10 +378,6 @@ public class ServerCaptureStore {
         }
     }
 
-    /**
-     * The summary kept in the recording's meta.json: the tab's log lines, request entries, error lines, other threads'
-     * lines (all-server capture), cut off or not.
-     */
     static JSONObject summary(JSONArray entries, boolean truncated) throws JSONException {
         int errors = 0;
         int requests = 0;
@@ -465,7 +390,7 @@ public class ServerCaptureStore {
             if ("request".equals(e.optString("kind"))) {
                 requests++;
             } else if (e.optBoolean("other")) {
-                other++; // another thread's line (all-server capture): not this tab's errors
+                other++;
             } else if ("ERROR".equals(e.optString("level")) || "FATAL".equals(e.optString("level"))) {
                 errors++;
             }
@@ -479,7 +404,6 @@ public class ServerCaptureStore {
                 .put("truncated", truncated);
     }
 
-    /** The ids of all capture folders: waiting for an upload, or kept after it to forward late files. */
     public List<String> ids() throws IOException {
         List<String> ids = new ArrayList<>();
         if (!Files.isDirectory(root)) {
@@ -496,7 +420,6 @@ public class ServerCaptureStore {
         return ids;
     }
 
-    /** Deletes captures past their expiry time (never uploaded). Returns how many were deleted. */
     public int sweep(long now) throws IOException {
         if (!Files.isDirectory(root)) {
             return 0;
@@ -509,7 +432,6 @@ public class ServerCaptureStore {
                     continue;
                 }
                 JSONObject meta = readMeta(id);
-                // No readable meta: a start that failed half way; give it a day
                 long expiresAt = meta != null ? meta.optLong("expiresAt")
                         : Files.getLastModifiedTime(dir).toMillis() + 24L * 3600 * 1000;
                 if (expiresAt < now) {
@@ -533,6 +455,6 @@ public class ServerCaptureStore {
     }
 
     private static void deleteDir(Path dir) throws IOException {
-        RecordingStore.deleteTree(dir); // traces/ too
+        RecordingStore.deleteTree(dir);
     }
 }

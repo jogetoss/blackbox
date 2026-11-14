@@ -1,19 +1,14 @@
-// Theme (System / Light / Dark) and Text size pickers for the pages that run without the extension: the downloaded
-// HTML file (RecordingHtml) and dist/blackbox-viewer.html (build-standalone.py). Inlined in <head> so the saved choice
-// applies before the page draws. Same values and localStorage keys as theme.js, which sets them from the extension's
-// Settings on the other pages. Saved in this browser for every file opened from disk; without storage, the choice
-// lasts until the page closes.
 (function () {
   const root = document.documentElement;
   const SIZES = [['0.9', '90%'], ['1', '100%'], ['1.15', '115%'], ['1.3', '130%'], ['1.5', '150%'], ['1.75', '175%'], ['2', '200%']];
   const THEMES = [['', 'System'], ['light', 'Light'], ['dark', 'Dark']];
   const load = (key) => { try { return localStorage.getItem(key); } catch (e) { return null; } };
-  const save = (key, v) => { try { localStorage.setItem(key, v); } catch (e) { /* storage blocked */ } };
+  const save = (key, v) => { try { localStorage.setItem(key, v); } catch (e) { } };
 
   const size = (v) => (SIZES.some(([s]) => s === String(v)) ? String(v) : '1');
   const theme = (t) => (t === 'light' || t === 'dark' ? t : '');
-  const applySize = (v) => { root.style.zoom = v === '1' ? '' : v; }; // viewer.js redraws its canvases on this change
-  const applyTheme = (t) => { if (t) root.dataset.theme = t; else delete root.dataset.theme; }; // '': prefers-color-scheme
+  const applySize = (v) => { root.style.zoom = v === '1' ? '' : v; };
+  const applyTheme = (t) => { if (t) root.dataset.theme = t; else delete root.dataset.theme; };
   applySize(size(load('bb-text-size')));
   applyTheme(theme(load('bb-theme')));
 

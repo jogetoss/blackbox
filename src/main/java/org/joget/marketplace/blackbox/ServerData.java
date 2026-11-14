@@ -8,21 +8,13 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-/**
- * The recordings list's summary of a recording's server data, kept in meta.json as "serverData" so the list never
- * reads the trace or gauge files:
- * {slowMs, traces: {total, slow, pending}, load: {cpu, heap, threads, db (peak fractions 0-1), dbWaiting, gcMs}, info}.
- * Made on upload; the trace counts are refreshed whenever a trace of the recording changes (TraceCollector).
- */
 final class ServerData {
 
-    /** Glowroot's slow threshold when it can't be read, or when it is set to keep every request (under 100 ms). */
     static final long DEFAULT_SLOW_MS = 2000;
 
     private ServerData() {
     }
 
-    /** "Slow" for the lists: Glowroot's slow threshold, unless it is so low that it means "trace everything". */
     static long slowMs(long glowrootThresholdMs) {
         return glowrootThresholdMs >= 100 ? glowrootThresholdMs : DEFAULT_SLOW_MS;
     }
@@ -52,7 +44,7 @@ final class ServerData {
         for (int i = 0; i < list.length(); i++) {
             JSONObject e = list.optJSONObject(i);
             if (e != null && e.optBoolean("other")) {
-                others += "saved".equals(e.optString("state")) ? 1 : 0; // other users' traces: counted apart
+                others += "saved".equals(e.optString("state")) ? 1 : 0;
                 continue;
             }
             own++;
@@ -64,7 +56,6 @@ final class ServerData {
         return others > 0 ? t.put("others", others) : t;
     }
 
-    /** Peaks over all nodes and samples, or null without samples. */
     static JSONObject load(Path recDir) throws IOException, JSONException {
         JSONObject merged = GaugeStore.merge(recDir);
         JSONObject nodes = merged != null ? merged.optJSONObject("nodes") : null;
@@ -92,14 +83,13 @@ final class ServerData {
                 .put("dbWaiting", dbWaiting).put("gcMs", gcMs);
     }
 
-    /** Refreshes the trace counts in a recording's meta.json (a trace was saved, failed or retried). */
     static void refreshTraces(RecordingStore store, String recId) {
         try {
             Path dir = store.dir(recId);
             if (dir == null) {
                 return;
             }
-            store.modifyMeta(recId, meta -> { // the latest meta, so a video upload meanwhile isn't undone
+            store.modifyMeta(recId, meta -> {
                 JSONObject d = meta.optJSONObject("serverData");
                 long slowMs = d != null ? d.optLong("slowMs", DEFAULT_SLOW_MS) : DEFAULT_SLOW_MS;
                 if (d == null) {
@@ -109,15 +99,9 @@ final class ServerData {
                 meta.put("serverData", d);
             });
         } catch (IOException | JSONException | RecordingStore.InvalidUpload e) {
-            // the list shows the old counts until the next change
         }
     }
 
-    /**
-     * A listed recording still "building": read its statuses again, as a node that stopped watching it (folder failed,
-     * node gone) never writes one, and GlowrootData.statuses turns a status with no news for too long into failed. Saves
-     * and returns the row with the new state when it changed.
-     */
     static JSONObject listedGlowroot(RecordingStore store, JSONObject meta) {
         JSONObject d = meta.optJSONObject("serverData");
         if (d == null || !"building".equals(d.optString("glowroot"))) {
@@ -127,22 +111,16 @@ final class ServerData {
             Path dir = store.dir(meta.optString("id"));
             String state = dir == null ? null : GlowrootData.overall(GlowrootData.statuses(dir));
             if (state != null && !"building".equals(state)) {
-                state = refreshGlowroot(store, meta.optString("id")); // read again under the meta lock
+                state = refreshGlowroot(store, meta.optString("id"));
                 if (state != null) {
                     d.put("glowroot", state);
                 }
             }
         } catch (IOException | JSONException e) {
-            // listed as it was
         }
         return meta;
     }
 
-    /**
-     * The Glowroot data state (GlowrootData.overall) changed: the recordings list shows it. The statuses are read under
-     * the meta lock, so a status written meanwhile is either seen here or saved by its own (later) refresh: a stale read
-     * can't land on top of a newer state. Returns the state saved, or null when nothing was saved.
-     */
     static String refreshGlowroot(RecordingStore store, String recId) {
         try {
             Path dir = store.dir(recId);
@@ -166,7 +144,7 @@ final class ServerData {
             });
             return saved[0];
         } catch (IOException | JSONException | RecordingStore.InvalidUpload e) {
-            return null; // the list shows the old state until the next change
+            return null;
         }
     }
 

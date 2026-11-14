@@ -8,21 +8,14 @@ import java.util.Deque;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-/**
- * A pull parser for large JSON files (session.json, system-log.json): walks the document without keeping it, and
- * builds org.json values only where asked, one at a time and up to a size, so memory stays small whatever the file's
- * size. Everything it skips is still checked to be valid JSON.
- */
 final class JsonStream implements Closeable {
 
-    /** The document is not valid JSON. */
     static class Malformed extends IOException {
         Malformed(String message) {
             super(message);
         }
     }
 
-    /** A value is longer than allowed (characters read while building or skipping it). */
     static class TooLarge extends IOException {
         TooLarge(String message) {
             super(message);
@@ -30,23 +23,20 @@ final class JsonStream implements Closeable {
     }
 
     static final int MAX_DEPTH = 256;
-    /** Longest name nextName() accepts (real names are a few dozen characters). */
     static final int MAX_NAME = 4096;
 
     private final Reader in;
-    private final char[] buf = new char[64 * 1024]; // own buffer: Reader.read() per character is slow (synchronized)
+    private final char[] buf = new char[64 * 1024];
     private int pos;
     private int len;
-    private int ahead = -2; // one character of lookahead; -2: none
-    private long read;      // characters read so far
-    private long limit = Long.MAX_VALUE; // read must stay at or below this (set while a value is capped)
-    private final Deque<boolean[]> open = new ArrayDeque<>(); // per open container: {first element still to come}
+    private int ahead = -2;
+    private long read;
+    private long limit = Long.MAX_VALUE;
+    private final Deque<boolean[]> open = new ArrayDeque<>();
 
     JsonStream(Reader in) {
         this.in = in;
     }
-
-    // ---------- containers ----------
 
     void beginObject() throws IOException {
         expect('{');
@@ -68,7 +58,6 @@ final class JsonStream implements Closeable {
         open.pop();
     }
 
-    /** True when the open object or array has another member (consumes the comma before it). */
     boolean hasNext() throws IOException {
         int c = peekNonSpace();
         if (c == '}' || c == ']') {
@@ -90,9 +79,8 @@ final class JsonStream implements Closeable {
         if (peekNonSpace() != '"') {
             throw new Malformed("Expected a name at character " + read);
         }
-        // A name is always built, so cap it: one huge key would otherwise grow a StringBuilder to the file's size
         long saved = limit;
-        limit = Math.min(limit, read + MAX_NAME + 1); // the opening quote is already read; + the closing one
+        limit = Math.min(limit, read + MAX_NAME + 1);
         String name;
         try {
             name = string(true);
@@ -105,21 +93,16 @@ final class JsonStream implements Closeable {
         return name;
     }
 
-    /** '{', '[', '"', 't', 'f', 'n', '-' or a digit: the kind of the next value. */
     int peekKind() throws IOException {
         return peekNonSpace();
     }
 
-    /** The end of the document: nothing but spaces may follow. */
     void end() throws IOException {
         if (peekNonSpace() != -1) {
             throw new Malformed("Unexpected content after the JSON value at character " + read);
         }
     }
 
-    // ---------- values ----------
-
-    /** Skips the next value, checking it; maxChars caps its length (TooLarge). */
     void skipValue(long maxChars) throws IOException {
         long saved = limit;
         limit = Math.min(limit, read + maxChars + 1);
@@ -134,7 +117,6 @@ final class JsonStream implements Closeable {
         value(false, 0);
     }
 
-    /** Builds the next value (JSONObject, JSONArray, String, Number, Boolean or JSONObject.NULL), at most maxChars long. */
     Object nextValue(long maxChars) throws IOException {
         long saved = limit;
         limit = Math.min(limit, read + maxChars + 1);
@@ -301,8 +283,6 @@ final class JsonStream implements Closeable {
             }
         }
     }
-
-    // ---------- characters ----------
 
     private void expect(char want) throws IOException {
         int c = peekNonSpace();

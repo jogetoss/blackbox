@@ -11,7 +11,7 @@ Server.getSettings().then((saved) => {
 chrome.storage.local.get(['theme', 'openOnServer', 'textSize']).then(({ theme, openOnServer, textSize }) => {
   $('theme').value = theme || '';
   $('textSize').value = textSize || '1';
-  $('openOnServer').checked = openOnServer !== false; // on unless turned off
+  $('openOnServer').checked = openOnServer !== false;
 });
 $('theme').onchange = () => chrome.storage.local.set({ theme: $('theme').value });
 $('textSize').onchange = () => chrome.storage.local.set({ textSize: $('textSize').value });
@@ -32,11 +32,9 @@ $('save').onclick = () => {
     return;
   }
   if (!next.uploadUrl) {
-    // Empty Upload URL: uploads are turned off
     chrome.storage.local.set(next).then(() => { settings = next; show('', ''); });
     return;
   }
-  // Ask for access to the server while this click still counts as a user gesture
   Server.requestPermission(next.uploadUrl).then(async (granted) => {
     if (!granted) {
       show('error', 'BlackBox needs access to ' + new URL(next.uploadUrl).origin + ' to upload there.');
@@ -49,7 +47,6 @@ $('save').onclick = () => {
   }, (e) => show('error', e.message));
 };
 
-// '' stays ''; anything else must be an http(s) URL. Kept as typed ({id} must not be encoded).
 function optionalUrl(value, name) {
   value = value.trim();
   if (!value) return '';
@@ -62,13 +59,12 @@ async function check(base) {
     show('error', 'Click Save to give BlackBox access to ' + new URL(base).origin + '.');
     return;
   }
-  // Only problems are shown; a working connection shows nothing
   show('', '');
   try {
     const me = await Server.me(base);
     if (!me.canUpload) show('error', `Logged in as ${me.user.name}, but you are not allowed to upload. Ask the server's admin.`);
   } catch (e) {
-    if (e.status === 401) show('', ''); // logged out right now; uploads work once you log in
+    if (e.status === 401) show('', '');
     else show('error', e.message);
   }
 }
