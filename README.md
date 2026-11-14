@@ -40,8 +40,8 @@ browser secrets unmasked**; non-admins only when **Allow recording browser secre
 **Plugin 8.2.3 needs extension 1.3.0.** **Allowed Chrome extension IDs** now accepts only
 `anmfmkacddnmmgdcnkgkfjhagnilmkmp` by default. Extension 1.3.0 always has that ID (its manifest `key`); extension
 1.2.0 loaded unpacked has another, so its uploads are refused. To move to the fixed ID, remove the old extension and
-load 1.3.0 unpacked. Removing an extension deletes its storage, so upload the recordings it keeps (or download them as
-ZIP) first. Or empty **Allowed Chrome extension IDs** to accept any extension.
+load 1.3.0 unpacked. Removing an extension deletes its storage, so first upload the recordings it keeps while the plugin
+is still 8.2.2 (or while **Allowed Chrome extension IDs** is empty), or download them as ZIP. Or empty **Allowed Chrome extension IDs** to accept any extension.
 
 **New limits** (all settings, 0 = no limit; see [Limits](#limits)). For non-admins: **Storage per user** 10240 MB
 (HTTP 413), **Max recordings in progress per user** 3 and **Max recordings started per user per minute** 10 (HTTP 429:
