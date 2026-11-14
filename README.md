@@ -4,8 +4,8 @@ The BlackBox Chrome extension records the browser side of a problem (video, soun
 This plugin stores those recordings in Joget, adds the server side (system logs, Glowroot traces, server load, system
 info, the apps used) and replays both together. Recordings download as ZIP or as one HTML file that replays anywhere.
 
-**Demo (1:07):** [the bug nobody could reproduce](demo/hero.mp4). More clips (app export, reading a replay, slow
-requests, setup): [demo/README.md](demo/README.md).
+**Demo (1:11):** [the bug nobody could reproduce](demo/hero.mp4). More clips (app export, reading a replay, slow
+requests, setup, safe to share, other users' traces): [demo/README.md](demo/README.md).
 
 Internals, API and storage: [ARCHITECTURE.md](ARCHITECTURE.md). Extension: [chrome-extension/README.md](chrome-extension/README.md).
 Browser tests: [e2e/README.md](e2e/README.md).
@@ -30,8 +30,23 @@ license table as they are. Now secret-named and secret-shaped values are masked 
 [Sensitive data](#sensitive-data-in-system-info)), and so are the license's system key, signature and MAC address.
 Admins can still record them unmasked with the popup's **Record System Info secrets unmasked** and **Record license
 secrets unmasked**; non-admins only when **Allow recording System Info secrets unmasked** or **Allow recording license
-secrets unmasked** is on. **Allow recording passwords and tokens unmasked** is now **Allow recording browser secrets
-unmasked** (same key, value kept).
+secrets unmasked** is on.
+
+**Recordings now mask browser credentials.** Extension 1.3.0 replaces passwords, tokens, cookies and `Authorization`
+headers in the network log, URLs and console with `****` before a recording is saved (see
+[Credentials in recordings](#credentials-in-recordings)). Admins can record them unmasked with the popup's **Record
+browser secrets unmasked**; non-admins only when **Allow recording browser secrets unmasked** is on.
+
+**Plugin 8.2.3 needs extension 1.3.0.** **Allowed Chrome extension IDs** now accepts only
+`anmfmkacddnmmgdcnkgkfjhagnilmkmp` by default. Extension 1.3.0 always has that ID (its manifest `key`); extension
+1.2.0 loaded unpacked has another, so its uploads are refused. To move to the fixed ID, remove the old extension and
+load 1.3.0 unpacked. Removing an extension deletes its storage, so upload the recordings it keeps (or download them as
+ZIP) first. Or empty **Allowed Chrome extension IDs** to accept any extension.
+
+**New limits** (all settings, 0 = no limit; see [Limits](#limits)). For non-admins: **Storage per user** 10240 MB
+(HTTP 413), **Max recordings in progress per user** 3 and **Max recordings started per user per minute** 10 (HTTP 429:
+the recording goes on without server data). For every ZIP import: **Max files in a ZIP import** 5000 and **Max total
+size of a ZIP import** 3 × **Max file size**. An upload or import that 8.2.2 accepted can now be refused. **Allow uploads over HTTP** (on by default) can be turned off to require HTTPS.
 
 **Failed trace lookups of recordings made with 8.2.2 or older lose their Retry button.** Their entries don't carry
 the recording's Glowroot tag, which a trace must now have to be matched. Traces already copied stay.
@@ -82,8 +97,9 @@ off by default (no capture, and `ownServerData` No). It includes the **Info** ta
   `recording-start` answer). Recordings and ZIPs made with 8.2.1 still open, upload and import: their `systemLog` is
   still read.
 
-**Plugin 8.2.2 needs extension 1.2.0.** Older extensions are not supported with it, and extension 1.2.0 with plugin
-8.2.1 or older uploads recordings without their server data. Upgrade the plugin and the extension together.
+**Plugin 8.2.2 needs extension 1.2.0 or later** (8.2.3 needs 1.3.0, see [From 8.2.2](#from-822)). Older extensions
+are not supported with it, and extension 1.2.0 or later with plugin 8.2.1 or older uploads recordings without their
+server data. Upgrade the plugin and the extension together.
 
 ## Use
 
