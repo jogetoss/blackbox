@@ -42,7 +42,7 @@ Who may upload, capture server data or export apps: [Settings](guide/settings.md
 
 ## Compatibility
 
-Joget DX 8.2 (Community and Enterprise), Chrome 116 or later. Install the plugin before (or with) the extension of the
+Joget DX 8.2, Chrome 116 or later. Install the plugin before (or with) the extension of the
 same release:
 
 | Plugin | Extension |
