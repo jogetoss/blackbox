@@ -15,8 +15,9 @@ Internals and the upload API: [ARCHITECTURE.md](../ARCHITECTURE.md). Server side
 1. Use Chrome 116 or later. Open `chrome://extensions` and turn on **Developer mode**.
 2. **Load unpacked** → this folder. After an update, click the reload icon on the extension card. The `key` in
    `manifest.json` gives the extension the same ID everywhere, `anmfmkacddnmmgdcnkgkfjhagnilmkmp`: the plugin's **Allowed Chrome extension IDs**
-   accepts only this ID by default. An extension loaded before the key was added keeps its old ID until it is
-   removed and loaded again.
+   accepts only this ID by default. An extension loaded before the key was added must be removed and loaded
+   again to get this ID: reloading it turns it off. Removing it deletes the recordings it keeps (upload or download
+   them first).
 3. Pin the extension.
 
 ## Extension settings
