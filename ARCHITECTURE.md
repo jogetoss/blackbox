@@ -810,6 +810,8 @@ Nothing in the code checks these; change both sides together.
   rewritten before it reads as failed.
 - `BlackBoxPlugin`'s top recording length (120 min) stays within `GaugeSampler.MAX_MS` (2 h).
 - `session.json` writes its `recording` block first and `summary` right after: the Recordings list reads only the
-  first 16 KB of each file on disk (`store.js` `readHead`). Keep that key order in `report.js`.
+  first 16 KB of each file on disk (`store.js` `scanFolder`). Keep that key order in `report.js`.
+- `recordings.js` `utc()` is a copy of `viewer.js` `utc()`: the standalone viewer can't load a shared file.
+- `export.js` `uploadInfo()` is a copy of `common.js` `BB.uploadInfo`: `common.js` is not in the HTML download.
 - `viewer.html`'s `<!-- upload form (actions.js) -->` and `<!-- /upload form -->` are code: `build-standalone.py` cuts
   the upload form out between them.
