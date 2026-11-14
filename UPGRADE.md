@@ -11,6 +11,9 @@ oldest first. Upgrade the plugin and the extension together.
 
 ## 8.2.2 → 8.2.3
 
+**Plugin 8.2.3 needs Java 11 or later**, as Joget 8.2 does. On a Joget server still running on Java 8, the plugin no
+longer loads.
+
 **The Info tab now masks secrets.** In 8.2.2 it showed JVM arguments, system properties, the datasource file and the
 license table as they are. Now secret-named and secret-shaped values are masked (see
 [Sensitive data](guide/security.md#sensitive-data-in-system-info)), and so are the license's system key, signature and MAC address.

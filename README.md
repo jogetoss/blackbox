@@ -74,5 +74,5 @@ Upgrading from an earlier release: [UPGRADE.md](UPGRADE.md).
 mvn -o package    # runs the unit tests too; the jar is target/blackbox-8.2-SNAPSHOT.jar
 ```
 
-Built against `wflow-core` 8.2-SNAPSHOT (javax.servlet) for Java 11, the same as Joget 8.2. The jar includes the extension's replay viewer: rebuild it
+Built against `wflow-core` 8.2-SNAPSHOT (javax.servlet) for Java 11 (Joget 8.2 requires Java 11 or later). The jar includes the extension's replay viewer: rebuild it
 after changing `chrome-extension/viewer.js` or `viewer.css`.
