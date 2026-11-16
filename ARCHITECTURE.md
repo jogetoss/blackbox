@@ -209,7 +209,7 @@ For recordings that start logged out (design: `docs/design/anonymous-server-capt
 
 1. `recording-arm` (logged in, `canUpload`): non-admins pass `StartLimiter` and have at most `OneTimeTokens.MAX_PER_USER`
    (3) unexpired one-time tokens. `captureOptions` resolves the start parameters against the user's rights now (plus
-   `admin`) and `OneTimeTokens.arm` stores them with the owner under the token's SHA-256 hash, valid for the setting `armTokenMinutes` (**Prepared recording expiry**,
+   `admin`) and `OneTimeTokens.arm` stores them with the owner under the token's SHA-256 hash, valid for the setting `armTokenMinutes` (**Before-login recordings expire after (minutes)**,
    `OneTimeTokens.ttlMs`: 1 to 60 minutes, a value outside goes to the nearest bound, 15 when empty or not a number). The
    expiry is saved in the token, so a later change of the setting doesn't move it.
    The token is 32 random bytes, base64url (43 characters).

@@ -98,7 +98,7 @@ test('a token works once, only from the extension, and a web page cannot use one
   const armed = await worker.evaluate(() => arm().then(() => chrome.storage.session.get('armedToken')).then((s) => s.armedToken));
   const auth = { Authorization: 'BlackBox-Token ' + armed.token };
   const ttlMin = (armed.expiresAt - Date.now()) / 60_000;
-  expect(ttlMin, 'Prepared recording expiry: 1 to 60 minutes').toBeGreaterThan(0);
+  expect(ttlMin, 'Before-login recordings expire after: 1 to 60 minutes').toBeGreaterThan(0);
   expect(ttlMin).toBeLessThanOrEqual(60);
   if (process.env.BB_ARM_MINUTES) expect(Math.ceil(ttlMin), 'the armTokenMinutes setting').toBe(Number(process.env.BB_ARM_MINUTES));
 

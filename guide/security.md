@@ -18,7 +18,7 @@ With **Allow recordings that start before login** on, a user in **Who can upload
 recording that starts logged out (login page, SSO redirects, anonymous forms):
 
 1. Logged in, they click **Prepare a recording that starts logged out** in the popup. The server gives the extension a
-   one-time token, valid for **Prepared recording expiry** (15 minutes by default); it stores only the token's SHA-256 hash.
+   one-time token, valid for the minutes in **Before-login recordings expire after (minutes)** (15 by default); it stores only the token's SHA-256 hash.
 2. They log out and start recording. The token opens the capture. It belongs to the user who prepared it, so the
    normal rules in [Who sees what](#who-sees-what) apply, and the server-data choices (quick settings) and their
    permissions are the ones from step 1.
