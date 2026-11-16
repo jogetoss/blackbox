@@ -313,6 +313,11 @@ final class ServerCapture {
         try {
             for (Path dir : checkDirs.get()) {
                 sweep(new ServerCaptureStore(dir.resolve("pending")));
+                try {
+                    new OneTimeTokens(dir.resolve(OneTimeTokens.DIR)).sweep(System.currentTimeMillis());
+                } catch (Exception e) {
+                    LogUtil.warn(ServerCapture.class.getName(), "Could not clean up recording tokens: " + e.getMessage());
+                }
             }
         } catch (Exception e) {
             LogUtil.warn(ServerCapture.class.getName(), "Could not clean up server captures: " + e.getMessage());

@@ -33,7 +33,8 @@ Errors: an HTTP error status with `{"error":{"message":"…"}}` (the plugin adds
 Upload URL's own host and port (`Server.resolve`; otherwise no link). The Recording page URL
 setting, when set, takes priority over `url`.
 
-The plugin serves this at `<context>/api/blackbox`. All its actions need a login (401 without one); an unknown action,
+The plugin serves this at `<context>/api/blackbox`. All its actions need a login (401 without one), except the one-time token
+and secret requests under "Armed start"; an unknown action,
 or a known one with the wrong method, gets 400 "Unknown action". Who may do what: see "Permissions".
 
 | Action | Method | Who | Notes |
@@ -47,6 +48,7 @@ or a known one with the wrong method, gets 400 "Unknown action". Who may do what
 | `download&format=zip\|html` | GET | viewers | Server data only for those allowed; the ZIP answers 409 while the Glowroot data is built |
 | `delete` | POST | viewers | |
 | `systemlog`, `serverinfo`, `apps`, `appfile&file=`, `traces`, `trace&file=`, `gauges`, `glowroot[&node=]`, `trace-retry[&keys=]` | GET (`trace-retry`: POST) | server data | 403 for viewers without it. `glowroot`: node statuses, or that node's ZIP. `trace-retry`: 429 within 20 s |
+| `recording-arm` | POST | uploaders, with **Allow recordings that start before login** | `{token, expiresAt, ttlMs}`; takes the same parameters as `recording-start` (see "Armed start") |
 | `recording-start` | POST | anyone logged in | Starts the capture (see "Server capture"); 400 for an invalid id, 409 for another user's id |
 | `recording-stop`, `app-export` | POST, GET | the capture's owner | 404 for anyone else |
 | `recording-ping[&lastSavedAt=&videoBytes=]` | POST | the capture's owner | The recorder's heartbeat (see "Server capture"); 404 for anyone else |
@@ -113,7 +115,7 @@ through `BudgetZip`, whose entry streams share one budget of uncompressed bytes 
 the per-file limit, or of entries sharing one compressed block, would otherwise unpack to far more than its own size.
 
 **HTTPS-only uploads** (`allowHttpUpload` off): `handle()` refuses the POST actions in `UPLOAD_ACTIONS` (create,
-video, import, recording-start/stop/ping) with 403 unless `secureOrLocal`: `isSecure()`, `X-Forwarded-Proto: https`,
+video, import, recording-arm/start/stop/ping, and the one-time token and capture secret requests) with 403 unless `secureOrLocal`: `isSecure()`, `X-Forwarded-Proto: https`,
 or a server name of `localhost`/`127.0.0.1`/`::1`. The extension shows the message (capture off, upload problem).
 
 ## Storage
@@ -127,7 +129,8 @@ One folder per recording under `<wflow>/blackbox/<id>/`:
   `idMap`), exported at stop, or at upload when there is no usable export from the stop.
 
 Captures waiting for an upload are in `<wflow>/blackbox/pending/<id>/`, trace retry requests in
-`<wflow>/blackbox/retry/`. No database tables. Folders on a shared `wflow` directory work for clustered nodes;
+`<wflow>/blackbox/retry/`, unused one-time tokens in `<wflow>/blackbox/tokens/<sha256 of the token>.json` (owner,
+expiry, resolved capture options; deleted when used, expired ones by the hourly sweep). No database tables. Folders on a shared `wflow` directory work for clustered nodes;
 deleting a recording removes its folder.
 
 ### Test timing override
@@ -198,6 +201,37 @@ Info and the app export at stop (their own sections).
    request's details.
 
 Not captured: work a request hands to another thread, and log lines that never reach the root logger's appenders.
+
+### Armed start
+
+For recordings that start logged out (design: `docs/design/anonymous-server-capture.md`). Setting
+`allowArmedRecordings` (off by default).
+
+1. `recording-arm` (logged in, `canUpload`): non-admins pass `StartLimiter` and have at most `OneTimeTokens.MAX_PER_USER`
+   (3) unexpired one-time tokens. `captureOptions` resolves the start parameters against the user's rights now (plus
+   `admin`) and `OneTimeTokens.arm` stores them with the owner under the token's SHA-256 hash, valid for the setting `armTokenMinutes` (**Before-login recordings expire after (minutes)**,
+   `OneTimeTokens.ttlMs`: 1 to 60 minutes, a value outside goes to the nearest bound, 15 when empty or not a number). The
+   expiry is saved in the token, so a later change of the setting doesn't move it.
+   The token is 32 random bytes, base64url (43 characters).
+2. `recording-start` with `Authorization: BlackBox-Token <token>`: `handle()` takes this path before the login
+   check, whatever the session. It needs `fromAllowedExtension` (403 otherwise) and the HTTPS rule. The setting must
+   still be on. `OneTimeTokens.use` reads and deletes the file (only one `Files.delete` succeeds, so concurrent uses get
+   one capture); expired or unknown: 401. Non-admin owners pass `maxOpenCaptures`. `openCapture` then starts the
+   capture as the owner with the stored options, saves `secretHash` (SHA-256 of a new random `captureSecret`) and
+   `armed: true` in the pending meta, and answers `captureSecret` with the usual start answer.
+3. `recording-ping` and `recording-stop` with `X-BlackBox-Capture-Secret`: same Origin and HTTPS checks, then
+   `ServerCaptureStore.ownerBySecret` (constant-time hash compare) gives the owner, and the normal ping or stop runs
+   as that owner (404 for a wrong secret). The stop never exports apps (no user to check `canExportApp` against); the
+   upload exports them. A request with the header always takes this path, so a login as another user during the
+   recording doesn't matter.
+4. `attach` (the upload, as the owner) removes `secretHash`.
+
+`me.options.arm` is the setting and `canUpload`; the popup shows its link from it. The extension keeps the token in
+`chrome.storage.session` (`armedToken`: token, Upload URL, expiry; shared by the normal and incognito copies, so
+the next recording in either uses it), and
+`startServerCapture` uses and removes it when the Upload URL matches. The `captureSecret` stays in the capture
+state, the recorder's meta and the crash-safety partial meta; `buildReport` copies only `status`, `id`, `server`,
+`message`, so it never reaches `session.json`.
 
 ### Heartbeat
 
@@ -708,7 +742,7 @@ for in Settings or on the first upload.
 **`chrome.storage.local`:** `uploadUrl`, `viewUrl` (Recording page URL), `theme`, `textSize`, `openOnServer` (on
 unless turned off), `recordPageAudio`, `recordMic`, `quick` (quick settings), `quickOffer` (the server's last
 `me.options`). **`chrome.storage.session`:** `rec` (`recIncognito` in incognito) = `{tabId, windowId, mode, startedAt?,
-serverCapture?}`, the recording in progress (`startedAt` once a source is picked).
+serverCapture?}`, the recording in progress (`startedAt` once a source is picked); `armedToken` (see "Armed start").
 
 **Incognito:** the manifest sets `"incognito": "split"`, so an incognito window gets its own service worker and
 extension pages with incognito's cookies: calls to the Upload URL use that window's login. The two copies can't
@@ -730,7 +764,7 @@ shows the note in the popup and on the Recordings page.
 
 **Messages** (`chrome.runtime.sendMessage` with a `target`):
 
-- to `background`: `get-state`, `start {tabId, mode, streamId}` (popup), `source-picked {startedAt}` (recorder; the
+- to `background`: `get-state`, `arm`, `disarm`, `get-armed` (popup), `start {tabId, mode, streamId}` (popup), `source-picked {startedAt}` (recorder; the
   answer has the tab and `serverCapture`), `stop {reason}` (popup, or the recorder: `user`, `sharing-stopped`).
 - to `recorder`: `cdp {method, params, t, body}` (debugger events), `stop {reason}`; it answers `{id, stopSent}`.
 
@@ -815,3 +849,9 @@ Nothing in the code checks these; change both sides together.
 - `export.js` `uploadInfo()` is a copy of `common.js` `BB.uploadInfo`: `common.js` is not in the HTML download.
 - `viewer.html`'s `<!-- upload form (actions.js) -->` and `<!-- /upload form -->` are code: `build-standalone.py` cuts
   the upload form out between them.
+- The header `X-BlackBox-Capture-Secret` and the scheme `BlackBox-Token` (`OneTimeTokens.SECRET_HEADER`,
+  `TOKEN_SCHEME`) are spelled out in `background.js`, `recorder.js` (`secretHeader`) and `report.js`
+  (`stopRecoveredCapture`).
+- `armTokenMinutes`: the default 15 and the range 1–60 in `blackboxPlugin.json` (value, regex, text), the guide and
+  the extension README equal `OneTimeTokens.DEFAULT_TTL_MIN`, `MIN_TTL_MIN` and `MAX_TTL_MIN`. The popup shows the expiry
+  from the server's `ttlMs`, so it needs no copy.

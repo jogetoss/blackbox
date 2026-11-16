@@ -31,6 +31,10 @@
     #quick .sub2 { margin-left: 36px; }
     #qRealWarn { margin: 2px 0 0 36px; color: var(--warn); }
     #qNote { margin-top: 4px; color: var(--muted); }
+    #arm { margin-top: 8px; }
+    #armNote { color: var(--muted); }
+    #armLink, #disarm { font-weight: 600; text-decoration: none; }
+    #armLink:hover, #disarm:hover { text-decoration: underline; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -61,6 +65,10 @@
     </div>
     <div id="qNote" hidden></div>
   </fieldset>
+  <div id="arm" hidden>
+    <a href="#" id="armLink" title="For problems on the login page or with single sign-on: the server keeps this recording's server data for you even though you start it logged out">Prepare a recording that starts logged out</a>
+    <div id="armNote" hidden></div>
+  </div>
   <button id="stop" hidden>Stop &amp; save</button>
   <div id="status"></div>
   <div id="serverNote" hidden></div>

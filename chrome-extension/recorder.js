@@ -193,13 +193,17 @@ async function savePart() {
   await idbPartialPut(recId + ':meta', { ...meta, lastSavedAt });
 }
 
+function secretHeader(log) {
+  return log?.captureSecret ? { 'X-BlackBox-Capture-Secret': log.captureSecret } : {};
+}
+
 async function ping() {
   const log = meta?.serverCapture;
   if (pinging || !log?.id) return;
   pinging = true;
   try {
     const res = await fetch(log.uploadUrl + '?' + new URLSearchParams({ action: 'recording-ping', id: log.id, lastSavedAt, videoBytes }),
-      { method: 'POST', credentials: 'include' });
+      { method: 'POST', credentials: 'include', headers: secretHeader(log) });
     if (res.status === 401) {
       clearInterval(pingTimer);
       serverNote = 'Server capture ended: logged out';
@@ -307,7 +311,7 @@ async function stopOnServer(report) {
   const timer = setTimeout(() => abort.abort(), STOP_WAIT_MS);
   try {
     const res = await fetch(log.uploadUrl + '?' + new URLSearchParams({ action: 'recording-stop', id: log.id, ...Quick.exportParams(meta.options) }),
-      { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: abort.signal });
+      { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', ...secretHeader(log) }, body: JSON.stringify(body), signal: abort.signal });
     if (!res.ok) {
       console.warn('Could not stop the server capture: HTTP', res.status);
       return false;

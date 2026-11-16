@@ -18,7 +18,39 @@ const CAPTURE_HEADER = 'X-BlackBox-Id';
 const ALL_RESOURCE_TYPES = ['main_frame', 'sub_frame', 'stylesheet', 'script', 'image', 'font', 'object',
   'xmlhttprequest', 'ping', 'csp_report', 'media', 'websocket', 'other'];
 
+const ARM_KEY = 'armedToken';
+const SECRET_HEADER = 'X-BlackBox-Capture-Secret';
+
 const resourceTypes = new Map();
+
+async function getArmed() {
+  const armed = (await chrome.storage.session.get(ARM_KEY))[ARM_KEY];
+  if (armed && armed.expiresAt > Date.now()) return armed;
+  if (armed) await chrome.storage.session.remove(ARM_KEY);
+  return null;
+}
+
+async function arm() {
+  const { uploadUrl } = await chrome.storage.local.get('uploadUrl');
+  if (!uploadUrl) throw new Error('Set the Upload URL in Settings first.');
+  const q = await Quick.get();
+  const res = await postAction(uploadUrl, 'recording-arm', '', captureParams(q));
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(res.status === 401 ? `Log in to ${new URL(uploadUrl).origin} first.` : body?.error?.message || `HTTP ${res.status}`);
+  const armed = { token: body.token, uploadUrl, expiresAt: Date.now() + (body.ttlMs || 0) };
+  await chrome.storage.session.set({ [ARM_KEY]: armed });
+  return { uploadUrl, expiresAt: armed.expiresAt };
+}
+
+function captureParams(q) {
+  return { allServer: String(q.allServer), gauges: String(q.gauges), traces: String(q.traces),
+    otherTraces: String(q.traces && q.otherTraces), glowrootData: String(q.glowrootData),
+    systemSecrets: String(q.systemSecrets), license: String(q.license) };
+}
+
+function secretHeaders(capture) {
+  return capture?.captureSecret ? { [SECRET_HEADER]: capture.captureSecret } : {};
+}
 
 async function getState() {
   return (await chrome.storage.session.get(REC_KEY))[REC_KEY] || null;
@@ -109,17 +141,21 @@ async function startServerCapture(tabId) {
   let pingMs, lostMs;
   let maxSizeMb;
   let maxRecordingMs;
+  let captureSecret;
+  const armed = await getArmed();
+  const token = armed && armed.uploadUrl === uploadUrl ? armed.token : null;
+  if (armed) await chrome.storage.session.remove(ARM_KEY);
   try {
     const q = await Quick.get();
-    const res = await postAction(uploadUrl, 'recording-start', id, { allServer: String(q.allServer),
-      gauges: String(q.gauges), traces: String(q.traces), otherTraces: String(q.traces && q.otherTraces),
-      glowrootData: String(q.glowrootData), systemSecrets: String(q.systemSecrets),
-      license: String(q.license) });
+    const res = await postAction(uploadUrl, 'recording-start', id, captureParams(q),
+      token ? { Authorization: 'BlackBox-Token ' + token } : {});
     const body = await res.json().catch(() => null);
     slowMs = (body?.serverCapture || body?.systemLog)?.slowThresholdMs;
     ({ pingMs, lostMs, maxRecordingMs, maxSizeMb } = body?.serverCapture || {});
+    captureSecret = body?.captureSecret;
     if (!res.ok) {
-      const message = res.status === 401 ? `Not logged in to ${origin}.` : body?.error?.message || `HTTP ${res.status}`;
+      const message = res.status === 401 ? (token ? body?.error?.message || 'The prepared recording expired.' : `Not logged in to ${origin}.`)
+        : body?.error?.message || `HTTP ${res.status}`;
       return { status: 'off', server: origin, message, maxRecordingMs };
     }
   } catch (e) {
@@ -134,7 +170,8 @@ async function startServerCapture(tabId) {
       condition: { tabIds: [tabId, chrome.tabs.TAB_ID_NONE], urlFilter: '|' + origin + '/', resourceTypes: ALL_RESOURCE_TYPES },
     }],
   });
-  return { status: 'on', id, server: origin, uploadUrl, slowMs, pingMs, lostMs, maxRecordingMs, maxSizeMb };
+  return { status: 'on', id, server: origin, uploadUrl, slowMs, pingMs, lostMs, maxRecordingMs, maxSizeMb,
+    ...(captureSecret ? { captureSecret, armed: true } : {}) };
 }
 
 function stopTagging() {
@@ -144,12 +181,12 @@ function stopTagging() {
 async function stopServerCapture(capture) {
   await stopTagging();
   if (!capture?.id) return;
-  await postAction(capture.uploadUrl, 'recording-stop', capture.id)
+  await postAction(capture.uploadUrl, 'recording-stop', capture.id, {}, secretHeaders(capture))
     .catch(() => {});
 }
 
-function postAction(uploadUrl, action, id, params) {
-  return fetch(uploadUrl + '?' + new URLSearchParams({ action, id, ...params }), { method: 'POST', credentials: 'include' });
+function postAction(uploadUrl, action, id, params, headers = {}) {
+  return fetch(uploadUrl + '?' + new URLSearchParams({ action, id, ...params }), { method: 'POST', credentials: 'include', headers });
 }
 
 async function stop(reason) {
@@ -191,6 +228,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     'start': () => start(msg.tabId, msg.mode, msg.streamId),
     'source-picked': () => sourcePicked(msg.startedAt),
     'stop': () => stop(msg.reason || 'user'),
+    'arm': () => arm(),
+    'disarm': () => chrome.storage.session.remove(ARM_KEY).then(() => null),
+    'get-armed': () => getArmed().then((a) => (a ? { uploadUrl: a.uploadUrl, expiresAt: a.expiresAt } : null)),
   };
   const fn = handlers[msg.type];
   if (!fn) return;

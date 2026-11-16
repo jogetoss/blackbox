@@ -93,15 +93,34 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         response.setHeader("Cache-Control", "no-store");
         response.setHeader("X-Content-Type-Options", "nosniff");
 
+        String origin = request.getHeader("Origin");
+        Object allowedIds = getProperty("allowedExtensionIds");
+        boolean fromExtension = fromAllowedExtension(origin, allowedIds == null ? null : allowedIds.toString());
+        String token = "recording-start".equals(action) ? OneTimeTokens.tokenFrom(request.getHeader("Authorization")) : null;
+        String secret = "recording-ping".equals(action) || "recording-stop".equals(action)
+                ? request.getHeader(OneTimeTokens.SECRET_HEADER) : null;
+        if (post && (token != null || secret != null)) {
+            if (!fromExtension) {
+                error(response, HttpServletResponse.SC_FORBIDDEN, "Only the BlackBox extension may do this.");
+            } else if (!flag("allowHttpUpload", true) && !secureOrLocal(request)) {
+                error(response, HttpServletResponse.SC_FORBIDDEN, "This server accepts uploads over HTTPS only. Change the Upload URL to https://.");
+            } else {
+                try {
+                    handleArmed(request, response, action, request.getParameter("id"), token, secret);
+                } catch (JSONException e) {
+                    LogUtil.error(getClassName(), e, "BlackBox request failed");
+                    error(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Server error.");
+                }
+            }
+            return;
+        }
+
         WorkflowUserManager wum = (WorkflowUserManager) AppUtil.getApplicationContext().getBean("workflowUserManager");
         User user = wum.isCurrentUserAnonymous() ? null : wum.getCurrentUser();
         if (user == null) {
             error(response, HttpServletResponse.SC_UNAUTHORIZED, "Log in first.");
             return;
         }
-        String origin = request.getHeader("Origin");
-        Object allowedIds = getProperty("allowedExtensionIds");
-        boolean fromExtension = fromAllowedExtension(origin, allowedIds == null ? null : allowedIds.toString());
         if (post && !fromExtension && !validCsrfToken(request)) {
             error(response, HttpServletResponse.SC_FORBIDDEN, "Invalid or missing CSRF token. Reload the page and try again.");
             return;
@@ -167,6 +186,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 }
             } else if ("import".equals(action) && post) {
                 importZip(request, response, store, access);
+            } else if ("recording-arm".equals(action) && post) {
+                armCapture(request, response, access);
             } else if ("recording-start".equals(action) && post) {
                 startServerCapture(request, response, access, id);
             } else if ("recording-stop".equals(action) && post) {
@@ -684,7 +705,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     }
 
     static final java.util.Set<String> UPLOAD_ACTIONS = new java.util.HashSet<>(java.util.Arrays.asList(
-            "create", "video", "import", "recording-start", "recording-stop", "recording-ping"));
+            "create", "video", "import", "recording-arm", "recording-start", "recording-stop", "recording-ping"));
 
     static boolean secureOrLocal(HttpServletRequest request) {
         if (request.isSecure() || "https".equalsIgnoreCase(request.getHeader("X-Forwarded-Proto"))) {
@@ -704,50 +725,160 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
     private void startServerCapture(HttpServletRequest request, HttpServletResponse response, Access access, String id)
             throws IOException, JSONException {
-        long maxRecordingMs = maxRecordingMs(getPropertyString("maxRecordingMinutes"));
         if (!ServerCaptureStore.isValidId(id)) {
             error(response, HttpServletResponse.SC_BAD_REQUEST, "Invalid server capture id.");
             return;
         }
-        if (!access.admin) {
-            String user = access.user.getUsername();
-            int perMinute = limit("captureStartsPerMinute", DEFAULT_STARTS_PER_MINUTE);
-            if (perMinute > 0 && !STARTS.allow(user, perMinute, System.currentTimeMillis())) {
-                error(response, 429, "Too many recordings started in the last minute (limit " + perMinute + "). Wait a moment.");
-                return;
-            }
-            int maxOpen = limit("maxOpenCaptures", DEFAULT_MAX_OPEN_CAPTURES);
-            if (maxOpen > 0 && ServerCapture.store().openCount(user, id) >= maxOpen) {
-                error(response, 429, "You already have " + maxOpen + " recordings in progress on this server (the limit). "
-                        + "Stop one first; a closed browser's recordings stop on their own after a few minutes.");
-                return;
-            }
+        String user = access.user.getUsername();
+        if (!access.admin && (!withinStartRate(response, user) || overOpenLimit(response, user, id))) {
+            return;
         }
+        openCapture(request, response, id, user, captureOptions(request, access), null);
+    }
+
+    private boolean withinStartRate(HttpServletResponse response, String user) throws IOException {
+        int perMinute = limit("captureStartsPerMinute", DEFAULT_STARTS_PER_MINUTE);
+        if (perMinute > 0 && !STARTS.allow(user, perMinute, System.currentTimeMillis())) {
+            error(response, 429, "Too many recordings started in the last minute (limit " + perMinute + "). Wait a moment.");
+            return false;
+        }
+        return true;
+    }
+
+    private boolean overOpenLimit(HttpServletResponse response, String user, String id) throws IOException {
+        int maxOpen = limit("maxOpenCaptures", DEFAULT_MAX_OPEN_CAPTURES);
+        if (maxOpen > 0 && ServerCapture.store().openCount(user, id) >= maxOpen) {
+            error(response, 429, "You already have " + maxOpen + " recordings in progress on this server (the limit). "
+                    + "Stop one first; a closed browser's recordings stop on their own after a few minutes.");
+            return true;
+        }
+        return false;
+    }
+
+    private JSONObject captureOptions(HttpServletRequest request, Access access) throws JSONException {
+        boolean traces = access.mayCapture("allowCaptureTraces") && !"false".equals(request.getParameter("traces"));
+        return new JSONObject()
+                .put("traces", traces)
+                .put("gauges", access.mayCapture("allowCaptureGauges") && !"false".equals(request.getParameter("gauges")))
+                .put("glowrootData", access.mayCapture("allowCaptureGlowrootData") && glowrootShared.getAsBoolean()
+                        && !"false".equals(request.getParameter("glowrootData")))
+                .put("allServer", access.canCaptureServerData() && "true".equals(request.getParameter("allServer")))
+                .put("otherTraces", traces && access.mayCapture(OTHER_TRACES) && glowrootShared.getAsBoolean()
+                        && "true".equals(request.getParameter("otherTraces")))
+                .put("systemSecrets", access.allows("allowUnmaskedSystemInfo", false) && "true".equals(request.getParameter("systemSecrets")))
+                .put("license", access.allows("allowUnmaskedLicense", false) && "true".equals(request.getParameter("license")))
+                .put("admin", access.admin);
+    }
+
+    private void openCapture(HttpServletRequest request, HttpServletResponse response, String id, String owner, JSONObject o,
+            String secret) throws IOException, JSONException {
+        long maxRecordingMs = maxRecordingMs(getPropertyString("maxRecordingMinutes"));
         long maxBytes = positive("systemLogMaxMb", DEFAULT_SYSTEM_LOG_MB) * 1024 * 1024;
         long keepMs = positive("serverDataKeepDays", DEFAULT_KEEP_DAYS) * 24 * 3600 * 1000;
-        boolean traces = access.mayCapture("allowCaptureTraces") && !"false".equals(request.getParameter("traces"));
-        boolean gauges = access.mayCapture("allowCaptureGauges") && !"false".equals(request.getParameter("gauges"));
-        boolean glowrootData = access.mayCapture("allowCaptureGlowrootData") && glowrootShared.getAsBoolean()
-                && !"false".equals(request.getParameter("glowrootData"));
-        boolean allServer = access.canCaptureServerData() && "true".equals(request.getParameter("allServer"));
-        boolean otherTraces = traces && access.mayCapture(OTHER_TRACES) && glowrootShared.getAsBoolean()
-                && "true".equals(request.getParameter("otherTraces"));
-        if (!ServerCapture.store().start(id, access.user.getUsername(), maxBytes, keepMs, traces, getPropertyString("glowrootUrl"), gauges,
+        boolean traces = o.optBoolean("traces");
+        boolean gauges = o.optBoolean("gauges");
+        boolean glowrootData = o.optBoolean("glowrootData");
+        boolean allServer = o.optBoolean("allServer");
+        boolean otherTraces = o.optBoolean("otherTraces");
+        if (!ServerCapture.store().start(id, owner, maxBytes, keepMs, traces, getPropertyString("glowrootUrl"), gauges,
                 glowrootData, allServer, maxRecordingMs, otherTraces)) {
             error(response, HttpServletResponse.SC_CONFLICT, "This server capture id is already in use.");
             return;
         }
         ServerCapture.store().put(id, ServerCapture.PROFILE, DynamicDataSourceManager.getCurrentProfile());
+        if (secret != null) {
+            ServerCapture.store().put(id, ServerCaptureStore.SECRET_HASH, OneTimeTokens.hash(secret));
+            ServerCapture.store().put(id, "armed", true);
+        }
         ServerCapture.find(id);
-        boolean unmaskedInfo = access.allows("allowUnmaskedSystemInfo", false) && "true".equals(request.getParameter("systemSecrets"));
-        boolean unmaskedLicense = access.allows("allowUnmaskedLicense", false) && "true".equals(request.getParameter("license"));
         ServerInfo.save(ServerCapture.store().dir(id), request, (int) Math.min(positive("recentChangesDays", 7), 365),
-                unmaskedInfo ? Secrets.none() : new Secrets(getPropertyString("secretNames")), !unmaskedLicense);
+                o.optBoolean("systemSecrets") ? Secrets.none() : new Secrets(getPropertyString("secretNames")), !o.optBoolean("license"));
         JSONObject started = new JSONObject().put("id", id).put("maxMb", maxBytes / (1024 * 1024))
                 .put("traces", traces).put("gauges", gauges).put("glowrootData", glowrootData).put("allServer", allServer)
                 .put("otherTraces", otherTraces).put("slowThresholdMs", slowMs());
         withLiveness(started, maxRecordingMs, maxSizeMb());
-        json(response, new JSONObject().put(RecordingStore.CAPTURE, started).put(RecordingStore.LEGACY_CAPTURE, started));
+        JSONObject body = new JSONObject().put(RecordingStore.CAPTURE, started).put(RecordingStore.LEGACY_CAPTURE, started);
+        if (secret != null) {
+            body.put("captureSecret", secret);
+        }
+        json(response, body);
+    }
+
+    static final String ARM_SETTING = "allowArmedRecordings";
+    static final String ARM_TTL_SETTING = "armTokenMinutes";
+
+    static java.util.function.Supplier<OneTimeTokens> tokens = () -> new OneTimeTokens(ProfileDir.current().resolve(OneTimeTokens.DIR));
+
+    private void armCapture(HttpServletRequest request, HttpServletResponse response, Access access) throws IOException, JSONException {
+        if (!flag(ARM_SETTING, false)) {
+            error(response, HttpServletResponse.SC_FORBIDDEN, "Recordings that start before login are off on this server.");
+            return;
+        }
+        if (!access.canUpload()) {
+            error(response, HttpServletResponse.SC_FORBIDDEN, "You are not allowed to upload recordings to this server.");
+            return;
+        }
+        String user = access.user.getUsername();
+        long now = System.currentTimeMillis();
+        long ttlMs = OneTimeTokens.ttlMs(getPropertyString(ARM_TTL_SETTING));
+        if (!access.admin) {
+            if (!withinStartRate(response, user)) {
+                return;
+            }
+            if (tokens.get().count(user, now) >= OneTimeTokens.MAX_PER_USER) {
+                error(response, 429, "You already have " + OneTimeTokens.MAX_PER_USER + " prepared recordings waiting. "
+                        + "Use one, or cancel it in the popup, or wait until it expires.");
+                return;
+            }
+        }
+        String token = tokens.get().arm(user, captureOptions(request, access), now, ttlMs);
+        json(response, new JSONObject().put("token", token).put("expiresAt", now + ttlMs).put("ttlMs", ttlMs));
+    }
+
+    private void handleArmed(HttpServletRequest request, HttpServletResponse response, String action, String id, String token,
+            String secret) throws IOException, JSONException {
+        if (token != null) {
+            if (!flag(ARM_SETTING, false)) {
+                error(response, HttpServletResponse.SC_FORBIDDEN, "Recordings that start before login are off on this server.");
+                return;
+            }
+            if (!ServerCaptureStore.isValidId(id)) {
+                error(response, HttpServletResponse.SC_BAD_REQUEST, "Invalid server capture id.");
+                return;
+            }
+            JSONObject t = tokens.get().use(token, System.currentTimeMillis());
+            JSONObject o = t != null ? t.optJSONObject("options") : null;
+            String owner = t != null ? t.optString("owner") : "";
+            if (o == null || owner.isEmpty()) {
+                error(response, HttpServletResponse.SC_UNAUTHORIZED, "The prepared recording expired or was already used. Prepare it again.");
+                return;
+            }
+            if (!o.optBoolean("admin") && overOpenLimit(response, owner, id)) {
+                return;
+            }
+            openCapture(request, response, id, owner, o, OneTimeTokens.newToken());
+            return;
+        }
+        String owner = ServerCaptureStore.isValidId(id) ? ServerCapture.store().ownerBySecret(id, secret) : null;
+        if (owner == null) {
+            error(response, HttpServletResponse.SC_NOT_FOUND, "Server capture not found.");
+            return;
+        }
+        if ("recording-ping".equals(action)) {
+            JSONObject state = ServerCapture.store().ping(id, owner, longParam(request, "lastSavedAt"), longParam(request, "videoBytes"));
+            if (state == null) {
+                error(response, HttpServletResponse.SC_NOT_FOUND, "Server capture not found.");
+            } else {
+                json(response, state);
+            }
+            return;
+        }
+        if (!ServerCapture.store().stop(id, owner, longParam(request, "stoppedAt"), LivenessKnobs.lostMs())) {
+            error(response, HttpServletResponse.SC_NOT_FOUND, "Server capture not found.");
+            return;
+        }
+        ServerCapture.close(id);
+        json(response, new JSONObject().put("stopped", id));
     }
 
     static JSONObject withLiveness(JSONObject started) throws JSONException {
@@ -1106,7 +1237,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 .put("glowrootData", access.mayCapture("allowCaptureGlowrootData") && glowrootShared.getAsBoolean())
                 .put("credentials", access.allows("allowUnmaskedCredentials", false))
                 .put("systemSecrets", access.allows("allowUnmaskedSystemInfo", false))
-                .put("license", access.allows("allowUnmaskedLicense", false) && ServerInfo.hasLicense());
+                .put("license", access.allows("allowUnmaskedLicense", false) && ServerInfo.hasLicense())
+                .put("arm", flag(ARM_SETTING, false) && access.canUpload());
     }
 
     private void traces(HttpServletResponse response, RecordingStore store, Access access, String id) throws IOException, JSONException {

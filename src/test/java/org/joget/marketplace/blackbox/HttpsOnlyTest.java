@@ -33,7 +33,7 @@ public class HttpsOnlyTest {
 
     @Test
     public void uploadActionsAreTheOnesThatSendData() {
-        for (String a : new String[]{"create", "video", "import", "recording-start", "recording-stop", "recording-ping"}) {
+        for (String a : new String[]{"create", "video", "import", "recording-arm", "recording-start", "recording-stop", "recording-ping"}) {
             assertTrue(a, BlackBoxPlugin.UPLOAD_ACTIONS.contains(a));
         }
         assertFalse(BlackBoxPlugin.UPLOAD_ACTIONS.contains("delete"));
