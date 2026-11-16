@@ -18,6 +18,7 @@ import org.json.JSONObject;
 public class ServerCaptureStore {
 
     public static final String FILE = "system-log.json";
+    static final String SECRET_HASH = "secretHash";
     private static final String META = "meta.json";
     private static final Pattern ID = Pattern.compile("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
     static final long FORWARD_MS = 24L * 3600 * 1000;
@@ -204,6 +205,11 @@ public class ServerCaptureStore {
         }));
     }
 
+    public String ownerBySecret(String id, String secret) {
+        JSONObject meta = readMeta(id);
+        return meta != null && ArmTickets.matches(secret, meta.optString(SECRET_HASH)) ? meta.optString("owner") : null;
+    }
+
     public JSONObject readMeta(String id) {
         if (!isValidId(id)) {
             return null;
@@ -262,6 +268,7 @@ public class ServerCaptureStore {
             Files.write(tmp, body.toString().getBytes(StandardCharsets.UTF_8));
             Files.move(tmp, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             summary = summary(list, truncated);
+            meta.remove(SECRET_HASH);
             meta.put("recording", target.getParent().getFileName().toString())
                     .put("expiresAt", now + FORWARD_MS);
             writeMeta(id, meta);
