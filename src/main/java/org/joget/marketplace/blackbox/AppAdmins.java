@@ -2,6 +2,7 @@ package org.joget.marketplace.blackbox;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Method;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -13,6 +14,8 @@ final class AppAdmins {
     static final String FILE = "app.properties";
     static final String USERS = "ROLE_ADMIN";
     static final String GROUPS = "ROLE_ADMIN_GROUP";
+    // Joget 9.x only (WorkflowUserManager.ROLE_APP_CREATOR); named here so the jar still builds against 8.2
+    static final String APP_CREATOR_ROLE = "ROLE_APP_CREATOR";
 
     private AppAdmins() {
     }
@@ -32,6 +35,19 @@ final class AppAdmins {
             }
         }
         return false;
+    }
+
+    // Joget 9.x: AppDefinition.getCreatedBy(), absent in 8.2, so it is read by reflection.
+    static boolean isCreator(Object appDef, String username) {
+        if (appDef == null || username == null) {
+            return false;
+        }
+        try {
+            Method m = appDef.getClass().getMethod("getCreatedBy");
+            return username.equals(m.invoke(appDef));
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            return false;
+        }
     }
 
     static Properties read(Path appSrc, String folder) {

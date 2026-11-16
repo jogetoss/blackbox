@@ -1533,11 +1533,24 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
         boolean isAppAdmin(AppDefinition def) {
             return admin || AppAdmins.admits(AppAdmins.read(appSrc(), SecurityUtil.normalizedFileName(def.getAppId())),
-                    user.getUsername(), groupIds());
+                    user.getUsername(), groupIds())
+                    || (appCreator() && AppAdmins.isCreator(def, user.getUsername()));
         }
 
         boolean mayExportApps() {
-            return admin || allowed("canExportOtherApps", false) || AppAdmins.anyAdmits(appSrc(), user.getUsername(), groupIds());
+            return admin || allowed("canExportOtherApps", false) || appCreator()
+                    || AppAdmins.anyAdmits(appSrc(), user.getUsername(), groupIds());
+        }
+
+        private Boolean appCreator;
+
+        // Joget 9.x: an app creator is the designer of the apps they created. 8.2 has no such role, so always false there.
+        private boolean appCreator() {
+            if (appCreator == null) {
+                WorkflowUserManager wum = (WorkflowUserManager) AppUtil.getApplicationContext().getBean("workflowUserManager");
+                appCreator = wum.isCurrentUserInRole(AppAdmins.APP_CREATOR_ROLE);
+            }
+            return appCreator;
         }
 
         private boolean canAccessApp(AppDefinition def) {
