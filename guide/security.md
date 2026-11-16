@@ -18,8 +18,8 @@ With **Allow recordings that start before login** on, a user in **Who can upload
 recording that starts logged out (login page, SSO redirects, anonymous forms):
 
 1. Logged in, they click **Prepare a recording that starts logged out** in the popup. The server gives the extension a
-   one-time ticket, valid for **Prepared recording expiry** (15 minutes by default); it stores only the ticket's SHA-256 hash.
-2. They log out and start recording. The ticket opens the capture. It belongs to the user who prepared it, so the
+   one-time token, valid for **Prepared recording expiry** (15 minutes by default); it stores only the token's SHA-256 hash.
+2. They log out and start recording. The token opens the capture. It belongs to the user who prepared it, so the
    normal rules in [Who sees what](#who-sees-what) apply, and the server-data choices (quick settings) and their
    permissions are the ones from step 1.
 3. The extension pings and stops the capture with a secret it got at the start. It works also when they log in
@@ -27,14 +27,14 @@ recording that starts logged out (login page, SSO redirects, anonymous forms):
 4. Uploading still needs a login as the user who prepared it (now or later from the Recordings page). The apps used
    are exported at the upload, not at the stop.
 
-Limits on the tickets and secrets:
+Limits on the one-time tokens and capture secrets:
 
-- A ticket is accepted only from the BlackBox extension (Allowed Chrome extension IDs), never from a web page; over
+- A token is accepted only from the BlackBox extension (Allowed Chrome extension IDs), never from a web page; over
   HTTPS when **Allow uploads over HTTP** is off. It is sent in a header, never in a URL.
-- A ticket works once and only opens a capture. The secret only pings or stops that one capture. Neither can read,
+- A token works once and only opens a capture. The secret only pings or stops that one capture. Neither can read,
   list, upload or export anything.
-- Non-admins: at most 3 unused tickets each; preparing counts as a start for **Max recordings started per user per
-  minute**, and starting with a ticket counts against **Max recordings in progress per user**.
+- Non-admins: at most 3 unused tokens each; preparing counts as a start for **Max recordings started per user per
+  minute**, and starting with a token counts against **Max recordings in progress per user**.
 - Server capture only records requests from the recording tab (the `X-BlackBox-Id` header), logged in or not. Other
   visitors are never captured.
 

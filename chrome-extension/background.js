@@ -18,7 +18,7 @@ const CAPTURE_HEADER = 'X-BlackBox-Id';
 const ALL_RESOURCE_TYPES = ['main_frame', 'sub_frame', 'stylesheet', 'script', 'image', 'font', 'object',
   'xmlhttprequest', 'ping', 'csp_report', 'media', 'websocket', 'other'];
 
-const ARM_KEY = 'armedTicket';
+const ARM_KEY = 'armedToken';
 const SECRET_HEADER = 'X-BlackBox-Capture-Secret';
 
 const resourceTypes = new Map();
@@ -37,7 +37,7 @@ async function arm() {
   const res = await postAction(uploadUrl, 'recording-arm', '', captureParams(q));
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new Error(res.status === 401 ? `Log in to ${new URL(uploadUrl).origin} first.` : body?.error?.message || `HTTP ${res.status}`);
-  const armed = { ticket: body.ticket, uploadUrl, expiresAt: Date.now() + (body.ttlMs || 0) };
+  const armed = { token: body.token, uploadUrl, expiresAt: Date.now() + (body.ttlMs || 0) };
   await chrome.storage.session.set({ [ARM_KEY]: armed });
   return { uploadUrl, expiresAt: armed.expiresAt };
 }
@@ -143,18 +143,18 @@ async function startServerCapture(tabId) {
   let maxRecordingMs;
   let captureSecret;
   const armed = await getArmed();
-  const ticket = armed && armed.uploadUrl === uploadUrl ? armed.ticket : null;
+  const token = armed && armed.uploadUrl === uploadUrl ? armed.token : null;
   if (armed) await chrome.storage.session.remove(ARM_KEY);
   try {
     const q = await Quick.get();
     const res = await postAction(uploadUrl, 'recording-start', id, captureParams(q),
-      ticket ? { Authorization: 'BlackBox-Ticket ' + ticket } : {});
+      token ? { Authorization: 'BlackBox-Token ' + token } : {});
     const body = await res.json().catch(() => null);
     slowMs = (body?.serverCapture || body?.systemLog)?.slowThresholdMs;
     ({ pingMs, lostMs, maxRecordingMs, maxSizeMb } = body?.serverCapture || {});
     captureSecret = body?.captureSecret;
     if (!res.ok) {
-      const message = res.status === 401 ? (ticket ? body?.error?.message || 'The prepared recording expired.' : `Not logged in to ${origin}.`)
+      const message = res.status === 401 ? (token ? body?.error?.message || 'The prepared recording expired.' : `Not logged in to ${origin}.`)
         : body?.error?.message || `HTTP ${res.status}`;
       return { status: 'off', server: origin, message, maxRecordingMs };
     }

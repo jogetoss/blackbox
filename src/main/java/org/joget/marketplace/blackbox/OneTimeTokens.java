@@ -14,16 +14,16 @@ import java.util.regex.Pattern;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-final class ArmTickets {
+final class OneTimeTokens {
 
-    static final String DIR = "tickets";
+    static final String DIR = "tokens";
     static final long DEFAULT_TTL_MIN = 15;
     static final long MIN_TTL_MIN = 1;
     static final long MAX_TTL_MIN = 60;
     static final long TTL_MS = DEFAULT_TTL_MIN * 60_000L;
     static final long MAX_TTL_MS = MAX_TTL_MIN * 60_000L;
     static final int MAX_PER_USER = 3;
-    static final String TICKET_SCHEME = "BlackBox-Ticket";
+    static final String TOKEN_SCHEME = "BlackBox-Token";
     static final String SECRET_HEADER = "X-BlackBox-Capture-Secret";
     private static final Pattern TOKEN = Pattern.compile("^[A-Za-z0-9_-]{43}$");
     private static final Pattern FILE = Pattern.compile("^[0-9a-f]{64}\\.json$");
@@ -31,7 +31,7 @@ final class ArmTickets {
 
     private final Path root;
 
-    ArmTickets(Path root) {
+    OneTimeTokens(Path root) {
         this.root = root;
     }
 
@@ -65,15 +65,15 @@ final class ArmTickets {
         return MessageDigest.isEqual(hash(token).getBytes(StandardCharsets.US_ASCII), storedHash.getBytes(StandardCharsets.US_ASCII));
     }
 
-    static String ticketFrom(String authorization) {
+    static String tokenFrom(String authorization) {
         if (authorization == null) {
             return null;
         }
         String a = authorization.trim();
-        if (a.length() <= TICKET_SCHEME.length() + 1 || !a.regionMatches(true, 0, TICKET_SCHEME + " ", 0, TICKET_SCHEME.length() + 1)) {
+        if (a.length() <= TOKEN_SCHEME.length() + 1 || !a.regionMatches(true, 0, TOKEN_SCHEME + " ", 0, TOKEN_SCHEME.length() + 1)) {
             return null;
         }
-        String t = a.substring(TICKET_SCHEME.length() + 1).trim();
+        String t = a.substring(TOKEN_SCHEME.length() + 1).trim();
         return validToken(t) ? t : null;
     }
 

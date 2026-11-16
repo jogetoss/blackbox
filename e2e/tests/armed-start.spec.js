@@ -9,8 +9,8 @@ function captureMeta(id) {
   return JSON.parse(execFileSync('docker', ['exec', CONTAINER, 'cat', `${WFLOW}/blackbox/pending/${id}/meta.json`], { encoding: 'utf8' }));
 }
 
-function ticketFiles() {
-  return execFileSync('docker', ['exec', CONTAINER, 'sh', '-c', `ls ${WFLOW}/blackbox/tickets 2>/dev/null || true`], { encoding: 'utf8' })
+function tokenFiles() {
+  return execFileSync('docker', ['exec', CONTAINER, 'sh', '-c', `ls ${WFLOW}/blackbox/tokens 2>/dev/null || true`], { encoding: 'utf8' })
     .split('\n').filter(Boolean);
 }
 
@@ -39,7 +39,7 @@ test('a recording prepared while logged in captures the server side of a logged-
   await expect(popup.locator('#armLink')).toBeVisible();
   await popup.click('#armLink');
   await expect(popup.locator('#armNote')).toContainText('Prepared until');
-  expect(ticketFiles().length, 'one ticket on the server').toBeGreaterThan(0);
+  expect(tokenFiles().length, 'one token on the server').toBeGreaterThan(0);
   await popup.close();
 
   await context.clearCookies();
@@ -49,7 +49,7 @@ test('a recording prepared while logged in captures the server side of a logged-
   const capture = await worker.evaluate((tabId) => startServerCapture(tabId), await tabOn(worker));
   expect(capture.status, capture.message).toBe('on');
   expect(capture.captureSecret, 'secret for ping/stop').toMatch(/^[A-Za-z0-9_-]{43}$/);
-  expect(await worker.evaluate(() => getArmed()), 'ticket used up in the extension').toBeNull();
+  expect(await worker.evaluate(() => getArmed()), 'token used up in the extension').toBeNull();
 
   const meta = captureMeta(capture.id);
   expect(meta.owner).toBe(process.env.BB_USER || 'admin');
@@ -93,14 +93,14 @@ test('a recording prepared while logged in captures the server side of a logged-
   }
 });
 
-test('a ticket works once, only from the extension, and a web page cannot use one', async ({ context, extensionId }) => {
+test('a token works once, only from the extension, and a web page cannot use one', async ({ context, extensionId }) => {
   const { joget, worker } = await setup(context, extensionId);
-  const armed = await worker.evaluate(() => arm().then(() => chrome.storage.session.get('armedTicket')).then((s) => s.armedTicket));
-  const auth = { Authorization: 'BlackBox-Ticket ' + armed.ticket };
+  const armed = await worker.evaluate(() => arm().then(() => chrome.storage.session.get('armedToken')).then((s) => s.armedToken));
+  const auth = { Authorization: 'BlackBox-Token ' + armed.token };
   const ttlMin = (armed.expiresAt - Date.now()) / 60_000;
   expect(ttlMin, 'Prepared recording expiry: 1 to 60 minutes').toBeGreaterThan(0);
   expect(ttlMin).toBeLessThanOrEqual(60);
-  if (process.env.BB_ARM_MINUTES) expect(Math.ceil(ttlMin), 'the armTicketMinutes setting').toBe(Number(process.env.BB_ARM_MINUTES));
+  if (process.env.BB_ARM_MINUTES) expect(Math.ceil(ttlMin), 'the armTokenMinutes setting').toBe(Number(process.env.BB_ARM_MINUTES));
 
   const fromPage = await joget.evaluate(async ({ u, auth }) => {
     const r = await fetch(u + '?' + new URLSearchParams({ action: 'recording-start', id: crypto.randomUUID() }), { method: 'POST', headers: auth });
@@ -116,5 +116,5 @@ test('a ticket works once, only from the extension, and a web page cannot use on
   expect(second.status, 'used up').toBe(401);
   expect((await post(worker, 'recording-arm', '')).status, 'arming needs a login').toBe(401);
   expect((await post(worker, 'recording-stop', id1, { 'X-BlackBox-Capture-Secret': first.body.captureSecret })).status).toBe(200);
-  await worker.evaluate(() => chrome.storage.session.remove('armedTicket'));
+  await worker.evaluate(() => chrome.storage.session.remove('armedToken'));
 });

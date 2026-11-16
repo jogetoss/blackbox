@@ -96,17 +96,17 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         String origin = request.getHeader("Origin");
         Object allowedIds = getProperty("allowedExtensionIds");
         boolean fromExtension = fromAllowedExtension(origin, allowedIds == null ? null : allowedIds.toString());
-        String ticket = "recording-start".equals(action) ? ArmTickets.ticketFrom(request.getHeader("Authorization")) : null;
+        String token = "recording-start".equals(action) ? OneTimeTokens.tokenFrom(request.getHeader("Authorization")) : null;
         String secret = "recording-ping".equals(action) || "recording-stop".equals(action)
-                ? request.getHeader(ArmTickets.SECRET_HEADER) : null;
-        if (post && (ticket != null || secret != null)) {
+                ? request.getHeader(OneTimeTokens.SECRET_HEADER) : null;
+        if (post && (token != null || secret != null)) {
             if (!fromExtension) {
                 error(response, HttpServletResponse.SC_FORBIDDEN, "Only the BlackBox extension may do this.");
             } else if (!flag("allowHttpUpload", true) && !secureOrLocal(request)) {
                 error(response, HttpServletResponse.SC_FORBIDDEN, "This server accepts uploads over HTTPS only. Change the Upload URL to https://.");
             } else {
                 try {
-                    handleArmed(request, response, action, request.getParameter("id"), ticket, secret);
+                    handleArmed(request, response, action, request.getParameter("id"), token, secret);
                 } catch (JSONException e) {
                     LogUtil.error(getClassName(), e, "BlackBox request failed");
                     error(response, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Server error.");
@@ -787,7 +787,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
         ServerCapture.store().put(id, ServerCapture.PROFILE, DynamicDataSourceManager.getCurrentProfile());
         if (secret != null) {
-            ServerCapture.store().put(id, ServerCaptureStore.SECRET_HASH, ArmTickets.hash(secret));
+            ServerCapture.store().put(id, ServerCaptureStore.SECRET_HASH, OneTimeTokens.hash(secret));
             ServerCapture.store().put(id, "armed", true);
         }
         ServerCapture.find(id);
@@ -805,9 +805,9 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     }
 
     static final String ARM_SETTING = "allowArmedRecordings";
-    static final String ARM_TTL_SETTING = "armTicketMinutes";
+    static final String ARM_TTL_SETTING = "armTokenMinutes";
 
-    static java.util.function.Supplier<ArmTickets> tickets = () -> new ArmTickets(ProfileDir.current().resolve(ArmTickets.DIR));
+    static java.util.function.Supplier<OneTimeTokens> tokens = () -> new OneTimeTokens(ProfileDir.current().resolve(OneTimeTokens.DIR));
 
     private void armCapture(HttpServletRequest request, HttpServletResponse response, Access access) throws IOException, JSONException {
         if (!flag(ARM_SETTING, false)) {
@@ -820,24 +820,24 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
         String user = access.user.getUsername();
         long now = System.currentTimeMillis();
-        long ttlMs = ArmTickets.ttlMs(getPropertyString(ARM_TTL_SETTING));
+        long ttlMs = OneTimeTokens.ttlMs(getPropertyString(ARM_TTL_SETTING));
         if (!access.admin) {
             if (!withinStartRate(response, user)) {
                 return;
             }
-            if (tickets.get().count(user, now) >= ArmTickets.MAX_PER_USER) {
-                error(response, 429, "You already have " + ArmTickets.MAX_PER_USER + " prepared recordings waiting. "
+            if (tokens.get().count(user, now) >= OneTimeTokens.MAX_PER_USER) {
+                error(response, 429, "You already have " + OneTimeTokens.MAX_PER_USER + " prepared recordings waiting. "
                         + "Use one, or cancel it in the popup, or wait until it expires.");
                 return;
             }
         }
-        String ticket = tickets.get().arm(user, captureOptions(request, access), now, ttlMs);
-        json(response, new JSONObject().put("ticket", ticket).put("expiresAt", now + ttlMs).put("ttlMs", ttlMs));
+        String token = tokens.get().arm(user, captureOptions(request, access), now, ttlMs);
+        json(response, new JSONObject().put("token", token).put("expiresAt", now + ttlMs).put("ttlMs", ttlMs));
     }
 
-    private void handleArmed(HttpServletRequest request, HttpServletResponse response, String action, String id, String ticket,
+    private void handleArmed(HttpServletRequest request, HttpServletResponse response, String action, String id, String token,
             String secret) throws IOException, JSONException {
-        if (ticket != null) {
+        if (token != null) {
             if (!flag(ARM_SETTING, false)) {
                 error(response, HttpServletResponse.SC_FORBIDDEN, "Recordings that start before login are off on this server.");
                 return;
@@ -846,7 +846,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 error(response, HttpServletResponse.SC_BAD_REQUEST, "Invalid server capture id.");
                 return;
             }
-            JSONObject t = tickets.get().use(ticket, System.currentTimeMillis());
+            JSONObject t = tokens.get().use(token, System.currentTimeMillis());
             JSONObject o = t != null ? t.optJSONObject("options") : null;
             String owner = t != null ? t.optString("owner") : "";
             if (o == null || owner.isEmpty()) {
@@ -856,7 +856,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             if (!o.optBoolean("admin") && overOpenLimit(response, owner, id)) {
                 return;
             }
-            openCapture(request, response, id, owner, o, ArmTickets.newToken());
+            openCapture(request, response, id, owner, o, OneTimeTokens.newToken());
             return;
         }
         String owner = ServerCaptureStore.isValidId(id) ? ServerCapture.store().ownerBySecret(id, secret) : null;

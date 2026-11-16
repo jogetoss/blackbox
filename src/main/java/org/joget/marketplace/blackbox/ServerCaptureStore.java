@@ -207,7 +207,7 @@ public class ServerCaptureStore {
 
     public String ownerBySecret(String id, String secret) {
         JSONObject meta = readMeta(id);
-        return meta != null && ArmTickets.matches(secret, meta.optString(SECRET_HASH)) ? meta.optString("owner") : null;
+        return meta != null && OneTimeTokens.matches(secret, meta.optString(SECRET_HASH)) ? meta.optString("owner") : null;
     }
 
     public JSONObject readMeta(String id) {

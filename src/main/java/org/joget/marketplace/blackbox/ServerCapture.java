@@ -314,9 +314,9 @@ final class ServerCapture {
             for (Path dir : checkDirs.get()) {
                 sweep(new ServerCaptureStore(dir.resolve("pending")));
                 try {
-                    new ArmTickets(dir.resolve(ArmTickets.DIR)).sweep(System.currentTimeMillis());
+                    new OneTimeTokens(dir.resolve(OneTimeTokens.DIR)).sweep(System.currentTimeMillis());
                 } catch (Exception e) {
-                    LogUtil.warn(ServerCapture.class.getName(), "Could not clean up recording tickets: " + e.getMessage());
+                    LogUtil.warn(ServerCapture.class.getName(), "Could not clean up recording tokens: " + e.getMessage());
                 }
             }
         } catch (Exception e) {
