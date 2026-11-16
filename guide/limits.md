@@ -20,10 +20,10 @@
   doesn't stop, the server ends the capture 2 minutes after the limit, at the limit, with reason `time-limit`.
 - **Size:** video is recorded at 1.5 Mbit/s (about 340 MB for 30 minutes). At 90% of **Max file size** the recorder
   stops and saves (reason `size-limit`), so the upload doesn't fail. No size guard when no server answered the start.
-- **Storage per user** (10 GB): an upload, video or ZIP import that would take a non-admin's recordings past it
+- **Storage per user** (10 GB): an upload, video or ZIP import that would take a user's recordings past it
   (every file in their recording folders, server data and exported apps included) gets HTTP 413 and "Delete some
   recordings first".
-- **Recordings in progress** (3) and **started per minute** (10): a non-admin's `recording-start` past either gets
+- **Recordings in progress** (3) and **started per minute** (10): a `recording-start` past either gets
   HTTP 429; the recording still works, without server data. A closed browser's captures stop on their own.
 - **ZIP import:** besides **Max file size** per file, all files together may unpack to at most **Max total size of a
   ZIP import** (3 × Max file size), and the ZIP may hold at most **Max files in a ZIP import** (5000). A ZIP past

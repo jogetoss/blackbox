@@ -1,6 +1,7 @@
 # Security and sensitive data
 
-What BlackBox masks, and who can see what. The settings are in [Settings](settings.md).
+What BlackBox masks, and who can see what. The settings are in [Settings](settings.md). Joget admins have no
+built-in rights here: every row below applies to them too.
 
 ## Who sees what
 
@@ -8,8 +9,9 @@ What BlackBox masks, and who can see what. The settings are in [Settings](settin
 |---|---|
 | Upload, import a ZIP | **Who can upload** (others get **Upload selected** disabled in the extension) |
 | View and delete a recording, with its server data (system logs, traces, server load, Glowroot data, Info, exported apps) | Its uploader |
+| View and delete other users' recordings | **Who can view and delete every recording** (default Is Admin). Their server data only with **Who can capture other users' server data** |
 | Capture all server log lines (popup), keep a ZIP's server data on import | **Who can capture other users' server data**: these can hold other users' data. The list page says when a ZIP's server data was left out |
-| Have an app exported (definition and data) | The app's own admins (on Joget 9, also an app creator for the apps they created), or **Who can export apps they don't administer** for apps Joget lets them access (one of the app's userviews allows them). Other apps are listed as not exported. Data of an app the user doesn't administer only with **Allow apps data from apps they don't administer** |
+| Have an app exported (definition and data) | The app's own admins (on Joget 9, also an app creator for the apps they created) while **Allow app admins to export their own apps** is on, or **Who can export apps they don't administer** for apps Joget lets them access (one of the app's userviews allows them). Other apps are listed as not exported. Data of an app the user doesn't get as its admin only with **Allow apps data from apps they don't administer** |
 | Downloads (ZIP, HTML) | Anyone who can view the recording |
 
 ## Recordings that start logged out
@@ -33,7 +35,7 @@ Limits on the one-time tokens and capture secrets:
   HTTPS when **Allow uploads over HTTP** is off. It is sent in a header, never in a URL.
 - A token works once and only opens a capture. The secret only pings or stops that one capture. Neither can read,
   list, upload or export anything.
-- Non-admins: at most 3 unused tokens each; preparing counts as a start for **Max recordings started per user per
+- Every user, admins too: at most 3 unused tokens each; preparing counts as a start for **Max recordings started per user per
   minute**, and starting with a token counts against **Max recordings in progress per user**.
 - Server capture only records requests from the recording tab (the `X-BlackBox-Id` header), logged in or not. Other
   visitors are never captured.
@@ -41,7 +43,7 @@ Limits on the one-time tokens and capture secrets:
 ## Credentials in recordings
 
 The extension masks credentials as `****` before a recording is saved anywhere (browser storage, files, the upload),
-unless the user may record them unmasked (admins, or **Allow recording browser secrets unmasked**) and ticks
+unless the user may record them unmasked (**Allow recording browser secrets unmasked**) and ticks
 **Record browser secrets unmasked** in the popup (unticked by default). Masked:
 
 - `Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`, `X-API-Key`, `api_key` headers, and any header whose
@@ -74,8 +76,8 @@ JVM arguments, system properties, the datasource file and pool settings are mask
   private keys, Joget-encrypted passwords (`%%%%…%%%%`), AWS, GitHub, Slack, Google and OpenAI-style keys, and
   `name=value` pairs with a secret name inside a longer value (`user=root;pwd=****`).
 
-Nothing is masked when the recording was started with **Record System Info secrets unmasked** in the popup (admins,
-or users that **Allow recording System Info secrets unmasked** allows; unticked by default). The Info tab then shows
+Nothing is masked when the recording was started with **Record System Info secrets unmasked** in the popup (shown
+only when **Allow recording System Info secrets unmasked** is on; unticked by default). The Info tab then shows
 **System Info secrets: unmasked** (a recording made with plugin 8.2.2 or older, which masked nothing there, shows
 **unmasked (older recording)**). The database password is never recorded: the database and pool settings still mask password names (`pwd`,
 `passwd`…) and `user:password@` in the URL. This is separate from **Record browser secrets
@@ -84,7 +86,7 @@ unmasked**, which covers the browser's traffic.
 **License** (Enterprise only): the License section is kept as System Info shows it, except the system key
 (`platform.systemKey`), the license signature (`platform.license.signature`, which is the system key the license was
 issued for) and the MAC address (`platform.net.address`), which are masked unless the recording was started with **Record license secrets unmasked**
-(admins, or users that **Allow recording license secrets unmasked** allows; unticked by default). The Info tab then
+(shown only when **Allow recording license secrets unmasked** is on; unticked by default). The Info tab then
 shows **License secrets: unmasked**. The word list
 above doesn't apply to the license, and the two unmasked options are independent.
 

@@ -9,6 +9,27 @@ oldest first. Upgrade the plugin and the extension together.
 | 8.2.2 | 1.2.0 |
 | 8.2.1 | 1.1.0 |
 
+## 8.2.3 → next release
+
+**Joget admins no longer skip the BlackBox settings.** Until 8.2.3 an admin could always use every option and had
+no per-user limits. Now every setting applies to admins too. After the upgrade, check these, or admins lose what
+they had:
+
+| What admins had | Now |
+|---|---|
+| Every popup option (server load, traces, other users' traces, Glowroot data, app export, apps data, mask, the three unmasked options) | Only when its **Allow…** setting is on. All are off by default |
+| Upload and import a ZIP | **Who can upload** must include them (the default, Logged In User, does) |
+| View and delete every recording | New setting **Who can view and delete every recording**; default Is Admin, so nothing changes until you change it |
+| Server data of every recording, **All server log lines**, a ZIP's server data on import | **Who can capture other users' server data** must include them (the default, Is Admin, does). A value saved without admins now shuts them out |
+| Every app exported, with data | A Joget admin is no longer an admin of every app. They get an app only as one of its own admins (`ROLE_ADMIN`, `ROLE_ADMIN_GROUP`), or through **Who can export apps they don't administer** and **Allow apps data from apps they don't administer** |
+| No limits | **Storage per user**, **Max recordings in progress per user**, **Max recordings started per user per minute** and the 3 unused before-login tokens apply. An admin already over the storage limit can't upload until they delete recordings or the limit is raised |
+
+**New setting: Allow app admins to export their own apps** (on by default, as before). Off: an app's own admins get
+no app for being its admin.
+
+Is Admin is an Enterprise permission plugin. Where it is missing (Community), the two settings that default to it
+still mean Joget admins.
+
 ## 8.2.2 → 8.2.3
 
 **Plugin 8.2.3 needs Java 11 or later**, as Joget 8.2 does. On a Joget server still running on Java 8, the plugin no

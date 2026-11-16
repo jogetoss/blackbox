@@ -32,7 +32,7 @@ Who may upload, capture server data or export apps: [Settings](guide/settings.md
 
 ## Use
 
-- **Recordings list:** `<context>/blackbox/`: your own recordings (admins: all). Tick rows to **Download ZIP** or
+- **Recordings list:** `<context>/blackbox/`: your own recordings (all of them for users in **Who can view and delete every recording**, by default admins). Tick rows to **Download ZIP** or
   **Delete selected**. **Import ZIP…** adds a ZIP as a new recording owned by you.
 - **Replay page:** `<context>/blackbox/view?id=<id>`. **Features** in its header lists what it can do.
 - **Uploading:** uploads use your Joget login in that browser; when you are logged in, a stopped recording uploads and

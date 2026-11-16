@@ -94,20 +94,22 @@ Plugin and extension 8.2.1 call the capture summary `systemLog`. The plugin neve
 
 ## Permissions
 
-`BlackBoxPlugin.Access` decides, per request; Joget admins may always do everything. The settings are listed in
+`BlackBoxPlugin.Access` decides, per request. Joget admins have no built-in rights: every check reads a setting. The
+admin role only counts where a permission setting is empty and its default is Is Admin, and where the Is Admin
+plugin (Enterprise) is missing. The settings are listed in
 [Who sees what](guide/security.md#who-sees-what).
 
 | Right | Who |
 |---|---|
 | Upload (`canUpload`): `create`, `video`, `import` | **Who can upload** (default Logged In User; empty = any logged-in user). Only uploads from the browser; the capture and the quick settings don't use it |
-| View and delete (`canView`, `canDelete`) | The recording's uploader (`meta.owner`) |
-| Server data of a recording (`canViewServerData(meta)`) | **Who can capture other users' server data**, or the uploader, so every viewer |
+| View and delete (`canView`, `canDelete`) | The recording's uploader (`meta.owner`), or **Who can view and delete every recording** (`canManageRecordings`, default Is Admin; empty = admins) |
+| Server data of a recording (`canViewServerData(meta)`) | **Who can capture other users' server data** (default Is Admin; empty = admins), or the uploader. A user who sees every recording but is not in that setting gets other users' recordings without server data |
 | Server data in general (`canCaptureServerData()`, no uploader rule) | **Who can capture other users' server data**: keeping a ZIP's server data on import, capturing all other server log lines |
-| Have an app exported (`canExportApp`) | The app's own admins, or **Who can export apps they don't administer** for apps Joget lets them access (see "App export") |
-| Apps data of an exported app (`isAppAdmin` or `allowOtherAppsData`) | The app's own admins; others only with **Allow apps data from apps they don't administer**. Otherwise the `.jwa` has no rows or process data and `apps[].sample.skipped` says why |
-| Record credentials unmasked (`me.options.credentials`) | Admins, or **Allow recording browser secrets unmasked**; enforced in the extension only (`mask.js`) |
-| Record System Info secrets unmasked (`me.options.systemSecrets`) | Admins, or **Allow recording System Info secrets unmasked**; enforced on the server at `recording-start` (`systemSecrets=true`, `Secrets.none()`) |
-| Record license secrets unmasked (`me.options.license`) | Admins, or **Allow recording license secrets unmasked**; enforced on the server at `recording-start` (`license=true`, `ServerInfo.LICENSE_SECRETS`) |
+| Have an app exported (`canExportApp`) | The app's own admins while **Allow app admins to export their own apps** (`allowAppAdminExport`, default on) is on (`exportsOwnApp`), or **Who can export apps they don't administer** for apps Joget lets them access (see "App export") |
+| Apps data of an exported app (`exportsOwnApp` or `allowOtherAppsData`) | The app's own admins with **Allow app admins to export their own apps**; others only with **Allow apps data from apps they don't administer**. Otherwise the `.jwa` has no rows or process data and `apps[].sample.skipped` says why |
+| Record credentials unmasked (`me.options.credentials`) | **Allow recording browser secrets unmasked**; enforced in the extension only (`mask.js`) |
+| Record System Info secrets unmasked (`me.options.systemSecrets`) | **Allow recording System Info secrets unmasked**; enforced on the server at `recording-start` (`systemSecrets=true`, `Secrets.none()`) |
+| Record license secrets unmasked (`me.options.license`) | **Allow recording license secrets unmasked**; enforced on the server at `recording-start` (`license=true`, `ServerInfo.LICENSE_SECRETS`) |
 
 - Server data in `meta.json` (`serverCapture`, `serverData`, `apps`) is removed by `hideServerData` for users without
   `canViewServerData(meta)`, in `list`, `meta` and `download&format=html` (whose page carries the meta as JSON). The ZIP keeps only a
@@ -121,7 +123,7 @@ Plugin and extension 8.2.1 call the capture summary `systemLog`. The plugin neve
 **Extension POSTs** skip the CSRF token only when `fromAllowedExtension`: the `Origin` is `chrome-extension://<id>`
 with the id in `allowedExtensionIds` (never saved: `OFFICIAL_EXTENSION_ID`, fixed by the manifest's `key`; empty: any).
 
-**Limits** (non-admins; 0 = no limit): `overQuota` (`userQuotaMb`, `RecordingStore.usedBytes` + the upload's
+**Limits** (every user, admins too; 0 = no limit): `overQuota` (`userQuotaMb`, `RecordingStore.usedBytes` + the upload's
 Content-Length, 413) on create, video and import; `recording-start` checks `StartLimiter` (`captureStartsPerMinute`,
 in memory per node, 429) and `ServerCaptureStore.openCount` (`maxOpenCaptures`, 429). `RecordingZip.importZip` reads
 through `BudgetZip`, whose entry streams share one budget of uncompressed bytes (`importMaxTotalMb`, empty = 3 ×
@@ -189,8 +191,8 @@ Info and the app export at stop (their own sections).
 
 1. When recording starts, the extension calls `recording-start` with a random UUID (lower case). Every recording gets
    a capture: the tab's log lines and requests and the System Info snapshot; traces (`allowCaptureTraces`), server load
-   (`allowCaptureGauges`) and Glowroot data (`allowCaptureGlowrootData`) for admins always, for others by their own
-   settings, all off by default (unset = off); other threads' lines when the recorder asks (see "All server"). The quick settings can turn off `traces`,
+   (`allowCaptureGauges`) and Glowroot data (`allowCaptureGlowrootData`) by their own
+   settings (admins too), all off by default (unset = off); other threads' lines when the recorder asks (see "All server"). The quick settings can turn off `traces`,
    `gauges` and `glowrootData`. It answers 409 when the id belongs to another user's capture (the same user may start it again). The
    extension then adds `X-BlackBox-Id: <id>` to the recorded tab's requests to the Upload URL's server
    (`declarativeNetRequest` session rule). Requests made by a service worker carry no tab id, and Joget's PWA service
@@ -221,16 +223,15 @@ Not captured: work a request hands to another thread, and log lines that never r
 For recordings that start logged out (design: `docs/design/anonymous-server-capture.md`). Setting
 `allowArmedRecordings` (off by default).
 
-1. `recording-arm` (logged in, `canUpload`): non-admins pass `StartLimiter` and have at most `OneTimeTokens.MAX_PER_USER`
-   (3) unexpired one-time tokens. `captureOptions` resolves the start parameters against the user's rights now (plus
-   `admin`) and `OneTimeTokens.arm` stores them with the owner under the token's SHA-256 hash, valid for the setting `armTokenMinutes` (**Before-login recordings expire after (minutes)**,
+1. `recording-arm` (logged in, `canUpload`): users pass `StartLimiter` and have at most `OneTimeTokens.MAX_PER_USER`
+   (3) unexpired one-time tokens. `captureOptions` resolves the start parameters against the user's rights now and `OneTimeTokens.arm` stores them with the owner under the token's SHA-256 hash, valid for the setting `armTokenMinutes` (**Before-login recordings expire after (minutes)**,
    `OneTimeTokens.ttlMs`: 1 to 60 minutes, a value outside goes to the nearest bound, 15 when empty or not a number). The
    expiry is saved in the token, so a later change of the setting doesn't move it.
    The token is 32 random bytes, base64url (43 characters).
 2. `recording-start` with `Authorization: BlackBox-Token <token>`: `handle()` takes this path before the login
    check, whatever the session. It needs `fromAllowedExtension` (403 otherwise) and the HTTPS rule. The setting must
    still be on. `OneTimeTokens.use` reads and deletes the file (only one `Files.delete` succeeds, so concurrent uses get
-   one capture); expired or unknown: 401. Non-admin owners pass `maxOpenCaptures`. `openCapture` then starts the
+   one capture); expired or unknown: 401. Owners pass `maxOpenCaptures`. `openCapture` then starts the
    capture as the owner with the stored options, saves `secretHash` (SHA-256 of a new random `captureSecret`) and
    `armed: true` in the pending meta, and answers `captureSecret` with the usual start answer.
 3. `recording-ping` and `recording-stop` with `X-BlackBox-Capture-Secret`: same Origin and HTTPS checks, then
@@ -575,7 +576,7 @@ secret-named `name=value` pairs) are masked inside any value. Setting words are 
 can make matching slow. A `!word` line is an exception for one whole name
 (`*` at an end leaves it open); the default list ends with `!wflow.systemkey` (Enterprise's system key generator), and a
 saved list equal to `Secrets.OLD_DEFAULT_NAMES` (the default before that line) counts as the default. A recording
-started with `systemSecrets=true` by a user `allowUnmaskedSystemInfo` allows (admins always) uses `Secrets.none()`:
+started with `systemSecrets=true` when `allowUnmaskedSystemInfo` is on uses `Secrets.none()`:
 nothing is masked by name or shape, except in the database and pool sections, which then use `Secrets.passwords()`
 (password-like names and shapes such as `user:password@` in the URL), so the database password stays out.
 
@@ -632,12 +633,12 @@ and `licenseMasked`; when either is `false`, the viewer's Info tab says so in th
    now is asked again next time), and the page stops asking after 30 min.
 
 `me.options` (`quickSettings`) says what this user may get, for the popup and the upload form alike:
-`serverCapture` (always true), `apps` (**Allow exporting the apps used…** + `Access.mayExportApps`: admin, an app admin
-of some app, or **Who can export apps they don't administer**), `sample` (Capture apps data: `apps` + **Allow capturing apps data**), `mask`
+`serverCapture` (always true), `apps` (**Allow exporting the apps used…** + `Access.mayExportApps`: an app admin
+of some app with **Allow app admins to export their own apps** on, or **Who can export apps they don't administer**), `sample` (Capture apps data: `apps` + **Allow capturing apps data**), `mask`
 (Mask data: `sample` + **Allow masking apps data**), `allServer` (`canCaptureServerData()`), `gauges` (`allowCaptureGauges`), `traces`
 (`allowCaptureTraces`), `otherTraces` (`traces` + `allowCaptureOtherUsersTraces`) and `glowrootData`
 (`allowCaptureGlowrootData`); for these and the app export, apps data and
-mask settings `Access.allows`: admins always, others when the setting is ticked (the export at stop and at upload checks the same). None needs the upload right. `recording-start`
+mask settings `Access.allows`: the setting is ticked, for admins too (the export at stop and at upload checks the same). None needs the upload right. `recording-start`
 takes `gauges=false`, `traces=false` and `glowrootData=false` (each turns its setting off), `allServer=true` and
 `otherTraces=true` (opt-in;
 every box in `quick.js` starts unticked).
@@ -660,14 +661,14 @@ matching `<id>-<n>.jwa`.
 upload; a refused app throws `AppExport.Denied`, is listed as `denied` and doesn't use up `maxApps`; its sample rows
 are never read):
 
-- Joget admins;
-- the app's own admins, read as Joget 8.2's App Composer does (`EnhancedWorkflowUserManager.checkCustomAppAdmin`):
+- the app's own admins while **Allow app admins to export their own apps** (`allowAppAdminExport`, default on) is
+  on (`Access.exportsOwnApp`); a Joget admin is not an app's admin unless the app lists them. Read as Joget 8.2's App Composer does (`EnhancedWorkflowUserManager.checkCustomAppAdmin`):
   `ROLE_ADMIN` (usernames) and `ROLE_ADMIN_GROUP` (group ids, the user's groups from `directoryManager`) in
   `app_src/<appId>/app.properties`, split on `;` or `,` (`AppAdmins`; read directly, since
   `AppDevUtil.getAppDevProperties` creates the folder when missing);
 - on Joget 9.x, an app creator (`ROLE_APP_CREATOR`) for the apps they created (`AppDefinition.getCreatedBy()`), as
   9.x's `AppUtil.isAppEditableByCurrentUser` counts them as the app's designer. `mayExportApps` is true for any app
-  creator; the per-app check decides;
+  creator while that setting is on; the per-app check decides;
 - users allowed by **Who can export apps they don't administer** (`canExportOtherApps`, empty = nobody), only for apps
   Joget lets them access: one of the app's userviews authorizes them by Joget's own check
   (`UserviewService.getUserviewSetting(...).isIsAuthorize()`: `permission` and `permission_rules`). An app with no
@@ -681,7 +682,7 @@ App filter and the App tab's problem lists, so the lane works for local recordin
 ### Apps data (`SampleData`)
 
 `recording-stop` and `create` take `sampleData=none|masked|real` (missing: real; none without **Allow capturing apps
-data**, admins excepted). `masked` also gives every record a new id (`IdMap(keep=false)`); `real` keeps the ids. `AppExport.save` calls an `AfterExport` hook per saved `.jwa`: `SampleData.build` with one
+data**). `masked` also gives every record a new id (`IdMap(keep=false)`); `real` keeps the ids. `AppExport.save` calls an `AfterExport` hook per saved `.jwa`: `SampleData.build` with one
 `Masker` (random HMAC key per export, so fakes are stable within a recording and differ between them) and one `IdMap` for all apps of
 the recording, then `SampleData.addTo` rewrites the `.jwa` with `data/<table>.json` (the format `AppService.importFormData`
 reads; dates as `yyyy-MM-dd HH:mm:ss` in the server's time zone, the pattern `FormUtil.jsonToFormRowSet` parses) and `app_formuploads/<table>/<newId>/<file>`. Data comes from
