@@ -12,7 +12,7 @@ is saved until **Submit**.
 | Setting | Default | Notes |
 |---|---|---|
 | Who can upload | Logged In User (any logged-in user; empty = the same) | Uploads from the browser only: upload, import a ZIP. Uploaders view and delete their own recordings |
-| Who can view and delete every recording | Is Admin (admins only; empty = the same) | Every user's recording on the recordings page: view, download, delete. Server data of other users' recordings shows only with **Who can capture other users' server data** |
+| Who can view and delete every recording | Is Admin (admins only). Empty = nobody | Every user's recording on the recordings page: view, download, delete. Server data of other users' recordings shows only with **Who can capture and see other users' server data** |
 | Max file size (MB) | 500 | Video and session.json each |
 | Max recording length (minutes) | 30 | 5–120; see [Limits](limits.md#limits) |
 | Storage per user (MB) | 10240 | Every user, admins too. 0 = no limit; see [Limits](limits.md#limits) |
@@ -36,13 +36,13 @@ below add the other parts.
 
 | Setting | Default | Notes | Popup checkbox |
 |---|---|---|---|
-| Who can capture other users' server data | Is Admin (admins only; empty = the same) | Who may tick **All server log lines** and keep a ZIP's server data on import | |
+| Who can capture and see other users' server data | Is Admin (admins only). Empty = nobody | Who may see the server data of other users' recordings, tick **All server log lines** and keep a ZIP's server data on import | |
 | Max size of system logs per node per recording (MB) | 20 | Later lines are dropped and the viewer says so | |
 | Delete server data not uploaded after (days) | 7 | | |
-| Allow capturing server load | No | | **Capture server load** |
-| Allow capturing Glowroot traces of slow and failed requests | No | | **Capture Glowroot trace files** |
+| Allow capturing server load | Yes | | **Capture server load** |
+| Allow capturing Glowroot traces of slow and failed requests | Yes | | **Capture Glowroot trace files** |
 | Allow capturing other users' traces | No | Needs the setting above. Other users' SQL with values and URLs | **Include other users' traces** |
-| Allow capturing Glowroot data | No | Needs Glowroot 0.14.2 to 0.14.6 | **Capture Glowroot data** |
+| Allow capturing Glowroot data | Yes | Needs Glowroot 0.14.2 to 0.14.6 | **Capture Glowroot data** |
 | Glowroot address | empty | Empty = this Joget's own agent (usually `http://localhost:4000`) | |
 | Secret names to mask in System Info | the default list in [Sensitive data](security.md#sensitive-data-in-system-info) | One per line; `pass*` = starts with, `*key` = ends with. Empty = the default list; see [Sensitive data](security.md#sensitive-data-in-system-info) | |
 
@@ -51,13 +51,13 @@ below add the other parts.
 | Setting | Default | Notes | Popup checkbox |
 |---|---|---|---|
 | Recent changes period (days) | 7 | Info tab: changed app versions and wflow files; at most 365 | |
-| Allow exporting the apps used in the recording | No | | **Export the apps used** |
+| Allow exporting the apps used in the recording | Yes | | **Export the apps used** |
 | Max apps to export | 3 | 0 = no limit (0–9999; anything else means 3); apps not allowed don't count | |
 | Allow app admins to export their own apps | Yes | An app's own admins (`ROLE_ADMIN`, `ROLE_ADMIN_GROUP` in its `app.properties`; on Joget 9 also its app creator) get that app, with its data. Off: only the two settings below decide. A Joget admin is not an app's admin unless the app lists them | |
-| Who can export apps they don't administer | nobody | Only apps Joget lets them access. Joget admins need it too | |
+| Who can export apps they don't administer | Is Admin (admins only). Empty = nobody | Only apps Joget lets them access | |
 | Allow apps data from apps they don't administer | No | Off: such an app is exported without its rows and process data (the Apps tab says why) | |
-| Allow capturing apps data | No | Needs **Allow exporting the apps used…**; see [Apps data](apps.md#apps-data) | **Capture apps data** |
-| Allow masking apps data | No | Shown when apps data is allowed | **Mask data** |
+| Allow capturing apps data | Yes | Shown on the settings page only when **Allow apps data from apps they don't administer** is ticked; hidden, it keeps its value, which still applies to app admins' own apps. Needs **Allow exporting the apps used…**; see [Apps data](apps.md#apps-data) | **Capture apps data** |
+| Allow masking apps data | Yes | Shown when apps data is allowed | **Mask data** |
 | Newest rows per table when the recording touched none | 20 | Shown when apps data is allowed. At most 500 | |
 | Always-masked column names | password, ic, email, phone, address… | Shown when apps data is allowed. One word per line; a column whose name has one as a word is always masked. Empty = the default list | |
 
@@ -72,7 +72,7 @@ automatic uploads use them too. The server checks every choice again.
 | **Export the apps used** | **Allow exporting the apps used in the recording** is on and the user may have some app exported (an app admin with **Allow app admins to export their own apps** on, or in **Who can export apps they don't administer**) |
 | **Capture apps data** | **Export the apps used** is shown, and **Allow capturing apps data** is on |
 | **Mask data** | **Capture apps data** is shown, and **Allow masking apps data** is on |
-| **All server log lines** | The user is in **Who can capture other users' server data** |
+| **All server log lines** | The user is in **Who can capture and see other users' server data** |
 | **Capture server load** | **Allow capturing server load** is on |
 | **Capture Glowroot trace files** | **Allow capturing Glowroot traces of slow and failed requests** is on |
 | **Include other users' traces** | **Allow capturing other users' traces** is on too. Needs **Capture Glowroot trace files** ticked. With virtual hosts on, only when the server is started with `-Dblackbox.sharedGlowroot=true` |

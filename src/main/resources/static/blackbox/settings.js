@@ -42,7 +42,8 @@
                         changed = true;
                         return;
                     }
-                    var emptyPicker = p.type === 'elementselect' && v && typeof v === 'object' && !v.className;
+                    // only Who can upload: empty means its default. The other pickers: empty = nobody, so it stays empty
+                    var emptyPicker = p.name === 'canUpload' && p.type === 'elementselect' && v && typeof v === 'object' && !v.className;
                     if (v === undefined || emptyPicker) {
                         values[p.name] = p.value;
                         changed = true;

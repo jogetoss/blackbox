@@ -28,8 +28,8 @@
         },
         {
             "name" : "canCaptureServerData",
-            "label" : "Who can capture other users' server data",
-            "description" : "Default: Is Admin (admins only; empty means the same). Who may tick \"All server log lines\" in the extension's popup (every log line the server writes during the recording, also from other users' requests; with virtual hosts, only requests to the recording's own profile, no background jobs) and keep a ZIP's server data on import (a ZIP can hold another user's recording). Everyone's own recordings always get, and show, their own server data.",
+            "label" : "Who can capture and see other users' server data",
+            "description" : "Default: Is Admin (admins only). Empty = nobody. Who may see the server data of other users' recordings, tick \"All server log lines\" in the extension's popup (every log line the server writes during the recording, also from other users' requests; with virtual hosts, only requests to the recording's own profile, no background jobs) and keep a ZIP's server data on import (a ZIP can hold another user's recording). Everyone's own recordings always get, and show, their own server data.",
             "type" : "elementselect",
             "value" : {"className" : "org.joget.plugin.enterprise.AdminUserviewPermission", "properties" : {}},
             "options_ajax" : "[CONTEXT_PATH]/web/property/json/getElements?classname=org.joget.apps.form.model.FormPermission",
@@ -38,7 +38,7 @@
         {
             "name" : "canManageRecordings",
             "label" : "Who can view and delete every recording",
-            "description" : "Default: Is Admin (admins only; empty means the same). They see every user's recording on the recordings page and can download and delete it. A recording's server data shows only to its uploader and to users in \"Who can capture other users' server data\".",
+            "description" : "Default: Is Admin (admins only). Empty = nobody. They see every user's recording on the recordings page and can download and delete it. A recording's server data shows only to its uploader and to users in \"Who can capture and see other users' server data\".",
             "type" : "elementselect",
             "value" : {"className" : "org.joget.plugin.enterprise.AdminUserviewPermission", "properties" : {}},
             "options_ajax" : "[CONTEXT_PATH]/web/property/json/getElements?classname=org.joget.apps.form.model.FormPermission",
@@ -120,7 +120,7 @@
             "label" : "Allow capturing server load",
             "description" : "Applies to admins too. Samples each node the recording reaches every second: heap, GC time, CPU, busy request threads and database connections, shown as the Server load strip. No Glowroot needed. Each recording gets it only when \"Capture server load\" is ticked in the extension's popup (unticked by default).",
             "type" : "checkbox",
-            "value" : "",
+            "value" : "true",
             "options" : [{"value" : "true", "label" : ""}]
         },
         {
@@ -128,7 +128,7 @@
             "label" : "Allow capturing Glowroot traces of slow and failed requests",
             "description" : "Applies to admins too. Copies Glowroot's trace of each recorded request Glowroot kept. Needs Glowroot on each node (see \"Glowroot address\"). Glowroot's own settings decide which requests have a trace (slow or failed); BlackBox doesn't change them. Each recording gets it only when \"Capture Glowroot trace files\" is ticked in the extension's popup (unticked by default).",
             "type" : "checkbox",
-            "value" : "",
+            "value" : "true",
             "options" : [{"value" : "true", "label" : ""}]
         },
         {
@@ -146,7 +146,7 @@
             "label" : "Allow capturing Glowroot data",
             "description" : "Applies to admins too. Needs Glowroot 0.14 on each node. 30 to 90 seconds after a recording stops, each node it reached cuts the recording out of its Glowroot data, in Glowroot's own format: the traces of the recorded requests, plus the aggregates and gauges of all traffic during the recording. Download it on the replay page and open it in a standalone Glowroot. Each build needs free disk space in Joget's temp folder of about the size of Glowroot's data.h2.db (it is skipped, with the reason, when there is not enough). Each recording gets it only when \"Capture Glowroot data\" is ticked in the extension's popup (unticked by default). With virtual hosts on, it needs the server started with -Dblackbox.sharedGlowroot=true (in its start command; setting it at run time is ignored): Glowroot holds every profile's requests.",
             "type" : "checkbox",
-            "value" : "",
+            "value" : "true",
             "options" : [{"value" : "true", "label" : ""}]
         },
         {
@@ -248,7 +248,7 @@
             "label" : "Allow exporting the apps used in the recording",
             "description" : "Applies to admins too. When the recording stops (or at upload, when there was no capture or that export failed), the apps found in the recorded tab's URLs (apps with problems first, then the most used; App Center only when it had problems or was the only app) are exported with Joget's own app export (.jwa, without form data, plugins or groups) and kept with the recording. Whose apps: see \"Who can export apps they don't administer\". Each recording gets it only when \"Export the apps used\" is ticked in the extension's popup (unticked by default). App definitions can hold plugin settings and environment variables.",
             "type" : "checkbox",
-            "value" : "",
+            "value" : "true",
             "options" : [{"value" : "true", "label" : ""}]
         },
         {
@@ -261,8 +261,9 @@
         {
             "name" : "canExportOtherApps",
             "label" : "Who can export apps they don't administer",
-            "description" : "Empty = nobody. Users chosen here (Joget admins too: they are not an admin of every app here) get only the apps Joget lets them access (one of the app's userviews allows them); other apps are listed as not exported.",
+            "description" : "Default: Is Admin (admins only). Empty = nobody. Users chosen here get only the apps Joget lets them access (one of the app's userviews allows them); other apps are listed as not exported.",
             "type" : "elementselect",
+            "value" : {"className" : "org.joget.plugin.enterprise.AdminUserviewPermission", "properties" : {}},
             "options_ajax" : "[CONTEXT_PATH]/web/property/json/getElements?classname=org.joget.apps.form.model.FormPermission",
             "url" : "[CONTEXT_PATH]/web/property/json[APP_PATH]/getPropertyOptions"
         },
@@ -291,9 +292,12 @@
         {
             "name" : "allowCaptureAppsData",
             "label" : "Allow capturing apps data",
-            "description" : "Applies to admins too. Rows added to each exported .jwa like Joget's own export with data, so importing it imports them: the records the recording opened or saved, rows linked to them, and the newest rows of tables with none; plus the processes the recording touched (read only). Real values and original record ids, except always-masked columns; uploaded files up to 5 MB each, 50 MB per app (larger ones become placeholders). Each recording gets it only when \"Capture apps data\" is ticked in the extension's popup (unticked by default).",
+            "description" : "Applies to admins too. Rows added to each exported .jwa like Joget's own export with data, so importing it imports them: the records the recording opened or saved, rows linked to them, and the newest rows of tables with none; plus the processes the recording touched (read only). Real values and original record ids, except always-masked columns; uploaded files up to 5 MB each, 50 MB per app (larger ones become placeholders). Each recording gets it only when \"Capture apps data\" is ticked in the extension's popup (unticked by default). Shown here only when \"Allow apps data from apps they don't administer\" is ticked; hidden, it keeps its value, which still applies to app admins' own apps.",
+            "control_field" : "allowOtherAppsData",
+            "control_value" : "true",
+            "control_use_regex" : "false",
             "type" : "checkbox",
-            "value" : "",
+            "value" : "true",
             "options" : [{"value" : "true", "label" : ""}]
         },
         {
@@ -304,7 +308,7 @@
             "control_value" : "true",
             "control_use_regex" : "false",
             "type" : "checkbox",
-            "value" : "",
+            "value" : "true",
             "options" : [{"value" : "true", "label" : ""}]
         },
         {

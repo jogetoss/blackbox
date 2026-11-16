@@ -339,7 +339,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             }
         } else if ("exporting".equals(done)) {
             deliverStopExport(captureId);
-        } else if (!"off".equals(done) && access.allows("allowAppExport", false) && !"false".equals(request.getParameter("apps"))) {
+        } else if (!"off".equals(done) && access.allows("allowAppExport", true) && !"false".equals(request.getParameter("apps"))) {
             java.util.concurrent.Callable<JSONArray> job = exportJob(store.dir(recId), store.file(recId, RecordingStore.SESSION),
                     store.file(recId, RecordingStore.SYSTEM_LOG), sampleMode(request, access), recId, access);
             meta.put("appExport", ExportJobs.exporting());
@@ -359,7 +359,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
     private SampleData.Mode sampleMode(HttpServletRequest request, Access access) {
         String asked = request.getParameter("sampleData");
-        if (!access.allows("allowCaptureAppsData", false) || "none".equals(asked)) {
+        if (!access.allows("allowCaptureAppsData", true) || "none".equals(asked)) {
             return null;
         }
         return "masked".equals(asked) ? SampleData.Mode.MASKED : SampleData.Mode.REAL;
@@ -972,7 +972,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         if (pending.has("appExport") || pending.has("recording")) {
             return pending.optJSONObject("appExport") != null ? pending.getJSONObject("appExport") : new JSONObject().put("state", "off");
         }
-        boolean off = !access.allows("allowAppExport", false) || "false".equals(request.getParameter("apps"));
+        boolean off = !access.allows("allowAppExport", true) || "false".equals(request.getParameter("apps"));
         Path dir = logs.dir(id);
         Path session = dir.resolve("stop-session.json");
         Path systemLog = dir.resolve("stop-system-log.json");
@@ -1220,13 +1220,13 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     }
 
     private JSONObject quickSettings(Access access, User user) throws JSONException {
-        boolean apps = access.allows("allowAppExport", false) && access.mayExportApps();
-        boolean sample = apps && access.allows("allowCaptureAppsData", false);
+        boolean apps = access.allows("allowAppExport", true) && access.mayExportApps();
+        boolean sample = apps && access.allows("allowCaptureAppsData", true);
         return new JSONObject()
                 .put("serverCapture", true)
                 .put("apps", apps)
                 .put("sample", sample)
-                .put("mask", sample && access.allows("allowMaskData", false))
+                .put("mask", sample && access.allows("allowMaskData", true))
                 .put("allServer", access.canCaptureServerData())
                 .put("gauges", access.mayCapture("allowCaptureGauges"))
                 .put("traces", access.mayCapture("allowCaptureTraces"))
@@ -1501,8 +1501,9 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             this.admin = admin;
         }
 
+        // server load, traces and Glowroot data are on unless unticked; other users' traces are off unless ticked
         boolean mayCapture(String setting) {
-            return allows(setting, false);
+            return allows(setting, !OTHER_TRACES.equals(setting));
         }
 
         boolean allows(String setting, boolean dflt) {
@@ -1519,20 +1520,20 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
         private Boolean managesRecordings;
 
-        // empty = Is Admin, the default
+        // never saved = Is Admin (the default); saved empty = nobody
         private boolean managesRecordings() {
             if (managesRecordings == null) {
-                managesRecordings = allowed(MANAGE_RECORDINGS, admin);
+                managesRecordings = allowed(MANAGE_RECORDINGS, admin, false);
             }
             return managesRecordings;
         }
 
         private Boolean capturesServerData;
 
-        // empty = Is Admin, the default
+        // never saved = Is Admin (the default); saved empty = nobody
         boolean canCaptureServerData() {
             if (capturesServerData == null) {
-                capturesServerData = allowed("canCaptureServerData", admin);
+                capturesServerData = allowed("canCaptureServerData", admin, false);
             }
             return capturesServerData;
         }
@@ -1546,7 +1547,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
 
         boolean canExportApp(AppDefinition def) {
-            return exportsOwnApp(def) || (allowed("canExportOtherApps", false) && canAccessApp(def));
+            return exportsOwnApp(def) || (exportsOtherApps() && canAccessApp(def));
         }
 
         // an app's own admin, when the setting lets app admins export their apps (with data)
@@ -1562,8 +1563,18 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
 
         boolean mayExportApps() {
-            return allowed("canExportOtherApps", false) || (flag(APP_ADMIN_EXPORT, true)
+            return exportsOtherApps() || (flag(APP_ADMIN_EXPORT, true)
                     && (appCreator() || AppAdmins.anyAdmits(appSrc(), user.getUsername(), groupIds())));
+        }
+
+        private Boolean exportsOtherApps;
+
+        // never saved = Is Admin (the default); saved empty = nobody
+        private boolean exportsOtherApps() {
+            if (exportsOtherApps == null) {
+                exportsOtherApps = allowed("canExportOtherApps", admin, false);
+            }
+            return exportsOtherApps;
         }
 
         private Boolean appCreator;
@@ -1618,14 +1629,19 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
 
         private boolean allowed(String property, boolean whenNotSet) {
+            return allowed(property, whenNotSet, whenNotSet);
+        }
+
+        // neverSaved: no value yet (a setting added by an upgrade); emptied: saved with no permission chosen
+        private boolean allowed(String property, boolean neverSaved, boolean emptied) {
             Object value = getProperty(property);
             if (!(value instanceof Map)) {
-                return whenNotSet;
+                return value == null ? neverSaved : emptied;
             }
             Map setting = (Map) value;
             Object className = setting.get("className");
             if (className == null || className.toString().trim().isEmpty()) {
-                return whenNotSet;
+                return emptied;
             }
             PluginManager pm = (PluginManager) AppUtil.getApplicationContext().getBean("pluginManager");
             Object plugin = pm.getPlugin(className.toString());

@@ -12,22 +12,36 @@ oldest first. Upgrade the plugin and the extension together.
 ## 8.2.3 → next release
 
 **Joget admins no longer skip the BlackBox settings.** Until 8.2.3 an admin could always use every option and had
-no per-user limits. Now every setting applies to admins too. After the upgrade, check these, or admins lose what
-they had:
+no per-user limits. Now every setting applies to admins too. Check these after the upgrade:
 
 | What admins had | Now |
 |---|---|
-| Every popup option (server load, traces, other users' traces, Glowroot data, app export, apps data, mask, the three unmasked options) | Only when its **Allow…** setting is on. All are off by default |
-| Upload and import a ZIP | **Who can upload** must include them (the default, Logged In User, does) |
-| View and delete every recording | New setting **Who can view and delete every recording**; default Is Admin, so nothing changes until you change it |
-| Server data of every recording, **All server log lines**, a ZIP's server data on import | **Who can capture other users' server data** must include them (the default, Is Admin, does). A value saved without admins now shuts them out |
-| Every app exported, with data | A Joget admin is no longer an admin of every app. They get an app only as one of its own admins (`ROLE_ADMIN`, `ROLE_ADMIN_GROUP`), or through **Who can export apps they don't administer** and **Allow apps data from apps they don't administer** |
+| Every popup option | Only when its **Allow…** setting is on. A setting saved unticked in 8.2.3 stays off, for admins too: tick it |
+| Upload and import a ZIP | **Who can upload** must include them (the default, Logged In User, does; a group or user list without admins shuts them out) |
+| View and delete every recording | New setting **Who can view and delete every recording**, default Is Admin |
+| Server data of every recording, **All server log lines**, a ZIP's server data on import | **Who can capture and see other users' server data** (renamed from Who can capture other users' server data; same key) must include them. The default, Is Admin, does |
+| Every app exported, with data | A Joget admin is no longer an admin of every app. They get an app as one of its own admins (`ROLE_ADMIN`, `ROLE_ADMIN_GROUP`), or through **Who can export apps they don't administer** (default now Is Admin) for apps Joget lets them access, with data only when **Allow apps data from apps they don't administer** is on |
 | No limits | **Storage per user**, **Max recordings in progress per user**, **Max recordings started per user per minute** and the 3 unused before-login tokens apply. An admin already over the storage limit can't upload until they delete recordings or the limit is raised |
+
+**An empty permission picker now means nobody** for **Who can view and delete every recording**, **Who can capture and
+see other users' server data** and **Who can export apps they don't administer**. In 8.2.3 an empty **Who can capture
+other users' server data** meant admins. **Who can export apps they don't administer** saved empty in 8.2.3 stays
+nobody, so admins get no apps until you pick Is Admin there. The settings page no longer refills these pickers with
+their default. **Who can upload** is unchanged: empty = any logged-in user.
+
+**New defaults for installs that never saved the settings** (saved values are kept): **Allow capturing server load**,
+**Allow capturing Glowroot traces…**, **Allow capturing Glowroot data**, **Allow exporting the apps used in the
+recording**, **Allow capturing apps data** and **Allow masking apps data** are now on, for every user. Still off:
+**Allow capturing other users' traces**, the three **Allow recording … unmasked** settings and **Allow apps data from
+apps they don't administer**. The popup's boxes still start unticked.
 
 **New setting: Allow app admins to export their own apps** (on by default, as before). Off: an app's own admins get
 no app for being its admin.
 
-Is Admin is an Enterprise permission plugin. Where it is missing (Community), the two settings that default to it
+**Allow capturing apps data** and the fields under it show on the settings page only when **Allow apps data from apps
+they don't administer** is ticked. Hidden, they keep their values, which still apply to app admins' own apps.
+
+Is Admin is an Enterprise permission plugin. Where it is missing (Community), the settings that default to it
 still mean Joget admins.
 
 ## 8.2.2 → 8.2.3
@@ -83,7 +97,7 @@ first, as a restricted install opens up otherwise:
 | Who can delete any recording (`deletePermission`) | removed: admins delete any recording, others their own | |
 | Uploaders can view and delete their own recordings (`ownerAccess`) | removed: always on | |
 | Capture system logs during recordings (`captureSystemLogs`) | removed: every recording is captured | |
-| Who can view system logs (`systemLogPermission`) | Who can capture other users' server data (`canCaptureServerData`): **All server log lines** and keeping a ZIP's server data on import | admins only |
+| Who can view system logs (`systemLogPermission`) | Who can capture and see other users' server data (`canCaptureServerData`): **All server log lines** and keeping a ZIP's server data on import | admins only |
 | Uploaders can view the server data of their own recordings (`ownServerData`) | removed: always on | |
 | Delete system logs not uploaded after (days) (`systemLogKeepDays`) | Delete server data not uploaded after (days) (`serverDataKeepDays`) | 7 |
 | Sample server load during recordings (`captureGauges`) | Allow capturing server load (`allowCaptureGauges`) | No (was Yes) |

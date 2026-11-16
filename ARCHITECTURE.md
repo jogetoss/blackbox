@@ -95,16 +95,16 @@ Plugin and extension 8.2.1 call the capture summary `systemLog`. The plugin neve
 ## Permissions
 
 `BlackBoxPlugin.Access` decides, per request. Joget admins have no built-in rights: every check reads a setting. The
-admin role only counts where a permission setting is empty and its default is Is Admin, and where the Is Admin
-plugin (Enterprise) is missing. The settings are listed in
+admin role only counts where a permission setting whose default is Is Admin was never saved, and where the Is Admin
+plugin (Enterprise) is missing. A picker saved empty means nobody, except **Who can upload** (any logged-in user). The settings are listed in
 [Who sees what](guide/security.md#who-sees-what).
 
 | Right | Who |
 |---|---|
 | Upload (`canUpload`): `create`, `video`, `import` | **Who can upload** (default Logged In User; empty = any logged-in user). Only uploads from the browser; the capture and the quick settings don't use it |
-| View and delete (`canView`, `canDelete`) | The recording's uploader (`meta.owner`), or **Who can view and delete every recording** (`canManageRecordings`, default Is Admin; empty = admins) |
-| Server data of a recording (`canViewServerData(meta)`) | **Who can capture other users' server data** (default Is Admin; empty = admins), or the uploader. A user who sees every recording but is not in that setting gets other users' recordings without server data |
-| Server data in general (`canCaptureServerData()`, no uploader rule) | **Who can capture other users' server data**: keeping a ZIP's server data on import, capturing all other server log lines |
+| View and delete (`canView`, `canDelete`) | The recording's uploader (`meta.owner`), or **Who can view and delete every recording** (`canManageRecordings`, default Is Admin; empty = nobody) |
+| Server data of a recording (`canViewServerData(meta)`) | **Who can capture and see other users' server data** (default Is Admin; empty = nobody), or the uploader. A user who sees every recording but is not in that setting gets other users' recordings without server data |
+| Server data in general (`canCaptureServerData()`, no uploader rule) | **Who can capture and see other users' server data**: keeping a ZIP's server data on import, capturing all other server log lines |
 | Have an app exported (`canExportApp`) | The app's own admins while **Allow app admins to export their own apps** (`allowAppAdminExport`, default on) is on (`exportsOwnApp`), or **Who can export apps they don't administer** for apps Joget lets them access (see "App export") |
 | Apps data of an exported app (`exportsOwnApp` or `allowOtherAppsData`) | The app's own admins with **Allow app admins to export their own apps**; others only with **Allow apps data from apps they don't administer**. Otherwise the `.jwa` has no rows or process data and `apps[].sample.skipped` says why |
 | Record credentials unmasked (`me.options.credentials`) | **Allow recording browser secrets unmasked**; enforced in the extension only (`mask.js`) |
@@ -192,7 +192,7 @@ Info and the app export at stop (their own sections).
 1. When recording starts, the extension calls `recording-start` with a random UUID (lower case). Every recording gets
    a capture: the tab's log lines and requests and the System Info snapshot; traces (`allowCaptureTraces`), server load
    (`allowCaptureGauges`) and Glowroot data (`allowCaptureGlowrootData`) by their own
-   settings (admins too), all off by default (unset = off); other threads' lines when the recorder asks (see "All server"). The quick settings can turn off `traces`,
+   settings (admins too), on by default (unset = on; other users' traces: off); other threads' lines when the recorder asks (see "All server"). The quick settings can turn off `traces`,
    `gauges` and `glowrootData`. It answers 409 when the id belongs to another user's capture (the same user may start it again). The
    extension then adds `X-BlackBox-Id: <id>` to the recorded tab's requests to the Upload URL's server
    (`declarativeNetRequest` session rule). Requests made by a service worker carry no tab id, and Joget's PWA service
@@ -324,7 +324,7 @@ for the default 30 minutes), adds up the chunk sizes in `ondataavailable`, and w
 `maxSizeMb` in the answer (no capture): no size guard. The server has no part in it.
 
 **All server** (`recording-start` with `allServer=true`, the popup's **All server log lines**; only for recorders in
-**Who can capture other users' server data**, `canCaptureServerData()` without the uploader rule; stored as `allServer` in the
+**Who can capture and see other users' server data**, `canCaptureServerData()` without the uploader rule; stored as `allServer` in the
 capture's meta): log lines not from the recording. While such a
 capture is open on a node, the appender also writes every other thread's events
 to it with `"other": true` (no `req`), including tagged requests of other recordings. Nodes write it once the capture
@@ -441,7 +441,7 @@ full) is not logged, since it runs inside a logging call.
 - **What is kept:** the tagged traces, the aggregates and gauges of all traffic on that node during the recording
   (plus one rollup bucket on each side, which Glowroot's charts show), and Glowroot's lookup tables. Aggregates and
   gauges can't be split per user.
-- **Setting:** **Allow capturing Glowroot data** (`allowCaptureGlowrootData`) is off by default. Glowroot 0.14 is supported: 0.14.2 to
+- **Setting:** **Allow capturing Glowroot data** (`allowCaptureGlowrootData`) is on by default. Glowroot 0.14 is supported: 0.14.2 to
   0.14.4 keep their data in `data/data.h2.db` (H2 1.3, PageStore), 0.14.6 in `data/data.mv.db` (H2 2.3, MVStore). Other
   versions fail with the reason.
 - **When:** 30 s after the end of the stop's minute (so 30–90 s after the stop, checked every 10 s; by then Glowroot
@@ -669,7 +669,7 @@ are never read):
 - on Joget 9.x, an app creator (`ROLE_APP_CREATOR`) for the apps they created (`AppDefinition.getCreatedBy()`), as
   9.x's `AppUtil.isAppEditableByCurrentUser` counts them as the app's designer. `mayExportApps` is true for any app
   creator while that setting is on; the per-app check decides;
-- users allowed by **Who can export apps they don't administer** (`canExportOtherApps`, empty = nobody), only for apps
+- users allowed by **Who can export apps they don't administer** (`canExportOtherApps`, default Is Admin, empty = nobody), only for apps
   Joget lets them access: one of the app's userviews authorizes them by Joget's own check
   (`UserviewService.getUserviewSetting(...).isIsAuthorize()`: `permission` and `permission_rules`). An app with no
   userview is never theirs.
