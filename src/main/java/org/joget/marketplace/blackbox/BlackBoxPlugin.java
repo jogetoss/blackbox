@@ -805,6 +805,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
     }
 
     static final String ARM_SETTING = "allowArmedRecordings";
+    static final String ARM_TTL_SETTING = "armTicketMinutes";
 
     static java.util.function.Supplier<ArmTickets> tickets = () -> new ArmTickets(ProfileDir.current().resolve(ArmTickets.DIR));
 
@@ -819,19 +820,19 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
         String user = access.user.getUsername();
         long now = System.currentTimeMillis();
+        long ttlMs = ArmTickets.ttlMs(getPropertyString(ARM_TTL_SETTING));
         if (!access.admin) {
             if (!withinStartRate(response, user)) {
                 return;
             }
             if (tickets.get().count(user, now) >= ArmTickets.MAX_PER_USER) {
                 error(response, 429, "You already have " + ArmTickets.MAX_PER_USER + " prepared recordings waiting. "
-                        + "Use one, or wait until they expire (" + ArmTickets.TTL_MS / 60_000 + " minutes).");
+                        + "Use one, or cancel it in the popup, or wait until it expires.");
                 return;
             }
         }
-        String ticket = tickets.get().arm(user, captureOptions(request, access), now);
-        json(response, new JSONObject().put("ticket", ticket).put("expiresAt", now + ArmTickets.TTL_MS)
-                .put("ttlMs", ArmTickets.TTL_MS));
+        String ticket = tickets.get().arm(user, captureOptions(request, access), now, ttlMs);
+        json(response, new JSONObject().put("ticket", ticket).put("expiresAt", now + ttlMs).put("ttlMs", ttlMs));
     }
 
     private void handleArmed(HttpServletRequest request, HttpServletResponse response, String action, String id, String ticket,

@@ -191,10 +191,19 @@
         {
             "name" : "allowArmedRecordings",
             "label" : "Allow recordings that start before login",
-            "description" : "For problems on the login page, single sign-on (SAML, OIDC) or anonymous pages. On: a user in Who can upload clicks \"Prepare a recording that starts logged out\" in the popup while logged in, logs out, and starts recording within 15 minutes; the server data of that recording belongs to them. The prepared ticket works once, only from the extension, and can't read or upload anything. Off: recordings started while logged out have no server data.",
+            "description" : "For problems on the login page, single sign-on (SAML, OIDC) or anonymous pages. On: a user in Who can upload clicks \"Prepare a recording that starts logged out\" in the popup while logged in, logs out, and starts recording before it expires (Prepared recording expiry); the server data of that recording belongs to them. The prepared ticket works once, only from the extension, and can't read or upload anything. Off: recordings started while logged out have no server data.",
             "type" : "checkbox",
             "value" : "",
             "options" : [{"value" : "true", "label" : ""}]
+        },
+        {
+            "name" : "armTicketMinutes",
+            "label" : "Prepared recording expiry (minutes)",
+            "description" : "1 to 60. How long a recording prepared with \"Prepare a recording that starts logged out\" waits to be started; unused, it expires. Shorter is safer: the ticket opens a server capture for whoever holds it. A change applies to recordings prepared after it.",
+            "type" : "textfield",
+            "value" : "15",
+            "regex_validation" : "^([1-9]|[1-5][0-9]|60)$",
+            "validation_message" : "Enter a whole number of minutes from 1 to 60."
         },
         {
             "name" : "allowUnsandboxedTraces",

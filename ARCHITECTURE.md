@@ -209,7 +209,9 @@ For recordings that start logged out (design: `docs/design/anonymous-server-capt
 
 1. `recording-arm` (logged in, `canUpload`): non-admins pass `StartLimiter` and have at most `ArmTickets.MAX_PER_USER`
    (3) unexpired tickets. `captureOptions` resolves the start parameters against the user's rights now (plus
-   `admin`) and `ArmTickets.arm` stores them with the owner under the ticket's SHA-256 hash, valid `TTL_MS` (15 min).
+   `admin`) and `ArmTickets.arm` stores them with the owner under the ticket's SHA-256 hash, valid for the setting `armTicketMinutes` (**Prepared recording expiry**,
+   `ArmTickets.ttlMs`: 1 to 60 minutes, a value outside goes to the nearest bound, 15 when empty or not a number). The
+   expiry is saved in the ticket, so a later change of the setting doesn't move it.
    The ticket is 32 random bytes, base64url (43 characters).
 2. `recording-start` with `Authorization: BlackBox-Ticket <ticket>`: `handle()` takes this path before the login
    check, whatever the session. It needs `fromAllowedExtension` (403 otherwise) and the HTTPS rule. The setting must
@@ -850,5 +852,6 @@ Nothing in the code checks these; change both sides together.
 - The header `X-BlackBox-Capture-Secret` and the scheme `BlackBox-Ticket` (`ArmTickets.SECRET_HEADER`,
   `TICKET_SCHEME`) are spelled out in `background.js`, `recorder.js` (`secretHeader`) and `report.js`
   (`stopRecoveredCapture`).
-- The popup's "15 minutes" (`blackboxPlugin.json`, guide, extension README) is `ArmTickets.TTL_MS`; the popup itself
-  shows the expiry from the server's `ttlMs`.
+- `armTicketMinutes`: the default 15 and the range 1–60 in `blackboxPlugin.json` (value, regex, text), the guide and
+  the extension README equal `ArmTickets.DEFAULT_TTL_MIN`, `MIN_TTL_MIN` and `MAX_TTL_MIN`. The popup shows the expiry
+  from the server's `ttlMs`, so it needs no copy.

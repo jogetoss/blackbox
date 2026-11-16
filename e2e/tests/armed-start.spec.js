@@ -97,6 +97,10 @@ test('a ticket works once, only from the extension, and a web page cannot use on
   const { joget, worker } = await setup(context, extensionId);
   const armed = await worker.evaluate(() => arm().then(() => chrome.storage.session.get('armedTicket')).then((s) => s.armedTicket));
   const auth = { Authorization: 'BlackBox-Ticket ' + armed.ticket };
+  const ttlMin = (armed.expiresAt - Date.now()) / 60_000;
+  expect(ttlMin, 'Prepared recording expiry: 1 to 60 minutes').toBeGreaterThan(0);
+  expect(ttlMin).toBeLessThanOrEqual(60);
+  if (process.env.BB_ARM_MINUTES) expect(Math.ceil(ttlMin), 'the armTicketMinutes setting').toBe(Number(process.env.BB_ARM_MINUTES));
 
   const fromPage = await joget.evaluate(async ({ u, auth }) => {
     const r = await fetch(u + '?' + new URLSearchParams({ action: 'recording-start', id: crypto.randomUUID() }), { method: 'POST', headers: auth });

@@ -17,7 +17,11 @@ import org.json.JSONObject;
 final class ArmTickets {
 
     static final String DIR = "tickets";
-    static final long TTL_MS = 15 * 60_000L;
+    static final long DEFAULT_TTL_MIN = 15;
+    static final long MIN_TTL_MIN = 1;
+    static final long MAX_TTL_MIN = 60;
+    static final long TTL_MS = DEFAULT_TTL_MIN * 60_000L;
+    static final long MAX_TTL_MS = MAX_TTL_MIN * 60_000L;
     static final int MAX_PER_USER = 3;
     static final String TICKET_SCHEME = "BlackBox-Ticket";
     static final String SECRET_HEADER = "X-BlackBox-Capture-Secret";
@@ -73,12 +77,25 @@ final class ArmTickets {
         return validToken(t) ? t : null;
     }
 
+    static long ttlMs(String setting) {
+        long min = DEFAULT_TTL_MIN;
+        try {
+            min = Long.parseLong(setting == null ? "" : setting.trim());
+        } catch (NumberFormatException e) {
+        }
+        return Math.max(MIN_TTL_MIN, Math.min(MAX_TTL_MIN, min)) * 60_000L;
+    }
+
     String arm(String owner, JSONObject options, long now) throws IOException {
+        return arm(owner, options, now, TTL_MS);
+    }
+
+    String arm(String owner, JSONObject options, long now, long ttlMs) throws IOException {
         Files.createDirectories(root);
         String token = newToken();
         JSONObject t;
         try {
-            t = new JSONObject().put("owner", owner).put("createdAt", now).put("expiresAt", now + TTL_MS).put("options", options);
+            t = new JSONObject().put("owner", owner).put("createdAt", now).put("expiresAt", now + ttlMs).put("options", options);
         } catch (JSONException e) {
             throw new IOException(e);
         }
@@ -142,7 +159,7 @@ final class ArmTickets {
             for (Path f : files) {
                 String name = f.getFileName().toString();
                 JSONObject t = FILE.matcher(name).matches() ? read(f) : null;
-                boolean stalePart = name.endsWith(".part") && Files.getLastModifiedTime(f).toMillis() < now - TTL_MS;
+                boolean stalePart = name.endsWith(".part") && Files.getLastModifiedTime(f).toMillis() < now - MAX_TTL_MS;
                 if ((t == null && FILE.matcher(name).matches()) || (t != null && t.optLong("expiresAt") < now) || stalePart) {
                     if (Files.deleteIfExists(f)) {
                         n++;

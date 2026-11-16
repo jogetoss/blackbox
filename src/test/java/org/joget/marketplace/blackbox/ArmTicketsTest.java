@@ -62,6 +62,28 @@ public class ArmTicketsTest {
     }
 
     @Test
+    public void expirySettingIsClampedToOneToSixtyMinutes() {
+        long min = 60_000L;
+        assertEquals("default", 15 * min, ArmTickets.ttlMs(null));
+        assertEquals(15 * min, ArmTickets.ttlMs(""));
+        assertEquals(15 * min, ArmTickets.ttlMs("abc"));
+        assertEquals(5 * min, ArmTickets.ttlMs(" 5 "));
+        assertEquals(1 * min, ArmTickets.ttlMs("0"));
+        assertEquals(1 * min, ArmTickets.ttlMs("-3"));
+        assertEquals(60 * min, ArmTickets.ttlMs("60"));
+        assertEquals(60 * min, ArmTickets.ttlMs("600"));
+    }
+
+    @Test
+    public void ticketKeepsTheExpiryItWasPreparedWith() throws Exception {
+        long ttl = 2 * 60_000L;
+        String shortOne = tickets.arm("cat", opts(), NOW, ttl);
+        String longOne = tickets.arm("cat", opts(), NOW, 60 * 60_000L);
+        assertNull("past its own 2 minutes", tickets.use(shortOne, NOW + ttl + 1));
+        assertNotNull("within its own 60 minutes", tickets.use(longOne, NOW + 59 * 60_000L));
+    }
+
+    @Test
     public void unknownOrMalformedTicketsAreRefused() throws Exception {
         tickets.arm("cat", opts(), NOW);
         assertNull(tickets.use(ArmTickets.newToken(), NOW));

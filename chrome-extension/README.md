@@ -59,7 +59,7 @@ Popup → **Settings** (this browser only; server options are in the plugin's [S
   3 minutes (crash, killed browser, no network), the server ends the capture at the last ping.
 - **Starting logged out** (login page, single sign-on): while logged in, click **Prepare a recording that starts
   logged out** in the popup (shown when the server allows it). Then log out, open the page with the problem and start
-  recording within 15 minutes. The server keeps the server data for you even though you are logged out, also if you
+  recording before it expires (15 minutes by default; the popup shows the time). The server keeps the server data for you even though you are logged out, also if you
   log in as someone else while recording. Upload it logged in as yourself. **Cancel** drops the prepared ticket. It
   works for the next recording, normal or incognito: you can prepare it in a normal window and record logged out
   in an incognito one (log in there as yourself to upload before closing it, or download it).
