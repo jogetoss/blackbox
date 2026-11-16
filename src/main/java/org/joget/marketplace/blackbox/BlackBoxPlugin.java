@@ -374,11 +374,12 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
     }
 
-    static final String NO_OTHER_APPS_DATA = "No apps data: you are not an admin of this app, and \"Allow apps data from "
-            + "apps they don't administer\" is off. The app definition is exported without its rows and process data.";
+    static final String NO_OTHER_APPS_DATA = "No apps data: the settings don't give you this app's data. You are not one of "
+            + "its admins (or \"Allow app admins to export their own apps\" is off), and \"Allow apps data from apps they don't administer\" is off. The app definition is exported without its rows and process data.";
 
-    private static final String DENIED = "Not exported: you are not an admin of this app, and \"Who can export apps they "
-            + "don't administer\" doesn't allow you or Joget doesn't let you access it.";
+    private static final String DENIED = "Not exported: the settings don't let you export this app. You are not one of its "
+            + "admins (or \"Allow app admins to export their own apps\" is off), and \"Who can export apps they don't administer\" "
+            + "doesn't allow you or Joget doesn't let you access it.";
 
     private java.util.concurrent.Callable<JSONArray> exportJob(Path dir, Path session, Path systemLog, SampleData.Mode sample,
             String label, Access access) throws IOException {
@@ -391,7 +392,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             AppDefinition def = AppExport.resolve(s.appId, s.version);
             if (def != null) {
                 decided.put(AppExport.key(def), access.canExportApp(def) ? null : DENIED);
-                if (otherAppsData || access.isAppAdmin(def)) {
+                if (otherAppsData || access.exportsOwnApp(def)) {
                     dataAllowed.add(AppExport.key(def));
                 }
             }
@@ -674,7 +675,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
     private boolean overQuota(HttpServletResponse response, RecordingStore store, Access access, long incoming) throws IOException {
         long quotaMb = limitValue(getPropertyString("userQuotaMb"), DEFAULT_USER_QUOTA_MB);
-        if (access.admin || quotaMb == 0) {
+        if (quotaMb == 0) {
             return false;
         }
         long used = store.usedBytes(access.user.getUsername());
@@ -730,7 +731,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             return;
         }
         String user = access.user.getUsername();
-        if (!access.admin && (!withinStartRate(response, user) || overOpenLimit(response, user, id))) {
+        if (!withinStartRate(response, user) || overOpenLimit(response, user, id)) {
             return;
         }
         openCapture(request, response, id, user, captureOptions(request, access), null);
@@ -766,8 +767,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 .put("otherTraces", traces && access.mayCapture(OTHER_TRACES) && glowrootShared.getAsBoolean()
                         && "true".equals(request.getParameter("otherTraces")))
                 .put("systemSecrets", access.allows("allowUnmaskedSystemInfo", false) && "true".equals(request.getParameter("systemSecrets")))
-                .put("license", access.allows("allowUnmaskedLicense", false) && "true".equals(request.getParameter("license")))
-                .put("admin", access.admin);
+                .put("license", access.allows("allowUnmaskedLicense", false) && "true".equals(request.getParameter("license")));
     }
 
     private void openCapture(HttpServletRequest request, HttpServletResponse response, String id, String owner, JSONObject o,
@@ -821,15 +821,13 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         String user = access.user.getUsername();
         long now = System.currentTimeMillis();
         long ttlMs = OneTimeTokens.ttlMs(getPropertyString(ARM_TTL_SETTING));
-        if (!access.admin) {
-            if (!withinStartRate(response, user)) {
-                return;
-            }
-            if (tokens.get().count(user, now) >= OneTimeTokens.MAX_PER_USER) {
-                error(response, 429, "You already have " + OneTimeTokens.MAX_PER_USER + " prepared recordings waiting. "
-                        + "Use one, or cancel it in the popup, or wait until it expires.");
-                return;
-            }
+        if (!withinStartRate(response, user)) {
+            return;
+        }
+        if (tokens.get().count(user, now) >= OneTimeTokens.MAX_PER_USER) {
+            error(response, 429, "You already have " + OneTimeTokens.MAX_PER_USER + " prepared recordings waiting. "
+                    + "Use one, or cancel it in the popup, or wait until it expires.");
+            return;
         }
         String token = tokens.get().arm(user, captureOptions(request, access), now, ttlMs);
         json(response, new JSONObject().put("token", token).put("expiresAt", now + ttlMs).put("ttlMs", ttlMs));
@@ -853,7 +851,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
                 error(response, HttpServletResponse.SC_UNAUTHORIZED, "The prepared recording expired or was already used. Prepare it again.");
                 return;
             }
-            if (!o.optBoolean("admin") && overOpenLimit(response, owner, id)) {
+            if (overOpenLimit(response, owner, id)) {
                 return;
             }
             openCapture(request, response, id, owner, o, OneTimeTokens.newToken());
@@ -1488,6 +1486,10 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
     }
 
+    static final String MANAGE_RECORDINGS = "canManageRecordings";
+    static final String APP_ADMIN_EXPORT = "allowAppAdminExport";
+    static final String IS_ADMIN = "org.joget.plugin.enterprise.AdminUserviewPermission";
+
     class Access {
         final HttpServletRequest request;
         final User user;
@@ -1504,19 +1506,35 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
 
         boolean allows(String setting, boolean dflt) {
-            return admin || flag(setting, dflt);
+            return flag(setting, dflt);
         }
 
         boolean canUpload() {
-            return admin || allowed("canUpload", true);
+            return allowed("canUpload", true);
         }
 
         boolean canView(JSONObject meta) {
-            return admin || isOwner(meta);
+            return isOwner(meta) || managesRecordings();
         }
 
+        private Boolean managesRecordings;
+
+        // empty = Is Admin, the default
+        private boolean managesRecordings() {
+            if (managesRecordings == null) {
+                managesRecordings = allowed(MANAGE_RECORDINGS, admin);
+            }
+            return managesRecordings;
+        }
+
+        private Boolean capturesServerData;
+
+        // empty = Is Admin, the default
         boolean canCaptureServerData() {
-            return admin || allowed("canCaptureServerData", false);
+            if (capturesServerData == null) {
+                capturesServerData = allowed("canCaptureServerData", admin);
+            }
+            return capturesServerData;
         }
 
         boolean canViewServerData(JSONObject meta) {
@@ -1524,22 +1542,28 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         }
 
         boolean canDelete(JSONObject meta) {
-            return admin || isOwner(meta);
+            return canView(meta);
         }
 
         boolean canExportApp(AppDefinition def) {
-            return isAppAdmin(def) || (allowed("canExportOtherApps", false) && canAccessApp(def));
+            return exportsOwnApp(def) || (allowed("canExportOtherApps", false) && canAccessApp(def));
         }
 
+        // an app's own admin, when the setting lets app admins export their apps (with data)
+        boolean exportsOwnApp(AppDefinition def) {
+            return flag(APP_ADMIN_EXPORT, true) && isAppAdmin(def);
+        }
+
+        // a Joget admin is an app's admin only when the app lists them
         boolean isAppAdmin(AppDefinition def) {
-            return admin || AppAdmins.admits(AppAdmins.read(appSrc(), SecurityUtil.normalizedFileName(def.getAppId())),
+            return AppAdmins.admits(AppAdmins.read(appSrc(), SecurityUtil.normalizedFileName(def.getAppId())),
                     user.getUsername(), groupIds())
                     || (appCreator() && AppAdmins.isCreator(def, user.getUsername()));
         }
 
         boolean mayExportApps() {
-            return admin || allowed("canExportOtherApps", false) || appCreator()
-                    || AppAdmins.anyAdmits(appSrc(), user.getUsername(), groupIds());
+            return allowed("canExportOtherApps", false) || (flag(APP_ADMIN_EXPORT, true)
+                    && (appCreator() || AppAdmins.anyAdmits(appSrc(), user.getUsername(), groupIds())));
         }
 
         private Boolean appCreator;
@@ -1606,7 +1630,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             PluginManager pm = (PluginManager) AppUtil.getApplicationContext().getBean("pluginManager");
             Object plugin = pm.getPlugin(className.toString());
             if (!(plugin instanceof Permission)) {
-                return false;
+                // "Is Admin" is an Enterprise plugin; without it the setting still means Joget admins
+                return IS_ADMIN.equals(className.toString()) && admin;
             }
             Permission permission = (Permission) plugin;
             if (setting.get("properties") instanceof Map) {
