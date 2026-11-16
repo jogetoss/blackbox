@@ -8,14 +8,16 @@ const OTHER_USER = process.env.BB_OTHER_USER || process.env.BB_USER || 'admin';
 const TABLE = 'rvp_sr_req';
 const SLOW_PATH = '/web/json/data/list/iService/list_srReq';
 const GLOWROOT_UI = process.env.BB_GLOWROOT_UI || 'http://j8213.local:4001';
+// Joget 9 is on jakarta.servlet, which Glowroot 0.14.6 covers with its own plugin (jakartaservlet).
+const SERVLET_PLUGIN = process.env.BB_GLOWROOT_SERVLET_PLUGIN || 'servlet';
 const SESSION_USER = 'SPRING_SECURITY_CONTEXT.authentication.name';
 
 test.skip(LEGACY_EXTENSION, 'tests this extension only');
 
-const SERVLET = `${GLOWROOT_UI}/backend/config/plugins?agent-id=&plugin-id=servlet`;
+const SERVLET = `${GLOWROOT_UI}/backend/config/plugins?agent-id=&plugin-id=${SERVLET_PLUGIN}`;
 const saveServlet = async (props, version) => {
   const r = await fetch(`${GLOWROOT_UI}/backend/config/plugins?agent-id=`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ pluginId: 'servlet', version, properties: props.map(({ name, type, value }) => ({ name, type, value })) }) });
+    body: JSON.stringify({ pluginId: SERVLET_PLUGIN, version, properties: props.map(({ name, type, value }) => ({ name, type, value })) }) });
   expect(r.ok, 'Glowroot config saved').toBe(true);
 };
 let servletBefore = null;

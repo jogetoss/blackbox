@@ -40,6 +40,33 @@
                 <version>3.5.0</version>
             </plugin>
             <plugin>
+                <!-- H2 2.x (as in Glowroot 0.14.6) for GlowrootDataTest, next to H2 1.4.199 on the test classpath:
+                     the test loads it in its own class loader, as the plugin loads Glowroot's shaded driver. -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>3.7.0</version>
+                <executions>
+                    <execution>
+                        <id>h2-2-for-tests</id>
+                        <phase>generate-test-resources</phase>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>com.h2database</groupId>
+                                    <artifactId>h2</artifactId>
+                                    <version>2.3.232</version>
+                                    <destFileName>h2-2.jar</destFileName>
+                                </artifactItem>
+                            </artifactItems>
+                            <outputDirectory>${project.build.directory}/h2-2</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
                 <groupId>org.apache.felix</groupId>
                 <artifactId>maven-bundle-plugin</artifactId>
                 <extensions>true</extensions>

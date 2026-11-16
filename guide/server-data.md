@@ -23,8 +23,8 @@ Shown on the replay page and in the ZIP and HTML downloads, to everyone who can 
   request's trace. With **Capture Glowroot data**, the downloaded data keeps all traces of that time too. With
   virtual hosts both hold every profile's requests on the node, so they need the server's opt-in (see [Per-recording choices](settings.md#per-recording-choices-popup)).
 - **Download Glowroot data**: the recording's slice of Glowroot's data, ready 30–90 s after the stop, to open in a
-  standalone Glowroot 0.14.2 (see its `README.txt`). About 1 MB for 35 s. Building it needs free temp space about the
-  size of Glowroot's `data.h2.db`.
+  standalone Glowroot of the server's version (see its `README.txt`). About 1 MB for 35 s. Building it needs free temp space about the
+  size of Glowroot's database file (`data.h2.db`, or `data.mv.db` on Glowroot 0.14.6).
 - **Server load** strip: CPU, heap, busy request threads, DB connections and GC time per node, every second. No
   Glowroot needed.
 - **Info** tab: the server at recording start.

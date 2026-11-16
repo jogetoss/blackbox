@@ -44,8 +44,7 @@ Who may upload, capture server data or export apps: [Settings](guide/settings.md
 
 Joget DX 8.2, 9.0 and 9.1, Chrome 116 or later. One jar for all: it is built for Joget 8.2 (`javax.servlet`), and Joget 9
 converts it to `jakarta.servlet` when it installs it (the log says `Migration completed successfully`). **Capture
-Glowroot data** reads Glowroot 0.14.2 to 0.14.4 only; 0.14.6 keeps its data in another format (`data.mv.db`) and the
-capture skips it with a warning. Install the plugin before (or with) the extension of the same release:
+Glowroot data** works with Glowroot 0.14.2 to 0.14.6 (checked on 0.14.2, 0.14.4 and 0.14.6). Install the plugin before (or with) the extension of the same release:
 
 | Plugin | Extension |
 |---|---|
