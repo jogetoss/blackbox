@@ -847,3 +847,8 @@ Nothing in the code checks these; change both sides together.
 - `export.js` `uploadInfo()` is a copy of `common.js` `BB.uploadInfo`: `common.js` is not in the HTML download.
 - `viewer.html`'s `<!-- upload form (actions.js) -->` and `<!-- /upload form -->` are code: `build-standalone.py` cuts
   the upload form out between them.
+- The header `X-BlackBox-Capture-Secret` and the scheme `BlackBox-Ticket` (`ArmTickets.SECRET_HEADER`,
+  `TICKET_SCHEME`) are spelled out in `background.js`, `recorder.js` (`secretHeader`) and `report.js`
+  (`stopRecoveredCapture`).
+- The popup's "15 minutes" (`blackboxPlugin.json`, guide, extension README) is `ArmTickets.TTL_MS`; the popup itself
+  shows the expiry from the server's `ttlMs`.
