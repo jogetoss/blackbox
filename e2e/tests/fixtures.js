@@ -40,12 +40,21 @@ const test = base.extend({
   },
 });
 
-async function loginJoget(page) {
+// Fills Joget's own login form and clicks its submit through the page, so it also works when a custom login page
+// hides that form behind its own fields (j912).
+async function loginAs(page, user, password) {
   await page.goto(`${JOGET}/web/login`);
-  await page.fill('#j_username', USER);
-  await page.fill('#j_password', PASSWORD);
-  await Promise.all([page.waitForNavigation(), page.press('#j_password', 'Enter')]);
+  await page.waitForSelector('#j_password', { state: 'attached' });
+  await Promise.all([page.waitForNavigation(), page.evaluate(({ user, password }) => {
+    document.querySelector('#j_username').value = user;
+    document.querySelector('#j_password').value = password;
+    document.querySelector('#j_password').form.querySelector('[type=submit]').click();
+  }, { user, password })]);
   await page.waitForLoadState('networkidle');
+}
+
+async function loginJoget(page) {
+  await loginAs(page, USER, PASSWORD);
 }
 
 async function api(page, action, params = {}, method = 'GET') {
@@ -182,5 +191,5 @@ const WHO_AM_I = `fetch(${JSON.stringify(JOGET + '/api/blackbox?action=me')}, { 
 
 module.exports = {
   INCOGNITO_USER, openIncognito, WHO_AM_I,
-  test, expect, JOGET, EXTENSION, LEGACY_EXTENSION, CAPTURE_KEY, ASSIGNMENT, loginJoget, api, appsWhenExported, report, keep, captureAndStop, uploaded,
+  test, expect, JOGET, EXTENSION, LEGACY_EXTENSION, CAPTURE_KEY, ASSIGNMENT, loginAs, loginJoget, api, appsWhenExported, report, keep, captureAndStop, uploaded,
 };

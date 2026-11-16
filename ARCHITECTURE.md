@@ -68,6 +68,20 @@ Recordings the user can't view answer 404 (not 403), so ids of other people's re
 
 ### Compatibility
 
+**Joget 9.0 and 9.1** run the 8.2 jar: `PluginManager.installBundle` → `attemptMigration` rewrites a plugin jar whose
+manifest names `javax.servlet` with Tomcat's `jakartaee-migration` before Felix installs it (keeping the original as
+`<jar>.original`), on upload, an `app_plugins` copy and start-up alike. Code that differs by version:
+
+- App creators (9.x only, see "Who may have an app exported"): the role is named by string
+  (`AppAdmins.APP_CREATOR_ROLE`) and `AppDefinition.getCreatedBy()` is called by reflection, since neither exists in
+  8.2's `wflow-core`.
+- Not used: `AppUtil.isAppEditableByCurrentUser`, which released 8.2 jars (8.2.9) don't have.
+
+`check-joget9.sh` swaps `javax.servlet` for `jakarta.servlet` in a temporary copy and runs `mvn -o test` against
+`wflow-core` 9.0-SNAPSHOT and 9.1-SNAPSHOT.
+
+**Plugin 8.2.1 names**
+
 Plugin and extension 8.2.1 call the capture summary `systemLog`. The plugin never writes that name
 (`RecordingStore.LEGACY_CAPTURE`) but reads it:
 
@@ -426,8 +440,8 @@ full) is not logged, since it runs inside a logging call.
 - **What is kept:** the tagged traces, the aggregates and gauges of all traffic on that node during the recording
   (plus one rollup bucket on each side, which Glowroot's charts show), and Glowroot's lookup tables. Aggregates and
   gauges can't be split per user.
-- **Setting:** **Allow capturing Glowroot data** (`allowCaptureGlowrootData`) is off by default. Only Glowroot 0.14 is supported; other
-  versions fail with the reason.
+- **Setting:** **Allow capturing Glowroot data** (`allowCaptureGlowrootData`) is off by default. Only Glowroot 0.14.2 to 0.14.4 is supported
+  (`data/data.h2.db`); other versions, such as 0.14.6 with H2 2.x's `data.mv.db`, fail with the reason.
 - **When:** 30 s after the end of the stop's minute (so 30–90 s after the stop, checked every 10 s; by then Glowroot
   has written that minute's aggregates), each node
   where the capture is open builds `glowroot/<node>.zip`: the node that took `recording-start` and every node that
@@ -644,6 +658,9 @@ are never read):
   `ROLE_ADMIN` (usernames) and `ROLE_ADMIN_GROUP` (group ids, the user's groups from `directoryManager`) in
   `app_src/<appId>/app.properties`, split on `;` or `,` (`AppAdmins`; read directly, since
   `AppDevUtil.getAppDevProperties` creates the folder when missing);
+- on Joget 9.x, an app creator (`ROLE_APP_CREATOR`) for the apps they created (`AppDefinition.getCreatedBy()`), as
+  9.x's `AppUtil.isAppEditableByCurrentUser` counts them as the app's designer. `mayExportApps` is true for any app
+  creator; the per-app check decides;
 - users allowed by **Who can export apps they don't administer** (`canExportOtherApps`, empty = nobody), only for apps
   Joget lets them access: one of the app's userviews authorizes them by Joget's own check
   (`UserviewService.getUserviewSetting(...).isIsAuthorize()`: `permission` and `permission_rules`). An app with no
@@ -699,7 +716,7 @@ in its rows (activity ids resolved with `getActivityById`), kept when the proces
 | `ServerInfo` | System Info snapshot at recording-start (host, cluster, plugins, Java, Joget, DB, pool, license) |
 | `Secrets` | Masks secrets in the System Info snapshot: the `secretNames` setting (default: Upgrade Advisor's secret names) and value shapes (from Upgrade Advisor) |
 | `AppExport` | Finds the apps in the recorded URLs, exports them (at stop, else at upload), lists them in `app/apps.json` |
-| `AppAdmins` | An app's own admins from `app_src/<app>/app.properties`, as App Composer reads them |
+| `AppAdmins` | An app's own admins from `app_src/<app>/app.properties`, as App Composer reads them; `isCreator` for Joget 9.x app creators |
 | `ExportJobs` | The background thread app exports run on, so requests answer within about 20 s |
 | `FileLocks` | The file lock around a `meta.json` change (both stores): across nodes and across plugin copies in one JVM |
 | `SampleData` | Picks the sample rows of an exported app, masks / remaps them, adds them to the `.jwa` |

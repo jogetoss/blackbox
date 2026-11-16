@@ -37,6 +37,20 @@ server data**.
 | `BB_GLOWROOT_DISTS` | `~/Joget/glowroot-0.14.2-dist.zip,~/Joget/glowroot-0.14.4-dist.zip` | The standalone Glowroot dists `glowroot-standalone.spec.js` opens the data in |
 | `BB_GLOWROOT_PORT`, `BB_JAVA_IMAGE` | `14000`, `eclipse-temurin:17-jdk` | The standalone Glowroot's host port (localhost only) and its throwaway container's image |
 
+### Against Joget 9 (j912)
+
+```bash
+BB_JOGET=https://localhost:4219/jw BB_CONTAINER=j912 BB_DB=jw9 npx playwright test tests/<spec>.js
+```
+
+- HTTPS and a custom login page work: `loginAs` fills Joget's own (possibly hidden) login form and clicks its submit.
+- Import iService from j8213 first (export `iService` v2 there, import and publish it on j912).
+- Still expected to fail there, from test data rather than Joget 9: the apps-data checks of `upload-form`,
+  `quick-settings` and `export-import` need iService rows and process instances (j912's are empty);
+  `time-limit.spec.js` waits for **Max recording length**, so it takes about an hour at the default 30 minutes;
+  `armed-start.spec.js` skips itself while **Allow recordings that start before login** is off;
+  `glowroot-standalone` and `other-traces` need Glowroot 0.14.2 to 0.14.4 (j912 runs 0.14.6).
+
 ## How it works
 
 - `tests/fixtures.js` copies the extension to a temporary folder and adds the Joget origin to its manifest's

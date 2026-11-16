@@ -1,6 +1,6 @@
 const { execFileSync, spawn } = require('child_process');
 const { chromium } = require('@playwright/test');
-const { test, expect, JOGET, LEGACY_EXTENSION, loginJoget, api, uploaded } = require('./fixtures');
+const { test, expect, JOGET, LEGACY_EXTENSION, loginAs, loginJoget, api, uploaded } = require('./fixtures');
 
 const DB_CONTAINER = process.env.BB_DB_CONTAINER || 'mariadb';
 const DB = process.env.BB_DB || 'jw8';
@@ -45,11 +45,7 @@ async function lockTable(seconds) {
 async function otherSession() {
   const browser = await chromium.launch();
   const page = await (await browser.newContext({ ignoreHTTPSErrors: true })).newPage();
-  await page.goto(`${JOGET}/web/login`);
-  await page.fill('#j_username', OTHER_USER);
-  await page.fill('#j_password', process.env.BB_OTHER_PASSWORD || OTHER_USER);
-  await Promise.all([page.waitForNavigation(), page.press('#j_password', 'Enter')]);
-  await page.waitForLoadState('networkidle');
+  await loginAs(page, OTHER_USER, process.env.BB_OTHER_PASSWORD || OTHER_USER);
   expect(page.url(), `${OTHER_USER} logged in`).not.toMatch(/login/);
   return { page, close: () => browser.close() };
 }

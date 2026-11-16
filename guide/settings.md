@@ -41,7 +41,7 @@ below add the other parts.
 | Allow capturing server load | No | | **Capture server load** |
 | Allow capturing Glowroot traces of slow and failed requests | No | | **Capture Glowroot trace files** |
 | Allow capturing other users' traces | No | Needs the setting above. Other users' SQL with values and URLs | **Include other users' traces** |
-| Allow capturing Glowroot data | No | Needs Glowroot 0.14 | **Capture Glowroot data** |
+| Allow capturing Glowroot data | No | Needs Glowroot 0.14.2 to 0.14.4 | **Capture Glowroot data** |
 | Glowroot address | empty | Empty = this Joget's own agent (usually `http://localhost:4000`) | |
 | Secret names to mask in System Info | the default list in [Sensitive data](security.md#sensitive-data-in-system-info) | One per line; `pass*` = starts with, `*key` = ends with. Empty = the default list; see [Sensitive data](security.md#sensitive-data-in-system-info) | |
 
