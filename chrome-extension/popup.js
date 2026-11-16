@@ -95,11 +95,45 @@ function showQuick(o) {
   $('qCredsRow').hidden = !o?.credentials;
   $('qSysSecretsRow').hidden = !o?.systemSecrets;
   $('qLicenseRow').hidden = !o?.license;
+  armOffered = !!o?.arm;
+  showArm();
   $('qServer').hidden = !(o?.apps || o?.allServer || o?.gauges || o?.traces || o?.glowrootData || o?.credentials
     || o?.systemSecrets || o?.license);
 }
 
+let armOffered = false;
+let recording = false;
+
+async function showArm() {
+  const armed = await bg({ type: 'get-armed' }).catch(() => null);
+  $('armLink').hidden = !!armed;
+  $('armNote').hidden = !armed;
+  if (armed) {
+    const until = new Date(armed.expiresAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const cancel = document.createElement('a');
+    cancel.href = '#';
+    cancel.id = 'disarm';
+    cancel.textContent = 'Cancel';
+    cancel.onclick = async (e) => { e.preventDefault(); await bg({ type: 'disarm' }); showArm(); };
+    $('armNote').replaceChildren(`Prepared until ${until}. Log out of ${new URL(armed.uploadUrl).origin}, open the page with the problem, then start recording. `, cancel);
+  }
+  $('arm').hidden = recording || !(armed || armOffered);
+}
+
+$('armLink').onclick = async (e) => {
+  e.preventDefault();
+  $('error').textContent = '';
+  try {
+    await bg({ type: 'arm' });
+  } catch (err) {
+    showError(err);
+  }
+  showArm();
+};
+
 function render(rec) {
+  recording = !!rec;
+  showArm();
   $('quick').hidden = !!rec;
   $('start').hidden = !!rec;
   $('stop').hidden = !rec;

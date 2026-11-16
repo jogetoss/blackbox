@@ -75,7 +75,8 @@ async function stopRecoveredCapture(meta) {
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), 10_000);
   try {
-    await fetch(capture.uploadUrl + '?' + new URLSearchParams(params), { method: 'POST', credentials: 'include', signal: abort.signal });
+    await fetch(capture.uploadUrl + '?' + new URLSearchParams(params), { method: 'POST', credentials: 'include', signal: abort.signal,
+      headers: capture.captureSecret ? { 'X-BlackBox-Capture-Secret': capture.captureSecret } : {} });
   } catch (e) {
     console.warn('Could not stop the server capture of a recovered recording:', e);
   } finally {
