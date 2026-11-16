@@ -209,18 +209,22 @@ final class GlowrootPackager {
             if (!Files.isRegularFile(embedded)) {
                 throw new IOException("Glowroot's " + EMBEDDED_JAR + " was not found");
             }
-            Path tmp = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"));
-            long h2Bytes = Files.size(agent.resolve("data").resolve("data.h2.db"));
-            long free = Files.getFileStore(tmp).getUsableSpace();
-            if (free < GlowrootData.spaceNeeded(h2Bytes)) {
-                throw new IOException("Not enough free disk space in " + tmp + ": needs " + mb(GlowrootData.spaceNeeded(h2Bytes))
-                        + " (one copy of Glowroot's data.h2.db, " + mb(h2Bytes) + "), " + mb(free) + " free");
-            }
             work = Files.createTempDirectory("blackbox-glowroot-");
             Path data = work.resolve("data");
             GlowrootData.Result r;
             try (URLClassLoader cl = new URLClassLoader(new URL[]{embedded.toUri().toURL()}, Driver.class.getClassLoader())) {
                 Driver h2 = (Driver) Class.forName(H2_DRIVER, true, cl).getDeclaredConstructor().newInstance();
+                String file = GlowrootData.dbFile(h2);
+                Path db = agent.resolve("data").resolve(file);
+                if (!Files.isRegularFile(db)) {
+                    throw new IOException("Glowroot's " + file + " was not found in " + agent.resolve("data"));
+                }
+                long dbBytes = Files.size(db);
+                long free = Files.getFileStore(work).getUsableSpace();
+                if (free < GlowrootData.spaceNeeded(dbBytes)) {
+                    throw new IOException("Not enough free disk space in " + work.getParent() + ": needs " + mb(GlowrootData.spaceNeeded(dbBytes))
+                            + " (one copy of Glowroot's " + file + ", " + mb(dbBytes) + "), " + mb(free) + " free");
+                }
                 JSONObject meta = ServerCapture.store().readMeta(id);
                 r = GlowrootData.slice(h2, agent.resolve("data"), data, from, to, id, meta != null && meta.optBoolean("otherTraces"));
             }
@@ -273,7 +277,7 @@ final class GlowrootPackager {
         }
         candidates.add(glowroot);
         for (Path p : candidates) {
-            if (Files.isRegularFile(p.resolve("data").resolve("data.h2.db"))) {
+            if (GlowrootData.dbFile(p.resolve("data")) != null) {
                 return p;
             }
         }

@@ -68,6 +68,20 @@ Recordings the user can't view answer 404 (not 403), so ids of other people's re
 
 ### Compatibility
 
+**Joget 9.0 and 9.1** run the 8.2 jar: `PluginManager.installBundle` → `attemptMigration` rewrites a plugin jar whose
+manifest names `javax.servlet` with Tomcat's `jakartaee-migration` before Felix installs it (keeping the original as
+`<jar>.original`), on upload, an `app_plugins` copy and start-up alike. Code that differs by version:
+
+- App creators (9.x only, see "Who may have an app exported"): the role is named by string
+  (`AppAdmins.APP_CREATOR_ROLE`) and `AppDefinition.getCreatedBy()` is called by reflection, since neither exists in
+  8.2's `wflow-core`.
+- Not used: `AppUtil.isAppEditableByCurrentUser`, which released 8.2 jars (8.2.9) don't have.
+
+`check-joget9.sh` swaps `javax.servlet` for `jakarta.servlet` in a temporary copy and runs `mvn -o test` against
+`wflow-core` 9.0-SNAPSHOT and 9.1-SNAPSHOT.
+
+**Plugin 8.2.1 names**
+
 Plugin and extension 8.2.1 call the capture summary `systemLog`. The plugin never writes that name
 (`RecordingStore.LEGACY_CAPTURE`) but reads it:
 
@@ -426,7 +440,8 @@ full) is not logged, since it runs inside a logging call.
 - **What is kept:** the tagged traces, the aggregates and gauges of all traffic on that node during the recording
   (plus one rollup bucket on each side, which Glowroot's charts show), and Glowroot's lookup tables. Aggregates and
   gauges can't be split per user.
-- **Setting:** **Allow capturing Glowroot data** (`allowCaptureGlowrootData`) is off by default. Only Glowroot 0.14 is supported; other
+- **Setting:** **Allow capturing Glowroot data** (`allowCaptureGlowrootData`) is off by default. Glowroot 0.14 is supported: 0.14.2 to
+  0.14.4 keep their data in `data/data.h2.db` (H2 1.3, PageStore), 0.14.6 in `data/data.mv.db` (H2 2.3, MVStore). Other
   versions fail with the reason.
 - **When:** 30 s after the end of the stop's minute (so 30–90 s after the stop, checked every 10 s; by then Glowroot
   has written that minute's aggregates), each node
@@ -445,12 +460,17 @@ full) is not logged, since it runs inside a logging call.
   failed: `waiting` after 3 h 15 min, `building` after 2 h, so a node that stopped watching (its folder failed, or it
   is gone) doesn't leave the recording building for good; a later status still replaces it. The recordings list reads
   a row's statuses again while its saved state is `building` (`ServerData.listedGlowroot`) and saves the new one.
-- **How:** `GlowrootData` copies `data.h2.db` (Glowroot keeps it locked; the copy is not), deletes every row outside
-  the recording with Glowroot's own shaded H2 driver (`lib/glowroot-embedded-collector.jar`, H2 1.3), reads only the
+- **How:** `GlowrootData` copies Glowroot's H2 file (Glowroot keeps it locked; the copy is not), deletes every row outside
+  the recording with Glowroot's own shaded H2 driver (`lib/glowroot-embedded-collector.jar`), reads only the
   blocks the kept rows point to straight from the live `*.capped.db` ring files, writes them into new capped files of
   the same ring size, rewrites the capped ids, and compacts the copy. It runs on one low-priority thread inside Joget,
   with a small H2 cache (`CACHE_SIZE=8192`); temporary files go to `java.io.tmpdir` and are deleted afterwards. A block Glowroot
   overwrites before it is read is left out, and the status says how many.
+- **Both H2 formats, one code path:** the shaded driver's major version names the file to copy (`GlowrootData.dbFile`:
+  1 → `data.h2.db`, 2 → `data.mv.db`), and that same driver opens the copy, so the copy keeps Glowroot's own format
+  and opens in the offline viewer of the same version. The SQL is the same for both; `"VALUE"` is quoted because H2 2.x
+  reserves the word. Glowroot writes the file while it is copied, so a copy that doesn't open is copied again (three
+  tries).
 - **Order and class loading:** H2 is copied first and the capped files are read after, so every capped id in the copy
   exists in the capped files. The shaded H2 driver loads in a `URLClassLoader` whose parent is the loader of
   `java.sql` (the platform loader on Java 9+), so it sees JDBC and nothing of Joget or the bundle.
@@ -460,14 +480,15 @@ full) is not logged, since it runs inside a logging call.
   1/16 of the ring (at most 1 MB; rings are at least 1 MB) past the header's position may already be overwritten. A
   block counts only if it wasn't overwritten before or while it was read (the header is checked again after the read);
   the smallest id still kept is computed the way Glowroot does.
-- **Tests:** H2 1.4.199 (test scope) lets `GlowrootDataTest` build a Glowroot-shaped database in the PageStore format
-  that Glowroot's H2 1.3 writes.
-- **The ZIP:** `data/` (`data.h2.db` and the five capped files) and `README.txt` with the steps and the time range.
+- **Tests:** `GlowrootDataTest` builds a Glowroot-shaped database and cuts it with both drivers: H2 1.4.199 (test
+  scope) in the PageStore format that Glowroot's H2 1.3 writes, and H2 2.3.232, which the pom copies to
+  `target/h2-2/h2-2.jar` and the test loads in its own class loader (two H2 versions can't share a classpath).
+- **The ZIP:** `data/` (`data.h2.db` or `data.mv.db`, and the five capped files) and `README.txt` with the steps and the time range.
   It opens in Glowroot's offline viewer (`java -jar glowroot.jar` in a dist folder holding `data/`), which only reads:
   it starts no agent (no samples of its own JVM, no alerts or monitors) and schedules no reaper, so nothing expires.
   On its first start it writes Glowroot's default `admin.json` (127.0.0.1:4000) and `config.json`; none of the
-  server's users, LDAP or SMTP are shipped. Checked on 0.14.2 and 0.14.4.
-- **Disk space while building:** one copy of Glowroot's `data.h2.db` in Joget's temp folder (`java.io.tmpdir`,
+  server's users, LDAP or SMTP are shipped. Checked on 0.14.2, 0.14.4 and 0.14.6.
+- **Disk space while building:** one copy of Glowroot's H2 file in Joget's temp folder (`java.io.tmpdir`,
   `/opt/tomcat/temp` in the Joget image), plus the new capped files holding only the kept blocks, all deleted when the
   package is done; the live capped files are read in place, not copied. The ZIP is written to the capture's folder.
   The rows are deleted in batches of 20,000, each committed, so the copy never grows past its starting
@@ -644,6 +665,9 @@ are never read):
   `ROLE_ADMIN` (usernames) and `ROLE_ADMIN_GROUP` (group ids, the user's groups from `directoryManager`) in
   `app_src/<appId>/app.properties`, split on `;` or `,` (`AppAdmins`; read directly, since
   `AppDevUtil.getAppDevProperties` creates the folder when missing);
+- on Joget 9.x, an app creator (`ROLE_APP_CREATOR`) for the apps they created (`AppDefinition.getCreatedBy()`), as
+  9.x's `AppUtil.isAppEditableByCurrentUser` counts them as the app's designer. `mayExportApps` is true for any app
+  creator; the per-app check decides;
 - users allowed by **Who can export apps they don't administer** (`canExportOtherApps`, empty = nobody), only for apps
   Joget lets them access: one of the app's userviews authorizes them by Joget's own check
   (`UserviewService.getUserviewSetting(...).isIsAuthorize()`: `permission` and `permission_rules`). An app with no
@@ -699,7 +723,7 @@ in its rows (activity ids resolved with `getActivityById`), kept when the proces
 | `ServerInfo` | System Info snapshot at recording-start (host, cluster, plugins, Java, Joget, DB, pool, license) |
 | `Secrets` | Masks secrets in the System Info snapshot: the `secretNames` setting (default: Upgrade Advisor's secret names) and value shapes (from Upgrade Advisor) |
 | `AppExport` | Finds the apps in the recorded URLs, exports them (at stop, else at upload), lists them in `app/apps.json` |
-| `AppAdmins` | An app's own admins from `app_src/<app>/app.properties`, as App Composer reads them |
+| `AppAdmins` | An app's own admins from `app_src/<app>/app.properties`, as App Composer reads them; `isCreator` for Joget 9.x app creators |
 | `ExportJobs` | The background thread app exports run on, so requests answer within about 20 s |
 | `FileLocks` | The file lock around a `meta.json` change (both stores): across nodes and across plugin copies in one JVM |
 | `SampleData` | Picks the sample rows of an exported app, masks / remaps them, adds them to the `.jwa` |

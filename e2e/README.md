@@ -34,8 +34,25 @@ server data**.
 | `BB_DB_CONTAINER`, `BB_DB` | `mariadb`, `jw8` | Where `export-import.spec.js`, `glowroot-standalone.spec.js` and `other-traces.spec.js` read and lock iService's tables (`docker exec`) |
 | `BB_OTHER_USER`, `BB_OTHER_PASSWORD` | `BB_USER`, the user name | The second session in `other-traces.spec.js` (must be able to read iService's list: not `cat`) |
 | `BB_GLOWROOT_UI` | `http://j8213.local:4001` | j8213's Glowroot, whose Servlet plugin setting `other-traces.spec.js` sets and puts back |
-| `BB_GLOWROOT_DISTS` | `~/Joget/glowroot-0.14.2-dist.zip,~/Joget/glowroot-0.14.4-dist.zip` | The standalone Glowroot dists `glowroot-standalone.spec.js` opens the data in |
+| `BB_GLOWROOT_SERVLET_PLUGIN` | `servlet` | The Glowroot plugin that holds that setting. On Joget 9 (`jakarta.servlet`) it is `jakartaservlet` |
+| `BB_GLOWROOT_DISTS` | `~/Joget/glowroot-0.14.2-dist.zip,~/Joget/glowroot-0.14.4-dist.zip` for `data.h2.db`; `~/Joget/glowroot-0.14.6-dist.zip` for `data.mv.db` | The standalone Glowroot dists `glowroot-standalone.spec.js` opens the data in, chosen by the data's H2 file |
 | `BB_GLOWROOT_PORT`, `BB_JAVA_IMAGE` | `14000`, `eclipse-temurin:17-jdk` | The standalone Glowroot's host port (localhost only) and its throwaway container's image |
+
+### Against Joget 9 (j912)
+
+```bash
+BB_JOGET=https://localhost:4219/jw BB_CONTAINER=j912 BB_DB=jw9 npx playwright test tests/<spec>.js
+# other-traces.spec.js also needs j912's Glowroot and its jakarta plugin:
+#   BB_GLOWROOT_UI=http://j912.local:4000 BB_GLOWROOT_SERVLET_PLUGIN=jakartaservlet
+```
+
+- HTTPS and a custom login page work: `loginAs` fills Joget's own (possibly hidden) login form and clicks its submit.
+- Import iService from j8213 first (export `iService` v2 there, import and publish it on j912).
+- Still expected to fail there, from test data rather than Joget 9: the apps-data checks of `upload-form`,
+  `quick-settings` and `export-import` need iService rows and process instances (j912's are empty);
+  `time-limit.spec.js` waits for **Max recording length**, so it takes about an hour at the default 30 minutes;
+  `armed-start.spec.js` skips itself while **Allow recordings that start before login** is off.
+- `glowroot-standalone` and `other-traces` pass there (j912 runs Glowroot 0.14.6).
 
 ## How it works
 

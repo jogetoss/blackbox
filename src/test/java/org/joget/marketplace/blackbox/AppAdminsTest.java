@@ -51,4 +51,19 @@ public class AppAdminsTest {
         assertFalse(AppAdmins.anyAdmits(src, "zed", Collections.emptySet()));
         assertFalse(AppAdmins.anyAdmits(src.resolve("missing"), "ann", Collections.emptySet()));
     }
+
+    public static class Created {
+        public String getCreatedBy() {
+            return "ann";
+        }
+    }
+
+    @Test
+    public void creatorIsReadFromGetCreatedByWhenThereIsOne() {
+        assertTrue(AppAdmins.isCreator(new Created(), "ann"));
+        assertFalse(AppAdmins.isCreator(new Created(), "bob"));
+        assertFalse("8.2's AppDefinition has no getCreatedBy", AppAdmins.isCreator(new Object(), "ann"));
+        assertFalse(AppAdmins.isCreator(null, "ann"));
+        assertFalse(AppAdmins.isCreator(new Created(), null));
+    }
 }

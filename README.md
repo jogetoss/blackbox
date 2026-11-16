@@ -42,8 +42,9 @@ Who may upload, capture server data or export apps: [Settings](guide/settings.md
 
 ## Compatibility
 
-Joget DX 8.2, Chrome 116 or later. Install the plugin before (or with) the extension of the
-same release:
+Joget DX 8.2, 9.0 and 9.1, Chrome 116 or later. One jar for all: it is built for Joget 8.2 (`javax.servlet`), and Joget 9
+converts it to `jakarta.servlet` when it installs it (the log says `Migration completed successfully`). **Capture
+Glowroot data** works with Glowroot 0.14.2 to 0.14.6 (checked on 0.14.2, 0.14.4 and 0.14.6). Install the plugin before (or with) the extension of the same release:
 
 | Plugin | Extension |
 |---|---|
@@ -76,3 +77,9 @@ mvn -o package    # runs the unit tests too; the jar is target/blackbox-8.2-SNAP
 
 Built against `wflow-core` 8.2-SNAPSHOT (javax.servlet) for Java 11 (Joget 8.2 requires Java 11 or later). The jar includes the extension's replay viewer: rebuild it
 after changing `chrome-extension/viewer.js` or `viewer.css`.
+
+```bash
+./check-joget9.sh   # builds and tests a jakarta copy against wflow-core 9.0-SNAPSHOT and 9.1-SNAPSHOT (from ~/.m2)
+```
+
+It catches Joget 9 API changes; the shipped jar stays the 8.2 build.

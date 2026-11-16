@@ -41,6 +41,9 @@ final class GlowrootData {
     private static final int BLOCK_HEADER = 8;
     private static final long OVERWRITE_MARGIN = 1024 * 1024;
     private static final int DELETE_BATCH = 20_000;
+    private static final int OPEN_TRIES = 3;
+    static final String PAGE_STORE_FILE = "data.h2.db";
+    static final String MV_STORE_FILE = "data.mv.db";
 
     private GlowrootData() {
     }
@@ -75,6 +78,40 @@ final class GlowrootData {
         long cappedBytes;
     }
 
+    /** The file the driver keeps "data" in: H2 1.x as Glowroot 0.14.2 to 0.14.4 uses it writes data.h2.db, H2 2.x (0.14.6) data.mv.db. */
+    static String dbFile(Driver h2) {
+        return h2.getMajorVersion() >= 2 ? MV_STORE_FILE : PAGE_STORE_FILE;
+    }
+
+    static String dbFile(Path dataDir) {
+        return Files.isRegularFile(dataDir.resolve(MV_STORE_FILE)) ? MV_STORE_FILE
+                : Files.isRegularFile(dataDir.resolve(PAGE_STORE_FILE)) ? PAGE_STORE_FILE : null;
+    }
+
+    // Glowroot is writing the file while it is copied. A copy caught in the middle of a write may not open: copy again.
+    private static Connection openCopy(Driver h2, Path srcData, Path outData) throws IOException, SQLException {
+        String file = dbFile(h2);
+        Properties login = new Properties();
+        login.setProperty("user", "sa");
+        login.setProperty("password", "");
+        String url = "jdbc:h2:" + outData.resolve("data").toAbsolutePath() + ";CACHE_SIZE=8192;DB_CLOSE_ON_EXIT=FALSE";
+        for (int attempt = 1;; attempt++) {
+            Files.copy(srcData.resolve(file), outData.resolve(file), StandardCopyOption.REPLACE_EXISTING);
+            try {
+                Connection c = h2.connect(url, login);
+                if (c == null) {
+                    throw new IOException("The H2 driver does not accept " + url);
+                }
+                return c;
+            } catch (SQLException e) {
+                Files.deleteIfExists(outData.resolve("data.trace.db"));
+                if (attempt >= OPEN_TRIES || Thread.currentThread().isInterrupted()) {
+                    throw e;
+                }
+            }
+        }
+    }
+
     static Result slice(Driver h2, Path srcData, Path outData, long from, long to, String recId) throws IOException, SQLException {
         return slice(h2, srcData, outData, from, to, recId, false);
     }
@@ -82,16 +119,8 @@ final class GlowrootData {
     static Result slice(Driver h2, Path srcData, Path outData, long from, long to, String recId, boolean allTraces)
             throws IOException, SQLException {
         Files.createDirectories(outData);
-        Files.copy(srcData.resolve("data.h2.db"), outData.resolve("data.h2.db"), StandardCopyOption.REPLACE_EXISTING);
         Result r = new Result();
-        Properties login = new Properties();
-        login.setProperty("user", "sa");
-        login.setProperty("password", "");
-        String url = "jdbc:h2:" + outData.resolve("data").toAbsolutePath() + ";CACHE_SIZE=8192;DB_CLOSE_ON_EXIT=FALSE";
-        try (Connection c = h2.connect(url, login)) {
-            if (c == null) {
-                throw new SQLException("The H2 driver does not accept " + url);
-            }
+        try (Connection c = openCopy(h2, srcData, outData)) {
             c.setAutoCommit(false);
             try (Statement s = c.createStatement()) {
                 if (allTraces) {
@@ -99,7 +128,7 @@ final class GlowrootData {
                     deleteInBatches(c, s, "DELETE FROM TRACE_ATTRIBUTE WHERE TRACE_ID NOT IN (SELECT ID FROM TRACE)");
                 } else {
                     deleteInBatches(c, s, "DELETE FROM TRACE_ATTRIBUTE WHERE TRACE_ID NOT IN (SELECT TRACE_ID FROM TRACE_ATTRIBUTE"
-                            + " WHERE NAME = " + quote(TAG) + " AND VALUE = " + quote(recId) + ")");
+                            + " WHERE NAME = " + quote(TAG) + " AND \"VALUE\" = " + quote(recId) + ")");
                     deleteInBatches(c, s, "DELETE FROM TRACE WHERE ID NOT IN (SELECT TRACE_ID FROM TRACE_ATTRIBUTE)");
                 }
                 for (int i = 0; i < AGGREGATE_MS.length; i++) {

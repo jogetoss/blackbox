@@ -6,8 +6,10 @@ const { test, expect, JOGET, LEGACY_EXTENSION, loginJoget, api, uploaded } = req
 
 const DB_CONTAINER = process.env.BB_DB_CONTAINER || 'mariadb';
 const DB = process.env.BB_DB || 'jw8';
-const DISTS = (process.env.BB_GLOWROOT_DISTS
-  || ['0.14.2', '0.14.4'].map((v) => path.join(os.homedir(), 'Joget', `glowroot-${v}-dist.zip`)).join(',')).split(',');
+// The data opens in the Glowroot versions that share its H2 format: data.h2.db (H2 1.3) or data.mv.db (H2 2.x).
+const DIST_VERSIONS = { 'data/data.h2.db': ['0.14.2', '0.14.4'], 'data/data.mv.db': ['0.14.6'] };
+const dists = (file) => (process.env.BB_GLOWROOT_DISTS
+  || DIST_VERSIONS[file].map((v) => path.join(os.homedir(), 'Joget', `glowroot-${v}-dist.zip`)).join(',')).split(',');
 const PORT = Number(process.env.BB_GLOWROOT_PORT || 14000);
 const JAVA_IMAGE = process.env.BB_JAVA_IMAGE || 'eclipse-temurin:17-jdk';
 const TABLE = 'rvp_sr_req';
@@ -98,7 +100,6 @@ async function recordSlowAndFailed(context, extensionId, joget) {
 
 test('Download Glowroot data opens in a standalone Glowroot (slow and failed request)', async ({ context, extensionId }) => {
   test.setTimeout(600_000);
-  for (const dist of DISTS) expect(fs.existsSync(dist), dist).toBe(true);
   const joget = await context.newPage();
   await loginJoget(joget);
   const me = await api(joget, 'me');
@@ -143,7 +144,10 @@ test('Download Glowroot data opens in a standalone Glowroot (slow and failed req
     unzip(zip, data);
     const entries = execFileSync('unzip', ['-Z1', zip], { encoding: 'utf8' }).trim().split('\n');
     expect(entries.filter((e) => !e.startsWith('data/')), 'files besides data/').toEqual(['README.txt']);
-    expect(entries, 'data/').toContain('data/data.h2.db');
+    const h2File = Object.keys(DIST_VERSIONS).filter((f) => entries.includes(f));
+    expect(h2File.length, 'data/ holds data.h2.db or data.mv.db, not both').toBe(1);
+    const DISTS = dists(h2File[0]);
+    for (const dist of DISTS) expect(fs.existsSync(dist), dist).toBe(true);
     const readme = fs.readFileSync(path.join(data, 'README.txt'), 'utf8');
     const [, from, to] = readme.match(/from=(\d+)&to=(\d+)/);
 

@@ -6,13 +6,16 @@ import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.sql.Connection;
-import java.sql.DriverManager;
+import java.sql.Driver;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Properties;
 import java.util.Random;
 import java.util.zip.ZipFile;
 import org.json.JSONArray;
@@ -37,6 +40,47 @@ public class GlowrootDataTest {
     @After
     public void tearDown() throws IOException {
         RecordingStore.deleteTree(dir);
+    }
+
+    /** Glowroot 0.14.2 to 0.14.4 ships H2 1.3 (PageStore, data.h2.db), 0.14.6 ships H2 2.3 (MVStore, data.mv.db). */
+    static final class H2 implements AutoCloseable {
+        final String name;
+        final Driver driver;
+        final String file;
+        final String create;
+        private final URLClassLoader loader;
+
+        H2(String name, Driver driver, String file, String create, URLClassLoader loader) {
+            this.name = name;
+            this.driver = driver;
+            this.file = file;
+            this.create = create;
+            this.loader = loader;
+        }
+
+        Connection open(Path data, boolean creating) throws Exception {
+            Properties login = new Properties();
+            login.setProperty("user", "sa");
+            login.setProperty("password", "");
+            return driver.connect("jdbc:h2:" + data.resolve("data") + (creating ? create : ""), login);
+        }
+
+        @Override
+        public void close() throws IOException {
+            if (loader != null) {
+                loader.close();
+            }
+        }
+    }
+
+    static List<H2> bothH2() throws Exception {
+        Path jar = java.nio.file.Paths.get("target", "h2-2", "h2-2.jar");
+        assertTrue("H2 2.x is copied there by the pom (maven-dependency-plugin): " + jar.toAbsolutePath(), Files.isRegularFile(jar));
+        URLClassLoader cl = new URLClassLoader(new URL[]{jar.toUri().toURL()}, Driver.class.getClassLoader());
+        Driver v2 = (Driver) Class.forName("org.h2.Driver", true, cl).getDeclaredConstructor().newInstance();
+        assertEquals(2, v2.getMajorVersion());
+        return Arrays.asList(new H2("h2-1", new org.h2.Driver(), "data.h2.db", ";MV_STORE=FALSE", null),
+                new H2("h2-2", v2, "data.mv.db", "", cl));
     }
 
     static final class GlowrootRing {
@@ -136,7 +180,15 @@ public class GlowrootDataTest {
 
     @Test
     public void keepsOnlyTheRecordingAndRewritesCappedIds() throws Exception {
-        Path src = Files.createDirectories(dir.resolve("src"));
+        for (H2 h2 : bothH2()) {
+            try (H2 closing = h2) {
+                keepsOnlyTheRecordingAndRewritesCappedIds(h2);
+            }
+        }
+    }
+
+    private void keepsOnlyTheRecordingAndRewritesCappedIds(H2 h2) throws Exception {
+        Path src = Files.createDirectories(dir.resolve(h2.name).resolve("src"));
         GlowrootRing traceRing = new GlowrootRing(src.resolve(GlowrootData.TRACE_CAPPED), 64);
         GlowrootRing[] rollups = new GlowrootRing[4];
         for (int i = 0; i < 4; i++) {
@@ -147,11 +199,11 @@ public class GlowrootDataTest {
         long entries = traceRing.write(bytes(2, 400));
         long profile = traceRing.write(bytes(3, 200));
         long queries = rollups[0].write(bytes(4, 250));
-        try (Connection c = DriverManager.getConnection("jdbc:h2:" + src.resolve("data") + ";MV_STORE=FALSE", "sa", "");
+        try (Connection c = h2.open(src, true);
                 Statement s = c.createStatement()) {
             s.execute("CREATE TABLE TRACE (ID VARCHAR, CAPTURE_TIME BIGINT, ENTRIES_CAPPED_ID BIGINT, QUERIES_CAPPED_ID BIGINT,"
                     + " SHARED_QUERY_TEXTS_CAPPED_ID BIGINT, MAIN_THREAD_PROFILE_CAPPED_ID BIGINT, AUX_THREAD_PROFILE_CAPPED_ID BIGINT)");
-            s.execute("CREATE TABLE TRACE_ATTRIBUTE (TRACE_ID VARCHAR, NAME VARCHAR, VALUE VARCHAR, CAPTURE_TIME BIGINT)");
+            s.execute("CREATE TABLE TRACE_ATTRIBUTE (TRACE_ID VARCHAR, NAME VARCHAR, \"VALUE\" VARCHAR, CAPTURE_TIME BIGINT)");
             for (int i = 0; i < 4; i++) {
                 for (String k : new String[]{"TT", "TN"}) {
                     s.execute("CREATE TABLE AGGREGATE_" + k + "_ROLLUP_" + i + " (CAPTURE_TIME BIGINT, QUERIES_CAPPED_ID BIGINT,"
@@ -159,7 +211,7 @@ public class GlowrootDataTest {
                 }
             }
             for (int i = 0; i < 5; i++) {
-                s.execute("CREATE TABLE GAUGE_VALUE_ROLLUP_" + i + " (GAUGE_ID BIGINT, CAPTURE_TIME BIGINT, VALUE DOUBLE, WEIGHT BIGINT)");
+                s.execute("CREATE TABLE GAUGE_VALUE_ROLLUP_" + i + " (GAUGE_ID BIGINT, CAPTURE_TIME BIGINT, \"VALUE\" DOUBLE, WEIGHT BIGINT)");
             }
             s.execute("CREATE TABLE INCIDENT (OPEN_TIME BIGINT)");
             s.execute("INSERT INTO TRACE VALUES ('mine', " + (FROM + 5000) + ", " + entries + ", NULL, NULL, " + profile + ", NULL)");
@@ -180,14 +232,16 @@ public class GlowrootDataTest {
             r.f.close();
         }
 
-        Path out = dir.resolve("out");
-        GlowrootData.Result r = GlowrootData.slice(new org.h2.Driver(), src, out, FROM, TO, REC);
+        Path out = dir.resolve(h2.name).resolve("out");
+        GlowrootData.Result r = GlowrootData.slice(h2.driver, src, out, FROM, TO, REC);
 
         assertEquals("only the tagged trace", 1, r.traces);
         assertEquals("aggregate rows in the window (one -1 id is not a block)", 3, r.aggregates);
         assertEquals("the -1 capped ids of the other kept rows are not there", 2, r.lostBlocks);
         assertFalse("H2's compaction log is removed", Files.exists(out.resolve("data.trace.db")));
-        try (Connection c = DriverManager.getConnection("jdbc:h2:" + out.resolve("data"), "sa", "");
+        assertTrue(h2.name + " keeps its own file format", Files.isRegularFile(out.resolve(h2.file)));
+        assertEquals("only that file and the five capped files", 6, out.toFile().list().length);
+        try (Connection c = h2.open(out, false);
                 Statement s = c.createStatement()) {
             assertEquals("mine", one(s, "SELECT GROUP_CONCAT(ID) FROM TRACE"));
             assertEquals("1", one(s, "SELECT COUNT(*) FROM TRACE_ATTRIBUTE"));
@@ -213,17 +267,25 @@ public class GlowrootDataTest {
 
     @Test
     public void otherUsersTracesKeepEveryTraceOfTheRecordingsTime() throws Exception {
-        Path src = Files.createDirectories(dir.resolve("src-all"));
+        for (H2 h2 : bothH2()) {
+            try (H2 closing = h2) {
+                otherUsersTracesKeepEveryTraceOfTheRecordingsTime(h2);
+            }
+        }
+    }
+
+    private void otherUsersTracesKeepEveryTraceOfTheRecordingsTime(H2 h2) throws Exception {
+        Path src = Files.createDirectories(dir.resolve(h2.name).resolve("src-all"));
         new GlowrootRing(src.resolve(GlowrootData.TRACE_CAPPED), 64).f.close();
         for (int i = 0; i < 4; i++) {
             new GlowrootRing(src.resolve(GlowrootData.rollupCapped(i)), 64).f.close();
         }
-        try (Connection c = DriverManager.getConnection("jdbc:h2:" + src.resolve("data") + ";MV_STORE=FALSE", "sa", "");
+        try (Connection c = h2.open(src, true);
                 Statement s = c.createStatement()) {
             s.execute("CREATE TABLE TRACE (ID VARCHAR, START_TIME BIGINT, CAPTURE_TIME BIGINT, ENTRIES_CAPPED_ID BIGINT,"
                     + " QUERIES_CAPPED_ID BIGINT, SHARED_QUERY_TEXTS_CAPPED_ID BIGINT, MAIN_THREAD_PROFILE_CAPPED_ID BIGINT,"
                     + " AUX_THREAD_PROFILE_CAPPED_ID BIGINT)");
-            s.execute("CREATE TABLE TRACE_ATTRIBUTE (TRACE_ID VARCHAR, NAME VARCHAR, VALUE VARCHAR, CAPTURE_TIME BIGINT)");
+            s.execute("CREATE TABLE TRACE_ATTRIBUTE (TRACE_ID VARCHAR, NAME VARCHAR, \"VALUE\" VARCHAR, CAPTURE_TIME BIGINT)");
             for (int i = 0; i < 4; i++) {
                 for (String k : new String[]{"TT", "TN"}) {
                     s.execute("CREATE TABLE AGGREGATE_" + k + "_ROLLUP_" + i + " (CAPTURE_TIME BIGINT, QUERIES_CAPPED_ID BIGINT,"
@@ -231,7 +293,7 @@ public class GlowrootDataTest {
                 }
             }
             for (int i = 0; i < 5; i++) {
-                s.execute("CREATE TABLE GAUGE_VALUE_ROLLUP_" + i + " (GAUGE_ID BIGINT, CAPTURE_TIME BIGINT, VALUE DOUBLE, WEIGHT BIGINT)");
+                s.execute("CREATE TABLE GAUGE_VALUE_ROLLUP_" + i + " (GAUGE_ID BIGINT, CAPTURE_TIME BIGINT, \"VALUE\" DOUBLE, WEIGHT BIGINT)");
             }
             s.execute("CREATE TABLE INCIDENT (OPEN_TIME BIGINT)");
             String[][] traces = {
@@ -247,10 +309,10 @@ public class GlowrootDataTest {
             s.execute("INSERT INTO TRACE_ATTRIBUTE VALUES ('mine', 'BlackBox recording', '" + REC + "', 0)");
             s.execute("INSERT INTO TRACE_ATTRIBUTE VALUES ('startedAfter', 'BlackBox recording', '" + REC + "', 0)");
         }
-        Path out = dir.resolve("out-all");
-        GlowrootData.Result r = GlowrootData.slice(new org.h2.Driver(), src, out, FROM, TO, REC, true);
+        Path out = dir.resolve(h2.name).resolve("out-all");
+        GlowrootData.Result r = GlowrootData.slice(h2.driver, src, out, FROM, TO, REC, true);
         assertEquals(3, r.traces);
-        try (Connection c = DriverManager.getConnection("jdbc:h2:" + out.resolve("data"), "sa", "");
+        try (Connection c = h2.open(out, false);
                 Statement s = c.createStatement()) {
             assertEquals("mine,otherUser,overlapsStart", one(s, "SELECT GROUP_CONCAT(ID ORDER BY ID) FROM TRACE"));
             assertEquals("attributes of dropped traces go too", "mine", one(s, "SELECT GROUP_CONCAT(TRACE_ID) FROM TRACE_ATTRIBUTE"));

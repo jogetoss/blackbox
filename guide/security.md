@@ -9,7 +9,7 @@ What BlackBox masks, and who can see what. The settings are in [Settings](settin
 | Upload, import a ZIP | **Who can upload** (others get **Upload selected** disabled in the extension) |
 | View and delete a recording, with its server data (system logs, traces, server load, Glowroot data, Info, exported apps) | Its uploader |
 | Capture all server log lines (popup), keep a ZIP's server data on import | **Who can capture other users' server data**: these can hold other users' data. The list page says when a ZIP's server data was left out |
-| Have an app exported (definition and data) | The app's own admins, or **Who can export apps they don't administer** for apps Joget lets them access (one of the app's userviews allows them). Other apps are listed as not exported. Data of an app the user doesn't administer only with **Allow apps data from apps they don't administer** |
+| Have an app exported (definition and data) | The app's own admins (on Joget 9, also an app creator for the apps they created), or **Who can export apps they don't administer** for apps Joget lets them access (one of the app's userviews allows them). Other apps are listed as not exported. Data of an app the user doesn't administer only with **Allow apps data from apps they don't administer** |
 | Downloads (ZIP, HTML) | Anyone who can view the recording |
 
 ## Recordings that start logged out
