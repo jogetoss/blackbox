@@ -359,7 +359,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
     private SampleData.Mode sampleMode(HttpServletRequest request, Access access) {
         String asked = request.getParameter("sampleData");
-        if (!access.allows("allowCaptureAppsData", true) || "none".equals(asked)) {
+        if (!access.capturesAppsData() || "none".equals(asked)) {
             return null;
         }
         return "masked".equals(asked) ? SampleData.Mode.MASKED : SampleData.Mode.REAL;
@@ -1221,7 +1221,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
     private JSONObject quickSettings(Access access, User user) throws JSONException {
         boolean apps = access.allows("allowAppExport", true) && access.mayExportApps();
-        boolean sample = apps && access.allows("allowCaptureAppsData", true);
+        boolean sample = apps && access.capturesAppsData();
         return new JSONObject()
                 .put("serverCapture", true)
                 .put("apps", apps)
@@ -1510,6 +1510,12 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             return flag(setting, dflt);
         }
 
+        // the settings page hides (and so never saves) Allow capturing apps data while Allow apps data from apps they
+        // don't administer is unticked, so that setting turns apps data off for everyone, app admins included
+        boolean capturesAppsData() {
+            return flag("allowOtherAppsData", false) && flag("allowCaptureAppsData", true);
+        }
+
         boolean canUpload() {
             return allowed("canUpload", true);
         }
@@ -1646,7 +1652,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             PluginManager pm = (PluginManager) AppUtil.getApplicationContext().getBean("pluginManager");
             Object plugin = pm.getPlugin(className.toString());
             if (!(plugin instanceof Permission)) {
-                // "Is Admin" is an Enterprise plugin; without it the setting still means Joget admins
+                // "Is Admin" (AdminUserviewPermission) could not be loaded: the setting still means Joget admins
                 return IS_ADMIN.equals(className.toString()) && admin;
             }
             Permission permission = (Permission) plugin;

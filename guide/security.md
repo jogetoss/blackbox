@@ -11,7 +11,7 @@ built-in rights here: every row below applies to them too.
 | View and delete a recording, with its server data (system logs, traces, server load, Glowroot data, Info, exported apps) | Its uploader |
 | View and delete other users' recordings | **Who can view and delete every recording** (default Is Admin; empty = nobody). Their server data only with **Who can capture and see other users' server data** |
 | Capture all server log lines (popup), keep a ZIP's server data on import | **Who can capture and see other users' server data**: these can hold other users' data. The list page says when a ZIP's server data was left out |
-| Have an app exported (definition and data) | The app's own admins (on Joget 9, also an app creator for the apps they created) while **Allow app admins to export their own apps** is on, or **Who can export apps they don't administer** for apps Joget lets them access (one of the app's userviews allows them). Other apps are listed as not exported. Data of an app the user doesn't get as its admin only with **Allow apps data from apps they don't administer** |
+| Have an app exported (definition and data) | The app's own admins (on Joget 9, also an app creator for the apps they created) while **Allow app admins to export their own apps** is on, or **Who can export apps they don't administer** for apps Joget lets them access (one of the app's userviews allows them). Other apps are listed as not exported. Data (rows and process data) for anyone only while **Allow apps data from apps they don't administer** is on |
 | Downloads (ZIP, HTML) | Anyone who can view the recording |
 
 ## Recordings that start logged out

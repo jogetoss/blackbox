@@ -24,16 +24,15 @@ The all-server log test in `liveness.spec.js` ticks **All server log lines** its
 ### Settings the suite needs
 
 No user has built-in rights: Joget admins follow the BlackBox settings too. `check-settings.js` runs before the suite
-and stops it, naming the settings, when `BB_USER` lacks one of the first four (`BB_SKIP_SETTINGS_CHECK=1` skips it,
+and stops it, naming the settings, when `BB_USER` lacks one of the first five (`BB_SKIP_SETTINGS_CHECK=1` skips it,
 e.g. to run a single spec as a restricted user).
 
 | Setting | Value |
 |---|---|
 | Who can upload | includes `BB_USER` (and `BB_INCOGNITO_USER`) |
-| Allow exporting the apps used in the recording, Allow capturing apps data, Allow masking apps data | ticked |
+| Allow exporting the apps used in the recording, Allow apps data from apps they don't administer, Allow capturing apps data, Allow masking apps data | ticked |
 | Who can export apps they don't administer | includes `BB_USER` (the default, Is Admin, for `admin`) |
-| Allow recording System Info secrets unmasked, Allow recording license secrets unmasked | ticked |
-| Allow apps data from apps they don't administer | ticked, unless `BB_USER` is an admin of iService |
+| Allow recording System Info secrets unmasked, Allow recording license secrets unmasked (Enterprise) | ticked |
 | Who can capture and see other users' server data | includes `BB_USER` (all-server log test) |
 | Allow capturing Glowroot traces…, Allow capturing other users' traces, Allow capturing Glowroot data | ticked (`other-traces`, `glowroot-standalone`) |
 | Allow recordings that start before login | ticked (`armed-start`; it skips itself otherwise) |

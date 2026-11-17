@@ -55,8 +55,8 @@ below add the other parts.
 | Max apps to export | 3 | 0 = no limit (0–9999; anything else means 3); apps not allowed don't count | |
 | Allow app admins to export their own apps | Yes | An app's own admins (`ROLE_ADMIN`, `ROLE_ADMIN_GROUP` in its `app.properties`; on Joget 9 also its app creator) get that app, with its data. Off: only the two settings below decide. A Joget admin is not an app's admin unless the app lists them | |
 | Who can export apps they don't administer | Is Admin (admins only). Empty = nobody | Only apps Joget lets them access | |
-| Allow apps data from apps they don't administer | No | Off: such an app is exported without its rows and process data (the Apps tab says why) | |
-| Allow capturing apps data | Yes | Shown on the settings page only when **Allow apps data from apps they don't administer** is ticked; hidden, it keeps its value, which still applies to app admins' own apps. Needs **Allow exporting the apps used…**; see [Apps data](apps.md#apps-data) | **Capture apps data** |
+| Allow apps data from apps they don't administer | No | Off: no apps data for anyone, app admins included; every app is exported without its rows and process data, and the two apps data settings below are hidden. On: those settings decide, also for apps the user doesn't administer | |
+| Allow capturing apps data | Yes | Shown only when **Allow apps data from apps they don't administer** is ticked; unticked there, no one gets apps data, app admins included. Needs **Allow exporting the apps used…**; see [Apps data](apps.md#apps-data) | **Capture apps data** |
 | Allow masking apps data | Yes | Shown when apps data is allowed | **Mask data** |
 | Newest rows per table when the recording touched none | 20 | Shown when apps data is allowed. At most 500 | |
 | Always-masked column names | password, ic, email, phone, address… | Shown when apps data is allowed. One word per line; a column whose name has one as a word is always masked. Empty = the default list | |

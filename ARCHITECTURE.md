@@ -96,7 +96,7 @@ Plugin and extension 8.2.1 call the capture summary `systemLog`. The plugin neve
 
 `BlackBoxPlugin.Access` decides, per request. Joget admins have no built-in rights: every check reads a setting. The
 admin role only counts where a permission setting whose default is Is Admin was never saved, and where the Is Admin
-plugin (Enterprise) is missing. A picker saved empty means nobody, except **Who can upload** (any logged-in user). The settings are listed in
+plugin (`AdminUserviewPermission`, in wflow-core) can't be loaded. A picker saved empty means nobody, except **Who can upload** (any logged-in user). The settings are listed in
 [Who sees what](guide/security.md#who-sees-what).
 
 | Right | Who |
@@ -634,7 +634,7 @@ and `licenseMasked`; when either is `false`, the viewer's Info tab says so in th
 
 `me.options` (`quickSettings`) says what this user may get, for the popup and the upload form alike:
 `serverCapture` (always true), `apps` (**Allow exporting the apps used…** + `Access.mayExportApps`: an app admin
-of some app with **Allow app admins to export their own apps** on, or **Who can export apps they don't administer**), `sample` (Capture apps data: `apps` + **Allow capturing apps data**), `mask`
+of some app with **Allow app admins to export their own apps** on, or **Who can export apps they don't administer**), `sample` (Capture apps data: `apps` + `Access.capturesAppsData`: **Allow apps data from apps they don't administer** and **Allow capturing apps data**; the settings page hides, and so never saves, the latter while the former is off), `mask`
 (Mask data: `sample` + **Allow masking apps data**), `allServer` (`canCaptureServerData()`), `gauges` (`allowCaptureGauges`), `traces`
 (`allowCaptureTraces`), `otherTraces` (`traces` + `allowCaptureOtherUsersTraces`) and `glowrootData`
 (`allowCaptureGlowrootData`); for these and the app export, apps data and
@@ -681,8 +681,7 @@ App filter and the App tab's problem lists, so the lane works for local recordin
 
 ### Apps data (`SampleData`)
 
-`recording-stop` and `create` take `sampleData=none|masked|real` (missing: real; none without **Allow capturing apps
-data**). `masked` also gives every record a new id (`IdMap(keep=false)`); `real` keeps the ids. `AppExport.save` calls an `AfterExport` hook per saved `.jwa`: `SampleData.build` with one
+`recording-stop` and `create` take `sampleData=none|masked|real` (missing: real; none unless `Access.capturesAppsData`). `masked` also gives every record a new id (`IdMap(keep=false)`); `real` keeps the ids. `AppExport.save` calls an `AfterExport` hook per saved `.jwa`: `SampleData.build` with one
 `Masker` (random HMAC key per export, so fakes are stable within a recording and differ between them) and one `IdMap` for all apps of
 the recording, then `SampleData.addTo` rewrites the `.jwa` with `data/<table>.json` (the format `AppService.importFormData`
 reads; dates as `yyyy-MM-dd HH:mm:ss` in the server's time zone, the pattern `FormUtil.jsonToFormRowSet` parses) and `app_formuploads/<table>/<newId>/<file>`. Data comes from
