@@ -33,7 +33,7 @@ Limits on the one-time tokens and capture secrets:
 
 - A token is accepted only from the BlackBox extension (Allowed Chrome extension IDs), never from a web page; over
   HTTPS when **Allow uploads over HTTP** is off. It is sent in a header, never in a URL.
-- A token works once and only opens a capture. The secret only pings or stops that one capture. Neither can read,
+- A token works once and only opens a capture, or cancels itself (the popup's **Cancel**). The secret only pings or stops that one capture. Neither can read,
   list, upload or export anything.
 - Every user, admins too: at most 3 unused tokens each; preparing counts as a start for **Max recordings started per user per
   minute**, and starting with a token counts against **Max recordings in progress per user**.

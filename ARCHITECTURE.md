@@ -49,6 +49,7 @@ or a known one with the wrong method, gets 400 "Unknown action". Who may do what
 | `delete` | POST | viewers | |
 | `systemlog`, `serverinfo`, `apps`, `appfile&file=`, `traces`, `trace&file=`, `gauges`, `glowroot[&node=]`, `trace-retry[&keys=]` | GET (`trace-retry`: POST) | server data | 403 for viewers without it. `glowroot`: node statuses, or that node's ZIP. `trace-retry`: 429 within 20 s |
 | `recording-arm` | POST | uploaders, with **Allow recordings that start before login** | `{token, expiresAt, ttlMs}`; takes the same parameters as `recording-start` (see "Armed start") |
+| `recording-disarm` | POST | whoever holds the token (`BlackBox-Token` header, extension Origin; no login; works with the setting off) | `{disarmed}`; deletes the token (the popup's **Cancel**; see "Armed start") |
 | `recording-start` | POST | anyone logged in | Starts the capture (see "Server capture"); 400 for an invalid id, 409 for another user's id |
 | `recording-stop`, `app-export` | POST, GET | the capture's owner | 404 for anyone else |
 | `recording-ping[&lastSavedAt=&videoBytes=]` | POST | the capture's owner | The recorder's heartbeat (see "Server capture"); 404 for anyone else |

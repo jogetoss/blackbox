@@ -60,7 +60,7 @@ Popup → **Settings** (this browser only; server options are in the plugin's [S
 - **Starting logged out** (login page, single sign-on): while logged in, click **Prepare a recording that starts
   logged out** in the popup (shown when the server allows it). Then log out, open the page with the problem and start
   recording before it expires (15 minutes by default; the popup shows the time). The server keeps the server data for you even though you are logged out, also if you
-  log in as someone else while recording. Upload it logged in as yourself. **Cancel** drops the prepared one-time token, on the server too. It
+  log in as someone else while recording. Upload it logged in as yourself. **Cancel** drops the prepared one-time token, on the server too (when the server can't be reached, it counts there until it expires). It
   works for the next recording, normal or incognito: you can prepare it in a normal window and record logged out
   in an incognito one (log in there as yourself to upload before closing it, or download it).
 - **Time limit:** every recording is at most the plugin's **Max recording length** (30 minutes by default). With no
