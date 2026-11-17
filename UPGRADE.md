@@ -33,16 +33,18 @@ their default. **Who can upload** is unchanged: empty = any logged-in user.
 **Allow capturing Glowroot traces…**, **Allow capturing Glowroot data**, **Allow exporting the apps used in the
 recording**, **Allow capturing apps data** and **Allow masking apps data** are now on, for every user. Still off:
 **Allow capturing other users' traces**, the three **Allow recording … unmasked** settings and **Allow apps data from
-apps they don't administer**. The popup's boxes still start unticked.
+apps they don't administer**, so no apps data until you tick it (see below). The popup's boxes still start unticked.
 
 **New setting: Allow app admins to export their own apps** (on by default, as before). Off: an app's own admins get
 no app for being its admin.
 
-**Allow capturing apps data** and the fields under it show on the settings page only when **Allow apps data from apps
-they don't administer** is ticked. Hidden, they keep their values, which still apply to app admins' own apps.
+**Apps data now needs Allow apps data from apps they don't administer, for everyone.** In 8.2.3 an app's own admins
+got their app's rows and process data without it. Now, while it is off, no one gets apps data, and **Allow capturing
+apps data** and the fields under it are hidden on the settings page. Tick it to get apps data back; then **Allow
+capturing apps data** decides as before. Joget doesn't save hidden fields, so a value saved for them while hidden is
+lost at the next Submit.
 
-Is Admin is an Enterprise permission plugin. Where it is missing (Community), the settings that default to it
-still mean Joget admins.
+If the Is Admin permission plugin can't be loaded, the settings that name it still mean Joget admins.
 
 ## 8.2.2 → 8.2.3
 

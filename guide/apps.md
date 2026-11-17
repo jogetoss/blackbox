@@ -18,7 +18,8 @@ capture, or it failed), the export runs at upload.
 
 ## Apps data
 
-With **Capture apps data**, each `.jwa` gets rows the way Joget's own export adds them, so **importing the `.jwa`
+With **Capture apps data** (the popup offers it only while **Allow apps data from apps they don't administer** and
+**Allow capturing apps data** are on), each `.jwa` gets rows the way Joget's own export adds them, so **importing the `.jwa`
 imports the rows too** (unless "do not import form data" is ticked). Rows per app table:
 
 - **Opened or saved** in the recording (record, process and activity ids in URLs and form posts);

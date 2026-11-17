@@ -9,9 +9,10 @@ const PASSWORD = process.env.BB_PASSWORD || USER;
 // me.options key -> the setting that gives it
 const NEEDED = {
   apps: 'Allow exporting the apps used in the recording + Who can export apps they don\'t administer (the user, e.g. Is Admin)',
-  sample: 'Allow capturing apps data',
+  sample: 'Allow apps data from apps they don\'t administer + Allow capturing apps data',
   mask: 'Allow masking apps data',
   systemSecrets: 'Allow recording System Info secrets unmasked',
+  license: 'Allow recording license secrets unmasked (Enterprise only: Community has no license, so set BB_SKIP_SETTINGS_CHECK=1 there)',
 };
 
 module.exports = async () => {
@@ -38,8 +39,7 @@ module.exports = async () => {
     }
     if (missing.length) {
       throw new Error(`BlackBox e2e: ${USER} lacks rights the suite needs. In Manage Plugins > BlackBox > Configure set:\n- `
-        + missing.join('\n- ') + '\nAlso tick "Allow apps data from apps they don\'t administer" unless the user is an '
-        + 'admin of iService. See e2e/README.md "Settings the suite needs". BB_SKIP_SETTINGS_CHECK=1 skips this check.');
+        + missing.join('\n- ') + '\nSee e2e/README.md "Settings the suite needs". BB_SKIP_SETTINGS_CHECK=1 skips this check.');
     }
   } finally {
     await http.dispose();

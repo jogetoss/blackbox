@@ -281,7 +281,7 @@
         {
             "name" : "allowOtherAppsData",
             "label" : "Allow apps data from apps they don't administer",
-            "description" : "For users exporting an app they are not an admin of (see Who can export apps they don't administer), and for app admins when \"Allow app admins to export their own apps\" is off. Off: that app's definition is exported without its rows and process data. Record ids come from the uploaded recording, so with this on a user can pick which rows of the app get exported.",
+            "description" : "Off: no apps data at all, for anyone (app admins too): every app is exported without its rows and process data, and Allow capturing apps data and Allow masking apps data are hidden. On: those two settings show and decide; apps data then also covers apps the user exports without being their admin (see Who can export apps they don't administer). Record ids come from the uploaded recording, so with this on a user can pick which rows of the app get exported.",
             "control_field" : "allowAppExport",
             "control_value" : "true",
             "control_use_regex" : "false",
@@ -292,7 +292,7 @@
         {
             "name" : "allowCaptureAppsData",
             "label" : "Allow capturing apps data",
-            "description" : "Applies to admins too. Rows added to each exported .jwa like Joget's own export with data, so importing it imports them: the records the recording opened or saved, rows linked to them, and the newest rows of tables with none; plus the processes the recording touched (read only). Real values and original record ids, except always-masked columns; uploaded files up to 5 MB each, 50 MB per app (larger ones become placeholders). Each recording gets it only when \"Capture apps data\" is ticked in the extension's popup (unticked by default). Shown here only when \"Allow apps data from apps they don't administer\" is ticked; hidden, it keeps its value, which still applies to app admins' own apps.",
+            "description" : "Applies to admins too. Rows added to each exported .jwa like Joget's own export with data, so importing it imports them: the records the recording opened or saved, rows linked to them, and the newest rows of tables with none; plus the processes the recording touched (read only). Real values and original record ids, except always-masked columns; uploaded files up to 5 MB each, 50 MB per app (larger ones become placeholders). Each recording gets it only when \"Capture apps data\" is ticked in the extension's popup (unticked by default). Shown only when \"Allow apps data from apps they don't administer\" is ticked. Unticked there: no apps data for anyone, app admins included, whatever this box says.",
             "control_field" : "allowOtherAppsData",
             "control_value" : "true",
             "control_use_regex" : "false",
