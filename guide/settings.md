@@ -53,7 +53,7 @@ below add the other parts.
 | Recent changes period (days) | 7 | Info tab: changed app versions and wflow files; at most 365 | |
 | Allow exporting the apps used in the recording | Yes | | **Export the apps used** |
 | Max apps to export | 3 | 0 = no limit (0–9999; anything else means 3); apps not allowed don't count | |
-| Allow app admins to export their own apps | Yes | An app's own admins (`ROLE_ADMIN`, `ROLE_ADMIN_GROUP` in its `app.properties`; on Joget 9 also its app creator) get that app, with its data. Off: only the two settings below decide. A Joget admin is not an app's admin unless the app lists them | |
+| Allow app admins to export their own apps | Yes | An app's own admins (`ROLE_ADMIN`, `ROLE_ADMIN_GROUP` in its `app.properties`; on Joget 9 also its app creator) get that app; its data only while **Allow apps data from apps they don't administer** is on. Off: only the two settings below decide. A Joget admin is not an app's admin unless the app lists them | |
 | Who can export apps they don't administer | Is Admin (admins only). Empty = nobody | Only apps Joget lets them access | |
 | Allow apps data from apps they don't administer | No | Off: no apps data for anyone, app admins included; every app is exported without its rows and process data, and the two apps data settings below are hidden. On: those settings decide, also for apps the user doesn't administer | |
 | Allow capturing apps data | Yes | Shown only when **Allow apps data from apps they don't administer** is ticked; unticked there, no one gets apps data, app admins included. Needs **Allow exporting the apps used…**; see [Apps data](apps.md#apps-data) | **Capture apps data** |
@@ -70,7 +70,7 @@ automatic uploads use them too. The server checks every choice again.
 | Popup checkbox | Shown when |
 |---|---|
 | **Export the apps used** | **Allow exporting the apps used in the recording** is on and the user may have some app exported (an app admin with **Allow app admins to export their own apps** on, or in **Who can export apps they don't administer**) |
-| **Capture apps data** | **Export the apps used** is shown, and **Allow capturing apps data** is on |
+| **Capture apps data** | **Export the apps used** is shown, and **Allow apps data from apps they don't administer** and **Allow capturing apps data** are on |
 | **Mask data** | **Capture apps data** is shown, and **Allow masking apps data** is on |
 | **All server log lines** | The user is in **Who can capture and see other users' server data** |
 | **Capture server load** | **Allow capturing server load** is on |

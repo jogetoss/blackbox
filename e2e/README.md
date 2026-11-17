@@ -24,7 +24,7 @@ The all-server log test in `liveness.spec.js` ticks **All server log lines** its
 ### Settings the suite needs
 
 No user has built-in rights: Joget admins follow the BlackBox settings too. `check-settings.js` runs before the suite
-and stops it, naming the settings, when `BB_USER` lacks one of the first five (`BB_SKIP_SETTINGS_CHECK=1` skips it,
+and stops it, naming the settings, when `BB_USER` lacks one of the first four (`BB_SKIP_SETTINGS_CHECK=1` skips it,
 e.g. to run a single spec as a restricted user).
 
 | Setting | Value |
