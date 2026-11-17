@@ -9,44 +9,43 @@ oldest first. Upgrade the plugin and the extension together.
 | 8.2.2 | 1.2.0 |
 | 8.2.1 | 1.1.0 |
 
-## 8.2.3 → next release
+## 8.2.2 → 8.2.3
 
-**Joget admins no longer skip the BlackBox settings.** Until 8.2.3 an admin could always use every option and had
-no per-user limits. Now every setting applies to admins too. Check these after the upgrade:
+**Joget admins no longer skip the BlackBox settings.** In 8.2.2 an admin could always use every option. Now every
+setting applies to admins too. Check these after the upgrade:
 
 | What admins had | Now |
 |---|---|
-| Every popup option | Only when its **Allow…** setting is on. A setting saved unticked in 8.2.3 stays off, for admins too: tick it |
+| Every popup option | Only when its **Allow…** setting is on. A setting saved unticked in 8.2.2 stays off, for admins too: tick it |
 | Upload and import a ZIP | **Who can upload** must include them (the default, Logged In User, does; a group or user list without admins shuts them out) |
 | View and delete every recording | New setting **Who can view and delete every recording**, default Is Admin |
 | Server data of every recording, **All server log lines**, a ZIP's server data on import | **Who can capture and see other users' server data** (renamed from Who can capture other users' server data; same key) must include them. The default, Is Admin, does |
 | Every app exported, with data | A Joget admin is no longer an admin of every app. They get an app as one of its own admins (`ROLE_ADMIN`, `ROLE_ADMIN_GROUP`), or through **Who can export apps they don't administer** (default now Is Admin) for apps Joget lets them access, with data only when **Allow apps data from apps they don't administer** is on |
-| No limits | **Storage per user**, **Max recordings in progress per user**, **Max recordings started per user per minute** and the 3 unused before-login tokens apply. An admin already over the storage limit can't upload until they delete recordings or the limit is raised |
+| No per-user limits | The new limits below apply to them, and so does the limit of 3 unused before-login tokens |
 
 **An empty permission picker now means nobody** for **Who can view and delete every recording**, **Who can capture and
-see other users' server data** and **Who can export apps they don't administer**. In 8.2.3 an empty **Who can capture
-other users' server data** meant admins. **Who can export apps they don't administer** saved empty in 8.2.3 stays
-nobody, so admins get no apps until you pick Is Admin there. The settings page no longer refills these pickers with
-their default. **Who can upload** is unchanged: empty = any logged-in user.
+see other users' server data** and **Who can export apps they don't administer**. In 8.2.2 an empty **Who can capture
+other users' server data** still let admins in. **Who can export apps they don't administer** saved empty in 8.2.2
+stays nobody, so admins get no apps until you pick Is Admin there. The settings page refills an empty picker with its
+default only for **Who can upload** (empty = any logged-in user).
 
 **New defaults for installs that never saved the settings** (saved values are kept): **Allow capturing server load**,
 **Allow capturing Glowroot traces…**, **Allow capturing Glowroot data**, **Allow exporting the apps used in the
-recording**, **Allow capturing apps data** and **Allow masking apps data** are now on, for every user. Still off:
-**Allow capturing other users' traces**, the three **Allow recording … unmasked** settings and **Allow apps data from
-apps they don't administer**, so no apps data until you tick it (see below). The popup's boxes still start unticked.
+recording**, **Allow capturing apps data** and **Allow masking apps data** are now on, for every user. Off: the new
+**Allow capturing other users' traces**, the three new **Allow recording … unmasked** settings and the new **Allow apps
+data from apps they don't administer**, so no apps data until you tick it (see below). The popup's boxes still start
+unticked.
 
-**New setting: Allow app admins to export their own apps** (on by default, as before). Off: an app's own admins get
+**New setting: Allow app admins to export their own apps** (on by default, as in 8.2.2). Off: an app's own admins get
 no app for being its admin.
 
-**Apps data now needs Allow apps data from apps they don't administer, for everyone.** In 8.2.3 an app's own admins
-got their app's rows and process data without it. Now, while it is off, no one gets apps data, and **Allow capturing
-apps data** and the fields under it are hidden on the settings page. Tick it to get apps data back; then **Allow
-capturing apps data** decides as before. Joget doesn't save hidden fields, so a value saved for them while hidden is
-lost at the next Submit.
+**Apps data now needs Allow apps data from apps they don't administer, for everyone.** In 8.2.2 anyone who got an app
+exported got its rows and process data with **Allow capturing apps data**. Now, while the new setting is off, no one
+gets apps data, and **Allow capturing apps data** and the fields under it are hidden on the settings page. Tick it to
+get apps data back; then **Allow capturing apps data** decides as before. Joget doesn't save hidden fields, so a value
+saved for them while hidden is lost at the next Submit.
 
 If the Is Admin permission plugin can't be loaded, the settings that name it still mean Joget admins.
-
-## 8.2.2 → 8.2.3
 
 **Plugin 8.2.3 needs Java 11 or later**, as Joget 8.2 does. On a Joget server still running on Java 8, the plugin no
 longer loads.
@@ -54,14 +53,14 @@ longer loads.
 **The Info tab now masks secrets.** In 8.2.2 it showed JVM arguments, system properties, the datasource file and the
 license table as they are. Now secret-named and secret-shaped values are masked (see
 [Sensitive data](guide/security.md#sensitive-data-in-system-info)), and so are the license's system key, signature and MAC address.
-Admins can still record them unmasked with the popup's **Record System Info secrets unmasked** and **Record license
-secrets unmasked**; non-admins only when **Allow recording System Info secrets unmasked** or **Allow recording license
-secrets unmasked** is on.
+They can be recorded unmasked with the popup's **Record System Info secrets unmasked** and **Record license secrets
+unmasked**, only when **Allow recording System Info secrets unmasked** or **Allow recording license secrets unmasked**
+is on (for admins too; both off by default).
 
 **Recordings now mask browser credentials.** Extension 1.3.0 replaces passwords, tokens, cookies and `Authorization`
 headers in the network log, URLs and console with `****` before a recording is saved (see
-[Credentials in recordings](guide/security.md#credentials-in-recordings)). Admins can record them unmasked with the popup's **Record
-browser secrets unmasked**; non-admins only when **Allow recording browser secrets unmasked** is on.
+[Credentials in recordings](guide/security.md#credentials-in-recordings)). They can be recorded unmasked with the popup's **Record
+browser secrets unmasked**, only when **Allow recording browser secrets unmasked** is on (for admins too; off by default).
 
 **Plugin 8.2.3 needs extension 1.3.0.** **Allowed Chrome extension IDs** now accepts only
 `anmfmkacddnmmgdcnkgkfjhagnilmkmp` by default. Extension 1.3.0 always has that ID (its manifest `key`); extension
@@ -70,7 +69,7 @@ folder, upload the recordings it keeps while the plugin is still 8.2.2 (or while
 empty), or download them as ZIP: reloading the old extension over the new files turns it off for good (checked on
 Chromium 140), and removing it deletes its storage. Then remove the old extension and load 1.3.0 unpacked. Or empty **Allowed Chrome extension IDs** to accept any extension.
 
-**New limits** (all settings, 0 = no limit; see [Limits](guide/limits.md#limits)). For non-admins: **Storage per user** 10240 MB
+**New limits** (all settings, 0 = no limit; see [Limits](guide/limits.md#limits)). For every user, admins too: **Storage per user** 10240 MB
 (HTTP 413), **Max recordings in progress per user** 3 and **Max recordings started per user per minute** 10 (HTTP 429:
 the recording goes on without server data). For every ZIP import: **Max files in a ZIP import** 5000 and **Max total
 size of a ZIP import** 3 × **Max file size**. An upload or import that 8.2.2 accepted can now be refused. **Allow uploads over HTTP** (on by default) can be turned off to require HTTPS.
