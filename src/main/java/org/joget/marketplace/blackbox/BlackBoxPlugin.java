@@ -1556,7 +1556,7 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
             return exportsOwnApp(def) || (exportsOtherApps() && canAccessApp(def));
         }
 
-        // an app's own admin, when the setting lets app admins export their apps (with data)
+        // an app's own admin, when the setting lets app admins export their apps; its data also needs capturesAppsData()
         boolean exportsOwnApp(AppDefinition def) {
             return flag(APP_ADMIN_EXPORT, true) && isAppAdmin(def);
         }
