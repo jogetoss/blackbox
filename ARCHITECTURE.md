@@ -220,8 +220,7 @@ Not captured: work a request hands to another thread, and log lines that never r
 
 ### Armed start
 
-For recordings that start logged out (design: `docs/design/anonymous-server-capture.md`). Setting
-`allowArmedRecordings` (off by default).
+For recordings that start logged out. Setting `allowArmedRecordings` (off by default).
 
 1. `recording-arm` (logged in, `canUpload`): users pass `StartLimiter` and have at most `OneTimeTokens.MAX_PER_USER`
    (3) unexpired one-time tokens. `captureOptions` resolves the start parameters against the user's rights now and `OneTimeTokens.arm` stores them with the owner under the token's SHA-256 hash, valid for the setting `armTokenMinutes` (**Before-login recordings expire after (minutes)**,
@@ -240,11 +239,15 @@ For recordings that start logged out (design: `docs/design/anonymous-server-capt
    upload exports them. A request with the header always takes this path, so a login as another user during the
    recording doesn't matter.
 4. `attach` (the upload, as the owner) removes `secretHash`.
+5. `recording-disarm` with the token header (the popup's **Cancel**): same Origin and HTTPS checks; `OneTimeTokens.use`
+   deletes the token, so it no longer counts toward `MAX_PER_USER`. It answers `disarmed` (false when the token was
+   already used, expired or unknown) and works also with the setting off.
 
 `me.options.arm` is the setting and `canUpload`; the popup shows its link from it. The extension keeps the token in
 `chrome.storage.session` (`armedToken`: token, Upload URL, expiry; shared by the normal and incognito copies, so
 the next recording in either uses it), and
-`startServerCapture` uses and removes it when the Upload URL matches. The `captureSecret` stays in the capture
+`startServerCapture` uses and removes it when the Upload URL matches (a token for another server stays), and
+**Cancel** (`disarm`) removes it and posts `recording-disarm`. The `captureSecret` stays in the capture
 state, the recorder's meta and the crash-safety partial meta; `buildReport` copies only `status`, `id`, `server`,
 `message`, so it never reaches `session.json`.
 

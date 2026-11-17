@@ -42,6 +42,16 @@ async function arm() {
   return { uploadUrl, expiresAt: armed.expiresAt };
 }
 
+// Cancel: the server deletes the token too, so it stops counting toward the 3 a user may hold
+async function disarm() {
+  const armed = (await chrome.storage.session.get(ARM_KEY))[ARM_KEY];
+  await chrome.storage.session.remove(ARM_KEY);
+  if (armed?.token && armed.expiresAt > Date.now()) {
+    await postAction(armed.uploadUrl, 'recording-disarm', '', {}, { Authorization: 'BlackBox-Token ' + armed.token }).catch(() => {});
+  }
+  return null;
+}
+
 function captureParams(q) {
   return { allServer: String(q.allServer), gauges: String(q.gauges), traces: String(q.traces),
     otherTraces: String(q.traces && q.otherTraces), glowrootData: String(q.glowrootData),
@@ -144,7 +154,7 @@ async function startServerCapture(tabId) {
   let captureSecret;
   const armed = await getArmed();
   const token = armed && armed.uploadUrl === uploadUrl ? armed.token : null;
-  if (armed) await chrome.storage.session.remove(ARM_KEY);
+  if (token) await chrome.storage.session.remove(ARM_KEY);
   try {
     const q = await Quick.get();
     const res = await postAction(uploadUrl, 'recording-start', id, captureParams(q),
@@ -229,7 +239,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     'source-picked': () => sourcePicked(msg.startedAt),
     'stop': () => stop(msg.reason || 'user'),
     'arm': () => arm(),
-    'disarm': () => chrome.storage.session.remove(ARM_KEY).then(() => null),
+    'disarm': () => disarm(),
     'get-armed': () => getArmed().then((a) => (a ? { uploadUrl: a.uploadUrl, expiresAt: a.expiresAt } : null)),
   };
   const fn = handlers[msg.type];

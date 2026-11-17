@@ -96,7 +96,8 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
         String origin = request.getHeader("Origin");
         Object allowedIds = getProperty("allowedExtensionIds");
         boolean fromExtension = fromAllowedExtension(origin, allowedIds == null ? null : allowedIds.toString());
-        String token = "recording-start".equals(action) ? OneTimeTokens.tokenFrom(request.getHeader("Authorization")) : null;
+        String token = "recording-start".equals(action) || "recording-disarm".equals(action)
+                ? OneTimeTokens.tokenFrom(request.getHeader("Authorization")) : null;
         String secret = "recording-ping".equals(action) || "recording-stop".equals(action)
                 ? request.getHeader(OneTimeTokens.SECRET_HEADER) : null;
         if (post && (token != null || secret != null)) {
@@ -835,6 +836,11 @@ public class BlackBoxPlugin extends ExtDefaultPlugin implements SystemConfigurab
 
     private void handleArmed(HttpServletRequest request, HttpServletResponse response, String action, String id, String token,
             String secret) throws IOException, JSONException {
+        if (token != null && "recording-disarm".equals(action)) {
+            // Cancel in the popup: the token is deleted, so it no longer counts toward MAX_PER_USER
+            json(response, new JSONObject().put("disarmed", tokens.get().use(token, System.currentTimeMillis()) != null));
+            return;
+        }
         if (token != null) {
             if (!flag(ARM_SETTING, false)) {
                 error(response, HttpServletResponse.SC_FORBIDDEN, "Recordings that start before login are off on this server.");

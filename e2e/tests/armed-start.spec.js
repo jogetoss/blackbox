@@ -118,3 +118,16 @@ test('a token works once, only from the extension, and a web page cannot use one
   expect((await post(worker, 'recording-stop', id1, { 'X-BlackBox-Capture-Secret': first.body.captureSecret })).status).toBe(200);
   await worker.evaluate(() => chrome.storage.session.remove('armedToken'));
 });
+
+test('Cancel deletes the token on the server, so it no longer counts toward the 3 a user may hold', async ({ context, extensionId }) => {
+  const { worker } = await setup(context, extensionId);
+  for (let i = 0; i < 4; i++) {
+    const armed = await worker.evaluate(() => arm().then(() => chrome.storage.session.get('armedToken')).then((s) => s.armedToken));
+    expect(armed?.token, `prepare #${i + 1} after cancelling the others`).toBeTruthy();
+    await worker.evaluate(() => disarm());
+    const again = await post(worker, 'recording-start', await worker.evaluate(() => crypto.randomUUID()),
+      { Authorization: 'BlackBox-Token ' + armed.token });
+    expect(again.status, 'a cancelled token is gone').toBe(401);
+  }
+  expect(await worker.evaluate(() => chrome.storage.session.get('armedToken')), 'nothing kept in the extension').toEqual({});
+});
