@@ -33,7 +33,7 @@ e.g. to run a single spec as a restricted user).
 | Allow exporting the apps used in the recording, Allow apps data from apps they don't administer, Allow capturing apps data, Allow masking apps data | ticked |
 | Who can export apps they don't administer | includes `BB_USER` (the default, Is Admin, for `admin`) |
 | Allow recording System Info secrets unmasked, Allow recording license secrets unmasked (Enterprise) | ticked |
-| Who can capture and see other users' server data | includes `BB_USER` (all-server log test) |
+| Who can capture and see other users' server data | includes `BB_USER` (ZIP imports keep their server data: `export-import`, `legacy-names`; the all-server log test). Saved empty = nobody |
 | Allow capturing Glowroot traces…, Allow capturing other users' traces, Allow capturing Glowroot data | ticked (`other-traces`, `glowroot-standalone`) |
 | Allow recordings that start before login | ticked (`armed-start`; it skips itself otherwise) |
 
